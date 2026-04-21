@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Kotlin / Android / Gradle
+*.class
+*.jar
+*.apk
+*.aab
+.gradle/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+android/app/build/
+android/build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model weights / data
+*.gguf
+*.safetensors
+*.bin
+*.onnx
+*.tflite
+*.task
+models/
+data/raw/
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
