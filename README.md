@@ -164,16 +164,6 @@ The first end-to-end delivery target for Tideline is the [Kaggle Gemma 4 Good Ha
 
 ---
 
-## Why I'm doing it this way
-
-I'm a CS + Psychology major heading into **Forward Deployed Engineer** roles. I think in mesh topologies — interfaces and seams matter more to me than any single component. This repo is a chance to build an agent framework where the **seams are the product**: `ModelRuntime`, `InputSource`, the capability-indexed tool registry, the four-tier memory with promotion gates. The translator on top is a real thing I'd want to use; the framework underneath is what I want to be able to lift into the next project unchanged.
-
-— Ryan Qin (`ryanqin10@gmail.com`)
-
----
-
 ## License
 
 [Apache-2.0](LICENSE) — aligned with the Gemma 4 model weights license.
-
-> A Chinese version of this README and the design docs is planned for a later pass.
