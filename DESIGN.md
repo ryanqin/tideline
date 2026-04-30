@@ -1,121 +1,121 @@
-# DESIGN — 产品设计决策
+# DESIGN — Product Decisions
 
-> 本文件固化**产品层**的关键拍板。技术实现见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+> This document fixes the **product-layer** decisions. Technical implementation lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## 1. Hackathon 硬约束(2026-04-16 核实自 Kaggle 官方)
+## 1. First milestone constraints — Kaggle Gemma 4 Good Hackathon (verified 2026-04-16)
 
-| 约束 | 要求 |
+| Constraint | Requirement |
 |---|---|
-| 方向 | 必须是 **health / education / climate** 之一 |
-| 场景 | 必须体现至少一项:**低带宽 / 离线可用 / 隐私优先 / 基础设施缺失地区** |
-| 评审维度 | Vision / Technical Execution / Impact / Reproducibility(四维) |
-| 权重偏向 | 真实问题 + 可演示功能 + 清晰用例 |
+| Track | Must be one of **health / education / climate** |
+| Scenario | Must hit at least one of: **low-bandwidth / offline-capable / privacy-first / infrastructure-poor regions** |
+| Judging axes | Vision / Technical Execution / Impact / Reproducibility (four axes) |
+| Weighted bias | Real problem + demonstrable functionality + clear use case |
 
-Kaggle 原话举例:
+Quoting the Kaggle page:
 > offline educational tools for rural classrooms, privacy-preserving medical diagnostic assistants, decentralized energy solutions
 
 ---
 
-## 2. 选题(2026-04-16 收敛)
+## 2. Topic selection (locked 2026-04-16)
 
-### **本地实时翻译工具 + 被动涌现的语言学习**
+### **On-device real-time translator + emergent language learning**
 
-命中点:
-- **education** 方向 ✓
-- **offline** + **privacy** + **low-bandwidth** 同时命中 ✓(翻译场景天然需要三者)
-- 真实用户画像清晰:出国工作 / 留学 / 移民家庭 / 语言学习者
-
----
-
-## 3. 产品宗旨(2026-04-17 用户拍板)
-
-> **这个 agent 首先是一个实时本地翻译工具。学习是被动涌现的副产品——只有当翻译内容积累到一定程度、出现重复或模式时,才浮现出可学习的素材。**
-
-这是**设计原则**,不是实现细节。所有功能决策需要对齐这一条。
-
-### 落地规则
-
-- **默认 UI/交互 = 翻译器**,不要给每次查词绑定"学习动作"
-  - ✗ 弹建卡确认
-  - ✗ 强推 SRS
-  - ✗ 每次翻译后跳转"学习路径"
-- **每次翻译都写入 `drawers`**(episodic 沉淀层),绝大多数 drawer **永远停在这一层**不升级
-- **只有跨过阈值**才晋级到 `candidates`,再由用户点头才成为 `cards`(进 SRS)
-  - 阈值三类:重复频次 / 语义聚类 / 用户显式信号
-- **背景"守夜人"扫描**做静默聚类与候选生成,**不 push 通知**
-  - 等用户主动问"最近怎么样"才 surface
-
-### Demo 叙事线
-
-> **"90% 时间它就是个翻译器,7% 轻触,2% 主动收获,1% 背景自主"**
-
-评审印象点:**"agent 知道何时不说话"**——这是对"智能体"而不是"功能堆叠"的审美表达。
+Why this hits:
+- **education** track ✓
+- **offline** + **privacy** + **low-bandwidth** simultaneously ✓ (translation natively requires all three)
+- Real user persona is sharp: people working abroad / international students / immigrant families / language learners
 
 ---
 
-## 4. 为什么是 Gemma 4(而不是其他模型)
+## 3. Product principle (locked 2026-04-17)
 
-| 约束 | 为什么 Gemma 4 满足 |
+> **This agent is, first and foremost, a real-time on-device translator. Learning is the passive byproduct — only when translation content accumulates and patterns repeat does material worth learning surface.**
+
+This is a **design principle**, not an implementation detail. Every feature decision must align with it.
+
+### How to apply
+
+- **Default UI/interaction = translator.** Don't bind a "learning action" to every word lookup.
+  - ✗ "confirm: create card?" prompts
+  - ✗ aggressive SRS push
+  - ✗ jumping to a "learning path" after each translation
+- **Every translation writes to `drawers`** (the episodic sediment layer). The vast majority of drawers **stay there forever** and never get promoted.
+- **Promotion to `candidates`** only when a threshold is crossed; promotion to `cards` (entering SRS) only with an explicit user nod.
+  - Three thresholds: repetition frequency / semantic clustering / explicit user signal
+- **Background "night-watch" scan** does silent clustering and candidate generation, but **never push-notifies**.
+  - Surfaces only when the user proactively asks "what have I been seeing lately?"
+
+### Demo narrative line
+
+> **"90% of the time it's just a translator. 7% light touches, 2% active harvest, 1% background autonomy."**
+
+Headline impression for judges: **"an agent that knows when not to talk"** — an aesthetic statement about what *agency* means, not feature stacking.
+
+---
+
+## 4. Why Gemma 4 (and not another model)
+
+| Constraint | Why Gemma 4 satisfies it |
 |---|---|
-| 无需 post-training(我不会也没算力) | E2B/E4B 开箱即用 |
-| 本地可跑、省成本 | 手机 / Raspberry Pi 级硬件即可 |
-| Agent 框架必备能力 | **Native function calling**(官方定位 agentic workflows) |
-| 多模态输入 | text + image + native audio |
-| 长上下文 | 128K |
-| 推理能力 | 内置 reasoning mode(step-by-step) |
-| 多语言 | 35+ 语言开箱,140+ 预训练 |
+| No post-training (I can't and have no compute) | E2B/E4B works out of the box |
+| Local execution, low cost | Phone / Raspberry Pi-class hardware is enough |
+| Agent framework essentials | **Native function calling** (Google positions it as agentic-workflow native) |
+| Multimodal input | text + image + native audio |
+| Long context | 128K |
+| Reasoning capacity | Built-in reasoning mode (step-by-step) |
+| Multilingual | 35+ languages out of the box, 140+ in pretraining |
 
 ---
 
-## 5. 输入优先级(2026-04-17 确认)
+## 5. Input priority (locked 2026-04-17)
 
 ```
- 📷 图片      ← 最高优先级(菜单 / 标牌 / 文档)
+ 📷 image     ← highest priority (menus / signs / documents)
    ↓
- 🎤 语音      ← 次优先级(对话 / 实时翻译)
+ 🎤 audio     ← second (conversations / live translation)
    ↓
- ⌨ 文本      ← 兜底(主动查词)
+ ⌨ text      ← fallback (active lookup)
 ```
 
-**为什么这个顺序**:翻译场景里,用户最常遇到的是**"看到一个看不懂的东西"**——图片是第一反应;"听到"次之;"主动输入"只在前两者不便时才发生。
+**Why this ordering:** in translation scenarios, the most common case is **"I see something I don't understand"** — image is the first reflex; "I heard something" is second; "I'll type it in" only happens when the first two are inconvenient.
 
 ---
 
-## 6. 目标平台
+## 6. Target platform
 
-### Android **唯一**(iOS 暂不做)
+### Android **only** (iOS deferred)
 
-| 平台 | 默认模型 | 场景 |
+| Platform | Default model | Scenario |
 |---|---|---|
-| Android | **E2B** | 中档机 24-30 t/s,兼容性好 |
-| Android | E4B | 性能高挡位,多模态+复杂推理时切换 |
+| Android | **E2B** | Mid-tier phones 24-30 t/s, broad compatibility |
+| Android | E4B | High-end gear, multimodal + complex reasoning |
 
-iOS 不做的理由:时间预算不够,且 MediaPipe / LiteRT-LM 在 Android 链路更成熟。
+Why no iOS: time budget doesn't allow it, and MediaPipe / LiteRT-LM is more mature on Android.
 
 ---
 
-## 7. 评审四维对标
+## 7. Milestone judging axes — alignment
 
-| 评审维度 | 本项目打点 |
+| Axis | This project's positioning |
 |---|---|
-| **Vision** | "agent 知道何时不说话" 的克制美学 + 翻译→学习的无缝渐进 |
-| **Technical Execution** | 六层 agent 框架 + Runtime 抽象 + Memory 分层 + temporal KG |
-| **Impact** | 语言学习者的真实痛点;离线场景覆盖基础设施缺失地区 |
-| **Reproducibility** | **Agent Core 纯 Python,`pip install .` 即可跑**;Android 是可选 shell |
+| **Vision** | "An agent that knows when not to talk" — restraint as aesthetic + seamless translate-to-learn gradient |
+| **Technical Execution** | Six-layer agent framework + Runtime abstraction + Memory layering + temporal KG |
+| **Impact** | Real pain point for language learners; offline coverage for infrastructure-poor regions |
+| **Reproducibility** | **Agent Core is pure Python, `pip install .` runs it**; Android is an optional shell |
 
-**Reproducibility 是隐藏加分项**:很多 hackathon 项目评审跑不起来就 0 分。我们的 Core-Android 解耦保证评审**不需要 Android 设备**也能验证核心 agent。
+**Reproducibility is the hidden bonus axis:** lots of hackathon submissions score 0 because judges can't run them. Our Core/Android decoupling guarantees judges **don't need an Android device** to validate the core agent.
 
 ---
 
-## 8. 核心架构原则:Core 与 Android **彻底解耦**
+## 8. Core architecture principle: Core and Android **fully decoupled**
 
-> **(2026-04-17 用户拍板,极重要)**
+> **(Locked 2026-04-17 — critically important)**
 
 ### Why
 
-> 真正的学习目标是 **agent 框架**,hackathon 只是载体。如果 agent 代码和 Android 代码拧在一起,会有 40% 时间耗在 Kotlin / UI / MediaPipe 配置上,**偏离学习目标**;且将来 agent 无法搬到其他项目复用。
+> The real learning goal is the **agent framework**; the hackathon is a vehicle. If agent code and Android code are entangled, 40% of time will be eaten by Kotlin / UI / MediaPipe configuration — **derailing the learning goal**; and the agent won't be reusable in future projects.
 
 ### How to apply
 
@@ -124,41 +124,43 @@ iOS 不做的理由:时间预算不够,且 MediaPipe / LiteRT-LM 在 Android 链
 │                                                        │
 │   Agent Core (Python)  ←──── HTTP/JSON ────→  Clients  │
 │                                                        │
-│   "不知道自己跑在哪"              ├─ CLI (Python)      │
-│                                   ├─ Android shell     │
-│   通过抽象接口解耦:                └─ Web playground   │
+│   "doesn't know where it runs"     ├─ CLI (Python)     │
+│                                    ├─ Android shell    │
+│   Decoupled via abstract           └─ Web playground   │
+│   interfaces:                                          │
 │     - ModelRuntime                                     │
-│       (LlamaCpp / MediaPipe / Mock)                   │
+│       (LlamaCpp / MediaPipe / Mock)                    │
 │     - InputSource                                      │
-│       (CLI / HTTP / Android)                          │
+│       (CLI / HTTP / Android)                           │
 │                                                        │
 └────────────────────────────────────────────────────────┘
 ```
 
-- Core 和 client 是**对称关系**,不存在"主 client"
-- 同一套 agent 逻辑,CLI 和手机跑完全一样
-- Android 只负责:**UI + 相机/麦克风捕获 + 本地 E4B runtime + HTTP 客户端**
-- 评审可选 `pip install .` + CLI demo,**不需要 Android 设备**
+- Core and clients are **peers**; there is no "main client"
+- Same agent logic runs identically on CLI and on phone
+- Android is responsible for: **UI + camera/mic capture + on-device E4B runtime + HTTP client only**
+- Judges can `pip install .` + run the CLI demo — **no Android device required**
 
-### 时间预算保护
+### Time-budget protection
 
 ```
- Week 1-2: 100% Python core        ← agent 框架黄金学习期
- Week 3:   开始碰 Android shell    ← 有完整可用 core 之后才碰 Kotlin
- Week 4:   打磨 + demo 录制        ← 不再动架构
+ Week 1-2: 100% Python core         ← agent framework golden window
+ Week 3:   start touching Android shell ← only after Core is fully working
+ Week 4:   polish + demo recording  ← architecture is frozen
 ```
 
-如果 Week 3 发现 Android 超预期,**果断砍 Android,只交 CLI + core** 也能 reproducibility 满分。
+If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + core only** — Reproducibility scoring is unaffected.
 
 ---
 
-## 9. 决策变更记录
+## 9. Decision changelog
 
-| 日期 | 决定 | 备注 |
+| Date | Decision | Notes |
 |---|---|---|
-| 2026-04-16 | 选定 Gemma 4 Good Hackathon 作为载体 | 新建 repo |
-| 2026-04-16 | 选题:翻译器 + 被动涌现学习 | 命中三项场景约束 |
-| 2026-04-17 | 产品宗旨拍板:"翻译器优先,学习是副产品" | Demo 叙事线 |
-| 2026-04-17 | Android 唯一平台,默认 E2B | iOS 砍掉 |
-| 2026-04-17 | Core 与 Android 彻底解耦(三层架构) | 保护 agent 学习时间 |
-| 2026-04-20 | 设计文档入库 | 本次 commit |
+| 2026-04-16 | Selected Kaggle Gemma 4 Good Hackathon as the first delivery milestone | New repo created |
+| 2026-04-16 | Topic: translator + emergent learning | Hits all three scenario constraints |
+| 2026-04-17 | Product principle locked: "translator first, learning is byproduct" | Demo narrative line |
+| 2026-04-17 | Android-only platform, default E2B | iOS cut |
+| 2026-04-17 | Core/Android fully decoupled (three-layer architecture) | Protects agent-learning time |
+| 2026-04-20 | Design docs committed | First commit |
+| 2026-04-29 | Project formally named **Tideline**, preparing for open source | Decoupling repo identity from the hackathon; positioning as a long-lived agent framework |

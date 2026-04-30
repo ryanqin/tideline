@@ -1,10 +1,10 @@
-# ARCHITECTURE — 技术架构
+# ARCHITECTURE — Technical Decomposition
 
-> 产品决策见 [DESIGN.md](DESIGN.md)。本文件聚焦**技术实现骨架**。
+> Product decisions live in [DESIGN.md](DESIGN.md). This document focuses on the **technical implementation skeleton**.
 
 ---
 
-## 1. 三层部署架构(最高层)
+## 1. Three-layer deployment architecture (top level)
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -13,211 +13,214 @@
 │    │ Agent Core   │  ←───── HTTP/JSON ─────┐               │
 │    │ (Python)     │                        │               │
 │    │              │                        ├── CLI         │
-│    │  六层框架    │                        │   (dev/debug) │
-│    │  内生        │                        │               │
+│    │  six-layer   │                        │   (dev/debug) │
+│    │  framework   │                        │               │
 │    └──────────────┘                        ├── Android     │
 │         ↑                                  │   shell       │
-│         │                                  │   (生产)      │
+│         │                                  │   (production)│
 │    ┌────┴─────────────┐                    │               │
-│    │ ModelRuntime 接口 │                   └── Web play    │
-│    │  ├ LlamaCpp      │                      (评审备用)    │
-│    │  ├ MediaPipe     │                                    │
+│    │ ModelRuntime API │                    └── Web play    │
+│    │  ├ LlamaCpp      │                       (judge       │
+│    │  ├ MediaPipe     │                        fallback)   │
 │    │  └ Mock          │                                    │
 │    └──────────────────┘                                    │
 │                                                            │
 └────────────────────────────────────────────────────────────┘
 ```
 
-**两个关键抽象接口**:
-- `ModelRuntime` — 多 runtime 挂载(llama.cpp / MediaPipe / Mock for testing)
-- `InputSource` — 输入源多态(CLI stdin / HTTP request / Android 捕获)
+**Two key abstract interfaces:**
+- `ModelRuntime` — multi-runtime mounting (llama.cpp / MediaPipe / Mock for testing)
+- `InputSource` — input-source polymorphism (CLI stdin / HTTP request / Android capture)
 
 ---
 
-## 2. Agent 框架六层(核心学习目标)
+## 2. Six-layer agent framework (the real learning goal)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  L6  Rules-as-Data (v2)                                  │
-│      阈值规则写 rules/*.md,hot-reload                    │
+│      threshold rules in rules/*.md, hot-reload           │
 ├──────────────────────────────────────────────────────────┤
-│  L5  Delivery / Events 双通道                            │
-│      Delivery → 用户可见输出                             │
-│      Events   → Inspector View / 调试流                  │
+│  L5  Delivery / Events dual channel                      │
+│      Delivery → user-visible output                      │
+│      Events   → Inspector view / debug stream            │
 ├──────────────────────────────────────────────────────────┤
-│  L4  Memory Tools(memory-as-tools)                       │
-│      agent 通过 add_drawer/promote_candidate 显式决定记什么│
-│      不走 harness 预注入                                 │
+│  L4  Memory Tools (memory-as-tools)                      │
+│      agent decides what to record via                    │
+│      add_drawer / promote_candidate — not harness inject │
 ├──────────────────────────────────────────────────────────┤
 │  L3  Orchestrator                                        │
-│      turn-based loop + token 预算节流                    │
-│      ToolPermissionContext(deny_names / deny_prefixes)   │
+│      turn-based loop + token-budget throttling           │
+│      ToolPermissionContext (deny_names / deny_prefixes)  │
 ├──────────────────────────────────────────────────────────┤
 │  L2  Tool System                                         │
-│      capability-indexed registry(按能力类索引,非 plugin id)│
+│      capability-indexed registry (by capability class,   │
+│      not plugin id)                                      │
 ├──────────────────────────────────────────────────────────┤
 │  L1  Runtime Abstraction                                 │
-│      ModelRuntime 接口(5-8 方法上限)                    │
+│      ModelRuntime interface (5–8 method ceiling)         │
 │      provider fallback chain                             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-**为什么是六层**:每一层都有**明确的职责边界**,且可以独立测试 / 替换 / 讲解——方便讲给评审看清楚"框架感"。
+**Why six layers:** each layer has a **clear responsibility boundary** and can be tested / replaced / explained independently — making the "framework feel" legible to judges.
 
 ---
 
-## 3. Memory 分层(L0-L3)
+## 3. Memory layering (L0–L3)
 
 ```
 ┌────────────────────────────────────────────────────┐
-│ L0  身份                                           │
-│     不变的用户画像(母语 / 学习目标语言 / 水平)   │
+│ L0  Identity                                       │
+│     immutable user profile (native lang /          │
+│     target lang / level)                           │
 ├────────────────────────────────────────────────────┤
-│ L1  公告栏(critical facts)                       │
-│     ~170 tokens 自动注入每次 prompt                │
-│     存:当前学习中的 candidates / 最近异常模式     │
+│ L1  Critical-facts board                           │
+│     ~170 tokens auto-injected into every prompt    │
+│     holds: active candidates / recent anomalies    │
 ├────────────────────────────────────────────────────┤
-│ L2  Session 工作记忆                               │
-│     本次对话内的短期上下文                         │
+│ L2  Session working memory                         │
+│     short-term context within the current dialog   │
 ├────────────────────────────────────────────────────┤
-│ L3  图书馆(长期记忆)                             │
+│ L3  Library (long-term memory)                     │
 │   ┌──────────────┐   ┌─────────────────┐           │
 │   │ drawers      │→→→│ candidates      │           │
-│   │ verbatim     │   │ 聚类/阈值通过的 │           │
-│   │ 99% 留在此层 │   └────────┬────────┘           │
-│   └──────────────┘            ↓ 用户点头            │
+│   │ verbatim     │   │ clustered /     │           │
+│   │ 99% stay     │   │ threshold-passed│           │
+│   │ here         │   └────────┬────────┘           │
+│   └──────────────┘            ↓ user nod           │
 │                      ┌─────────────────┐           │
 │                      │ cards (SRS)     │           │
-│                      │ 进复习曲线      │           │
+│                      │ enters review   │           │
 │                      └─────────────────┘           │
 └────────────────────────────────────────────────────┘
 ```
 
-**SRS 只服务已晋级 cards**——`drawers` / `candidates` 不进复习系统,保证大多数沉淀对用户**完全静默**。
+**SRS only serves promoted `cards`** — `drawers` / `candidates` never enter the review system, guaranteeing that the bulk of sediment stays **completely silent** to the user.
 
 ---
 
-## 4. 数据层技术栈
+## 4. Data-layer tech stack
 
-| 组件 | 用途 |
+| Component | Purpose |
 |---|---|
-| **ChromaDB** | 存 verbatim drawers,语义搜索底座 |
-| **SQLite** | 结构化表:drawers / candidates / cards / rooms / sessions |
-| **Temporal KG** | 带 `valid_from / valid_to` 的三元组(时序知识图谱) |
-| **SentencePiece** | Gemma 真 tokenizer(**不用 word-split 估算**) |
+| **ChromaDB** | Stores verbatim drawers; semantic-search backbone |
+| **SQLite** | Structured tables: drawers / candidates / cards / rooms / sessions |
+| **Temporal KG** | Triples with `valid_from / valid_to` (time-aware knowledge graph) |
+| **SentencePiece** | Real Gemma tokenizer (**no word-split estimation**) |
 
 ---
 
-## 5. 三大借鉴(站在巨人肩膀上)
+## 5. Three borrowings (standing on shoulders)
 
-### 从 **OpenClaw** 借
-- ✓ **Capability-indexed tool registry**:工具按**能力类**索引(如 `search` / `translate`),而不是 plugin id
-- ✓ **Delivery vs Events 双通道**:用户输出和调试流分开
+### From **OpenClaw**
+- ✓ **Capability-indexed tool registry**: tools indexed by **capability class** (e.g. `search` / `translate`), not by plugin id
+- ✓ **Delivery vs. Events dual channel**: user-facing output and debug stream are split
 
-### 从 **Hermes** 借(最关键,和我们产品宗旨最契合)
-- ✓ **Memory-as-tools**:agent 自己决定记什么,用 `add_drawer` 等工具显式操作
-  - *Why 匹配*:产品宗旨要求"静默沉淀",agent 必须有**主动**的记忆权
-- ✓ **Skills / rules as markdown data**:阈值规则写 `rules/*.md`,支持 hot-reload
-- ✓ **Provider fallback chain**:单一入口按优先级尝试多 runtime
+### From **Hermes** (most aligned with our product principle)
+- ✓ **Memory-as-tools**: agent decides what to remember via explicit tools like `add_drawer`
+  - *Why this fits*: the product principle requires "silent sediment"; the agent must hold **active** custody of memory
+- ✓ **Skills / rules as markdown data**: threshold rules live in `rules/*.md`, hot-reload supported
+- ✓ **Provider fallback chain**: a single entry point tries multiple runtimes by priority
 
-### 从 **Claw-code** 借
-- ✓ **Turn-based loop + token 预算节流**:比简单 `max_turns` 更精细
-- ✓ **ToolPermissionContext**:`deny_names` / `deny_prefixes` 作为无状态谓词
-  - *Why*:测试模式和 demo 模式切换友好(禁危险工具,白盒调试)
+### From **Claw-code**
+- ✓ **Turn-based loop + token-budget throttling**: finer than a simple `max_turns`
+- ✓ **ToolPermissionContext**: `deny_names` / `deny_prefixes` as stateless predicates
+  - *Why*: friendly switch between test mode and demo mode (block dangerous tools, allow whitebox debugging)
 
-### 借鉴范围的**具体代码**
-| 原项目文件 | 借用策略 |
+### Specific code being borrowed
+| Source file | Borrowing strategy |
 |---|---|
-| `mempalace/knowledge_graph.py` | 几乎原样 |
-| `mempalace/searcher.py` | 改造 |
-| `mempalace/layers.py` | 改造 |
-| `mempalace/palace_graph.py` | 参考 |
-| AAAK / conversation mining CLI | **不借** |
+| `mempalace/knowledge_graph.py` | Almost as-is |
+| `mempalace/searcher.py` | Refactor |
+| `mempalace/layers.py` | Refactor |
+| `mempalace/palace_graph.py` | Reference only |
+| AAAK / conversation mining CLI | **Not borrowed** |
 
 ---
 
-## 6. 主动避开的坑(踩过别人踩过的雷)
+## 6. Pitfalls deliberately avoided (others have stepped on these)
 
-| 坑 | 本项目的防范 |
+| Pitfall | This project's mitigation |
 |---|---|
-| Hermes 594KB 单文件 | **强制 <500 行/文件**,CI 检查 |
-| OpenClaw 40+ provider hooks | **ModelRuntime 接口 5-8 方法上限** |
-| OpenClaw 5 层 retry in orchestrator | **Retry 下沉到 runtime 层** |
-| Claw-code word-split token 估算 | 用 **Gemma sentencepiece 真 tokenizer** |
+| Hermes 594KB single file | **Hard limit <500 lines/file**, CI-enforced |
+| OpenClaw 40+ provider hooks | **ModelRuntime interface ceiling: 5–8 methods** |
+| OpenClaw 5-layer retry inside orchestrator | **Retry pushed down to runtime layer** |
+| Claw-code word-split token estimation | Use **Gemma SentencePiece real tokenizer** |
 
 ---
 
-## 7. 仓库结构详解
+## 7. Repo structure detail
 
 ```
-The-Gemma-4-Good-Hackathon/
+tideline/
 │
-├── core/                      ← Python Agent 主体(75% 时间)
-│   ├── src/gemma_agent/
+├── core/                      ← Python Agent (75% time)
+│   ├── src/tideline/
 │   │   ├── runtime/           ← L1: ModelRuntime + impls
-│   │   │   ├── base.py        ← 接口定义
+│   │   │   ├── base.py        ← interface definition
 │   │   │   ├── llama_cpp.py
 │   │   │   ├── mediapipe.py
-│   │   │   └── mock.py        ← 测试用
+│   │   │   └── mock.py        ← test runtime
 │   │   ├── tools/             ← L2: capability-indexed registry
 │   │   │   ├── registry.py
-│   │   │   ├── memory_tools.py  ← L4 的具体工具实现
+│   │   │   ├── memory_tools.py  ← concrete L4 tools
 │   │   │   └── translate.py
 │   │   ├── orchestrator/      ← L3: turn-based loop
-│   │   ├── memory/            ← Memory 分层 + ChromaDB + SQLite
-│   │   ├── rules/             ← L6: hot-reload 的 markdown rules
-│   │   └── delivery_events.py ← L5: 双通道
+│   │   ├── memory/            ← Memory layering + ChromaDB + SQLite
+│   │   ├── rules/             ← L6: hot-reload markdown rules
+│   │   └── delivery_events.py ← L5: dual channel
 │   ├── server.py              ← HTTP server
 │   ├── pyproject.toml
 │   └── tests/
 │
-├── cli/                       ← Python CLI 客户端
-│   └── gemma_cli.py
+├── cli/                       ← Python CLI client
+│   └── tideline_cli.py
 │
-├── android/                   ← Kotlin shell(20% 时间)
-│   ├── app/                   ← fork 自 Google AI Edge Gallery
+├── android/                   ← Kotlin shell (20% time)
+│   ├── app/                   ← forked from Google AI Edge Gallery
 │   └── README.md
 │
-├── bench/                     ← 性能 / 正确性评估
+├── bench/                     ← performance / correctness eval
 │   ├── translate_accuracy/
 │   ├── latency/
 │   └── memory_footprint/
 │
-├── demo/                      ← 评审材料
+├── demo/                      ← submission materials
 │   ├── video_script.md
 │   ├── recording/
-│   └── judge_run.sh           ← 一键让评审跑起来
+│   └── judge_run.sh           ← one-shot run for judges
 │
-└── docs/                      ← 扩展文档
+└── docs/                      ← extended docs
     ├── api.md
     ├── deployment.md
-    └── borrowings_notes.md    ← 详细的三大借鉴对照
+    └── borrowings_notes.md    ← detailed three-borrowings diff
 ```
 
 ---
 
-## 8. 启动顺序(Week 1 第一天要做的事)
+## 8. Startup order (Day 1 of Week 1)
 
 ```
- 1. 在 core/ 初始化 Python 包(pyproject.toml)
- 2. 先写 MockRuntime(不依赖任何模型,返回固定字符串)
- 3. 先写 ToolRegistry 的骨架(一个 translate 工具,mock 实现)
- 4. 打通 Orchestrator 最小 loop:输入 → tool 选择 → tool 调用 → 输出
- 5. 写 CLI 客户端:能 echo 输入并走 mock pipeline
- 6. 此时**还没接真模型**,但整个 agent 骨架能跑
- 7. 再换 LlamaCppRuntime,接真 Gemma E4B 权重
+ 1. Initialize Python package in core/ (pyproject.toml)
+ 2. Write MockRuntime first (no model dependency, returns fixed strings)
+ 3. Stub ToolRegistry (one translate tool, mock impl)
+ 4. Wire Orchestrator's minimal loop: input → tool selection → tool call → output
+ 5. Write CLI client: echo input through the mock pipeline end-to-end
+ 6. At this point **no real model has been loaded**, but the entire agent skeleton runs
+ 7. Then swap in LlamaCppRuntime with real Gemma E4B weights
 
-关键原则:**Runtime 是最后一步,不是第一步**。
-先把框架搭对,再换"引擎"。
+Key principle: **Runtime is the last step, not the first.**
+Get the framework right, then plug in the "engine."
 ```
 
 ---
 
-## 9. 不做的事(Non-Goals)
+## 9. Non-goals
 
 - ✗ Post-training / fine-tuning Gemma
-- ✗ iOS 支持
-- ✗ 多用户 / 账号系统
-- ✗ 云端 sync(和"离线优先"原则冲突)
-- ✗ Web 前端(除非时间富余,仅作评审备用)
-- ✗ 第三方翻译 API(违反离线原则,**所有翻译走本地 Gemma**)
+- ✗ iOS support
+- ✗ Multi-user / account system
+- ✗ Cloud sync (conflicts with offline-first)
+- ✗ Web frontend (unless time permits, as a judge fallback only)
+- ✗ Third-party translation APIs (violates offline principle, **all translation goes through local Gemma**)
