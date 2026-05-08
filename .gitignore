@@ -51,3 +51,9 @@ data/raw/
 .env.local
 *.pem
 *.key
+
+# Tideline runtime data (drawer DB lives here when default --db is used)
+.tideline/
+*.db
+*.sqlite
+*.sqlite3

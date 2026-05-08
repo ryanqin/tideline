@@ -1,0 +1,57 @@
+import argparse
+import sqlite3
+import sys
+from pathlib import Path
+
+from tideline.agent import Agent
+from tideline.runtimes import get_runtime
+from tideline.tools import (
+    AddDrawerTool,
+    ListDrawersTool,
+    NoopTool,
+    ToolRegistry,
+)
+from tideline.tools.memory import init_db
+
+
+_DEFAULT_DB = Path(".tideline") / "drawers.db"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="tideline",
+        description="Tideline CLI — local-first translation agent",
+    )
+    parser.add_argument("--runtime", default="mock", help="Model backend (default: mock)")
+    parser.add_argument(
+        "--db",
+        default=str(_DEFAULT_DB),
+        help="SQLite path for drawer store (':memory:' for ephemeral; default: ./.tideline/drawers.db)",
+    )
+    parser.add_argument("prompt", help="The text to send to the agent")
+    args = parser.parse_args(argv)
+
+    try:
+        runtime = get_runtime(args.runtime)
+    except KeyError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if args.db != ":memory:":
+        Path(args.db).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(args.db)
+    init_db(conn)
+
+    registry = ToolRegistry()
+    registry.register(NoopTool)
+    registry.register(AddDrawerTool)
+    registry.register(ListDrawersTool)
+
+    agent = Agent(runtime, registry=registry, context={"db": conn})
+    print(agent.run(args.prompt))
+    conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tideline"
+version = "0.0.1"
+description = "Local-first translation agent + emergent learning — agent core"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ryan Qin" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tideline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
