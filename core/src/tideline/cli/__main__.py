@@ -7,14 +7,25 @@ from tideline.agent import Agent
 from tideline.runtimes import get_runtime
 from tideline.tools import (
     AddDrawerTool,
+    AddTranslationTool,
     ListDrawersTool,
+    ListTranslationsTool,
     NoopTool,
     ToolRegistry,
+    init_all_tables,
 )
-from tideline.tools.memory import init_db
 
 
 _DEFAULT_DB = Path(".tideline") / "drawers.db"
+
+_TIDELINE_SYSTEM = (
+    "You are Tideline, a local-first translation assistant. "
+    "When the user explicitly asks to translate text, perform the translation "
+    "yourself, then call the add_translation tool to record "
+    "(original, target_lang, translated) before responding to the user with "
+    "the translated text. For other requests, use the available tools as "
+    "appropriate. Be concise."
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--db",
         default=str(_DEFAULT_DB),
-        help="SQLite path for drawer store (':memory:' for ephemeral; default: ./.tideline/drawers.db)",
+        help="SQLite path for drawer / translation store "
+        "(':memory:' for ephemeral; default: ./.tideline/drawers.db)",
     )
     parser.add_argument("prompt", help="The text to send to the agent")
     args = parser.parse_args(argv)
@@ -40,14 +52,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.db != ":memory:":
         Path(args.db).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
-    init_db(conn)
+    init_all_tables(conn)
 
     registry = ToolRegistry()
     registry.register(NoopTool)
     registry.register(AddDrawerTool)
     registry.register(ListDrawersTool)
+    registry.register(AddTranslationTool)
+    registry.register(ListTranslationsTool)
 
-    agent = Agent(runtime, registry=registry, context={"db": conn})
+    agent = Agent(
+        runtime,
+        registry=registry,
+        context={"db": conn},
+        system_message=_TIDELINE_SYSTEM,
+    )
     print(agent.run(args.prompt))
     conn.close()
     return 0

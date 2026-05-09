@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from tideline.format import (
     STRING_DELIM,
     TOOL_CALL_CLOSE,
@@ -14,21 +16,29 @@ from tideline.runtime import ModelRuntime
 
 _NOOP_CALL = f"{TOOL_CALL_OPEN}call:noop{{}}{TOOL_CALL_CLOSE}"
 _LIST_DRAWERS_CALL = f"{TOOL_CALL_OPEN}call:list_drawers{{}}{TOOL_CALL_CLOSE}"
+_LIST_TRANSLATIONS_CALL = (
+    f"{TOOL_CALL_OPEN}call:list_translations{{}}{TOOL_CALL_CLOSE}"
+)
+
+# "translate <text> to <lang>" — captures the text and target language.
+# The text capture is lazy so "to" inside text doesn't break parsing.
+_TRANSLATE_RE = re.compile(
+    r"translate\s+(.+?)\s+to\s+(\w+)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 class MockRuntime(ModelRuntime):
     """Deterministic test runtime that emits Gemma-formatted output.
 
     Decision rules (in priority order):
-      1. If a tool_response appears in the prompt, surface its result as the
-         final assistant text. This terminates the turn loop with the tool's
-         output as the user-visible answer.
-      2. If the user turn starts with "remember:", emit add_drawer with the
-         remainder as content.
-      3. If the user turn mentions "list drawer" / "show drawer", emit
-         list_drawers.
-      4. If the user turn mentions "noop", emit the noop tool call.
-      5. Otherwise, echo the user content (preserves Step 1 smoke behavior).
+      1. tool_response in prompt → surface its result (terminates turn loop)
+      2. user turn matches "translate X to Y" → emit add_translation
+      3. user turn starts with "remember:" → emit add_drawer
+      4. user turn mentions "list translation" → emit list_translations
+      5. user turn mentions "list drawer" / "show drawer" → emit list_drawers
+      6. user turn mentions "noop" → emit noop tool_call
+      7. otherwise → echo (preserves Step 1 behavior)
     """
 
     def generate(self, prompt: str) -> str:
@@ -43,6 +53,19 @@ class MockRuntime(ModelRuntime):
         stripped = user_content.strip()
         lower = stripped.lower()
 
+        match = _TRANSLATE_RE.search(stripped)
+        if match:
+            original = match.group(1).strip().strip("'\"")
+            target_lang = match.group(2).strip().strip("'\"").lower()
+            translated = f"[mock-translated to {target_lang}] {original}"
+            return (
+                f"{TOOL_CALL_OPEN}call:add_translation{{"
+                f"original:{STRING_DELIM}{original}{STRING_DELIM},"
+                f"target_lang:{STRING_DELIM}{target_lang}{STRING_DELIM},"
+                f"translated:{STRING_DELIM}{translated}{STRING_DELIM}"
+                f"}}{TOOL_CALL_CLOSE}"
+            )
+
         if lower.startswith("remember:"):
             content = stripped.split(":", 1)[1].strip()
             return (
@@ -50,6 +73,9 @@ class MockRuntime(ModelRuntime):
                 f"content:{STRING_DELIM}{content}{STRING_DELIM}"
                 f"}}{TOOL_CALL_CLOSE}"
             )
+
+        if "list translation" in lower or "show translation" in lower:
+            return _LIST_TRANSLATIONS_CALL
 
         if "list drawer" in lower or "show drawer" in lower:
             return _LIST_DRAWERS_CALL
@@ -69,7 +95,6 @@ def _last_user_content(prompt: str) -> str | None:
 
 
 def _extract_last_tool_response(prompt: str) -> str | None:
-    """Pull the result string out of the most recent <|tool_response>...<tool_response|> block."""
     start = prompt.rfind(TOOL_RESPONSE_OPEN)
     if start == -1:
         return None
