@@ -12,6 +12,9 @@ from tideline.runtime import ModelRuntime
 from tideline.tools import ToolRegistry
 
 
+_DEFAULT_SYSTEM = "You are a helpful assistant."
+
+
 class Agent:
     def __init__(
         self,
@@ -19,14 +22,24 @@ class Agent:
         registry: ToolRegistry | None = None,
         context: dict[str, Any] | None = None,
         max_turns: int = 5,
+        system_message: str = _DEFAULT_SYSTEM,
     ) -> None:
         self._runtime = runtime
         self._registry = registry or ToolRegistry()
         self._context = context or {}
         self._max_turns = max_turns
+        self._system_message = system_message
 
     def run(self, prompt: str) -> str:
-        history: list[str] = [make_turn("user", prompt)]
+        declarations = self._registry.all_declarations()
+        system_content = self._system_message
+        if declarations:
+            system_content = f"{system_content}\n{declarations}"
+
+        history: list[str] = [
+            make_turn("system", system_content),
+            make_turn("user", prompt),
+        ]
 
         for _ in range(self._max_turns):
             full_prompt = build_prompt(history)
