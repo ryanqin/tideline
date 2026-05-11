@@ -181,10 +181,8 @@ tideline/
 │   ├── app/                   ← forked from Google AI Edge Gallery
 │   └── README.md
 │
-├── bench/                     ← performance / correctness eval
-│   ├── translate_accuracy/
-│   ├── latency/
-│   └── memory_footprint/
+├── bench/                     ← reserved for future top-level bench scripts
+│   └── (translation accuracy now lives in core/src/tideline/bench/)
 │
 ├── demo/                      ← submission materials
 │   ├── video_script.md

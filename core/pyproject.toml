@@ -14,6 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 real = ["llama-cpp-python>=0.3"]
+bench = ["sacrebleu>=2.4"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tideline"]
