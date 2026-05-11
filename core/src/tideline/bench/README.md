@@ -1,11 +1,21 @@
-# Translation Accuracy Bench
+# Tideline Bench Suites
 
-Three-metric translation evaluation against curated reference pairs.
+Two orthogonal bench suites share one CLI entry:
+
+- **translate**: BLEU / chrF / exact-match on curated reference pairs.
+  Scores text quality.
+- **agent**: tool-call correctness, turn efficiency, restraint.
+  Scores how well a model behaves inside our agent harness.
 
 ```
-python -m tideline.bench --runtime mock                    # smoke
-python -m tideline.bench --runtime llama_cpp               # real Gemma 4
-python -m tideline.bench --runtime llama_cpp --tier sentences
+python -m tideline.bench                                 # translate (default)
+python -m tideline.bench --suite translate
+python -m tideline.bench --suite agent
+python -m tideline.bench --suite all                     # both
+python -m tideline.bench --suite agent --per-case        # show pass/fail per case
+
+# Real model:
+python -m tideline.bench --suite all --runtime llama_cpp
 ```
 
 Install bench dependencies:
@@ -13,6 +23,12 @@ Install bench dependencies:
 ```
 pip install -e ".[bench]"     # adds sacrebleu
 ```
+
+---
+
+# Translation Accuracy Bench
+
+Three-metric translation evaluation against curated reference pairs.
 
 ## Metrics
 
@@ -128,3 +144,89 @@ inference cost in those contexts.
 - Latency, memory, or any operational property.
 - Translation **into** non-English target languages (current data is all
   source → English).
+
+---
+
+# Agent Capability Bench
+
+Scores agent-loop behavior, not translation text. 13 canonical Tideline
+prompts across three categories probe distinct capabilities:
+
+| Category | n | What it probes |
+|---|---:|---|
+| translation_flow | 5 | Model calls `add_translation` with correctly-shaped args after producing a translation |
+| tool_selection | 5 | Model dispatches to the right tool (`list_drawers`, `list_candidates`, etc.) for ambient memory requests |
+| no_tool_off_task | 3 | Model **restrains** — off-task prompts ("hello", "what is 2+2?") fire NO tools |
+
+## Metrics
+
+- **task_success_rate**: cases where the right tool fired with shapely
+  args (no-tool cases pass when no tool fires)
+- **wrong_tool_rate**: cases where some tool fired but not the expected
+  one — distinguishes "didn't understand" from "didn't try"
+- **budget_exhaustion_rate**: cases that hit max_turns without resolving
+- **mean num_tool_calls / response_words**: distributional shape
+
+## Reference numbers — Mock vs E2B vs E4B, 2026-05-11
+
+| Category | n | Mock | E2B | E4B |
+|---|---:|---:|---:|---:|
+| translation_flow | 5 | 80.0% | 80.0% | **100.0%** |
+| tool_selection | 5 | 60.0% | 40.0% | 60.0% |
+| no_tool_off_task | 3 | 100.0% | 100.0% | 100.0% |
+| **all** | **13** | 76.9% | 69.2% | **84.6%** |
+
+Wall time (CPU only): Mock <1s, E2B ~16s, E4B ~37s.
+
+### Reading the agent bench
+
+**E4B is uniformly stronger on agent behavior** — clear translation_flow
+dominance (100% vs E2B's 80%), same tool_selection score but with
+sharper restraint. Combined with E4B's sentence-tier translation lead,
+the case for the E4B "high gear" gets stronger as task complexity rises.
+
+**Mock outscores E2B at 76.9% vs 69.2%** — surprising at first, but the
+explanation matters: Mock is a hand-tuned pattern matcher whose failure
+modes (T4 "into" vs "to", S2/S4 plural nouns) are different from a real
+model's failure modes (S1/S3/S5 — see below). The bench is doing exactly
+what it should: revealing that "model quality" and "harness fit" are
+distinct axes.
+
+### Universal failure points (both E2B and E4B)
+
+Three cases fail across both real models, with **0 wrong_tool calls** —
+the models simply don't fire any tool, treating these as plain
+conversation:
+
+- **S1: "what have I been seeing lately?"** — should trigger
+  `list_candidates`, whose description literally says "use when the user
+  asks what they've been seeing lately." Verbatim match in the description,
+  still missed.
+- **S3: "remember: try yakisoba next time"** — should trigger `add_drawer`.
+  Mock catches this via the "remember:" prefix; real models likely treat
+  it as a mental note rather than an explicit tool invocation.
+- **S5: "what's emerging?"** — same family as S1, same miss.
+
+This is an actionable finding: **the gap is in our tool descriptions and
+system message, not in Gemma 4's intrinsic capability**. Future work:
+sharpen tool descriptions, possibly add few-shot examples in the system
+prompt for the surfacing intents.
+
+### What the agent bench measures
+
+Each case runs through the full agent loop with a `RecordingRegistry`
+that captures every tool invocation. Pass criteria:
+
+1. Every expected tool fires at least once with matching args
+2. For no-tool cases: no tool fires at all
+3. Argument matchers are lenient on common variations (e.g.,
+   `target_lang` matches both "zh" and "Chinese")
+
+### What it doesn't measure
+
+- Quality of the final response text (translation BLEU/chrF covers
+  that orthogonally)
+- Multi-turn coherence (every case is a single user prompt)
+- Latency under load — single-pair throughput only
+- Real-user prompt diversity — 13 cases is enough to discriminate but
+  not exhaustive
