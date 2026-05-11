@@ -29,29 +29,47 @@ Why this hits:
 
 ---
 
-## 3. Product principle (locked 2026-04-17)
+## 3. Product principles
+
+Two principles, equally weighted. Every feature decision must align with both.
+
+### 3.1 Translator first, learning is byproduct (locked 2026-04-17)
 
 > **This agent is, first and foremost, a real-time on-device translator. Learning is the passive byproduct — only when translation content accumulates and patterns repeat does material worth learning surface.**
 
-This is a **design principle**, not an implementation detail. Every feature decision must align with it.
-
-### How to apply
+**How to apply:**
 
 - **Default UI/interaction = translator.** Don't bind a "learning action" to every word lookup.
   - ✗ "confirm: create card?" prompts
   - ✗ aggressive SRS push
   - ✗ jumping to a "learning path" after each translation
-- **Every translation writes to `drawers`** (the episodic sediment layer). The vast majority of drawers **stay there forever** and never get promoted.
+- **Every translation writes to the sediment layer.** The vast majority of entries **stay there forever** and never get promoted.
 - **Promotion to `candidates`** only when a threshold is crossed; promotion to `cards` (entering SRS) only with an explicit user nod.
   - Three thresholds: repetition frequency / semantic clustering / explicit user signal
 - **Background "night-watch" scan** does silent clustering and candidate generation, but **never push-notifies**.
-  - Surfaces only when the user proactively asks "what have I been seeing lately?"
+  - Surfaces only when the user opens the candidates UI panel (not via dialogue).
+
+**Tideline is NOT a chatbot.** The only user input surfaces are: image (camera/OCR), audio (microphone), and keyboard text — all of them are "text to translate," never "things to discuss with the agent." Candidates and drawers are read by the UI directly from SQL; the agent is not a conversational gateway to them.
+
+### 3.2 Episodic anchoring: learning carries its provenance (locked 2026-05-11)
+
+> **Every promoted item — candidate, card, future cluster — retains a back-reference to the original translation moments that contributed to it. Learning is not abstract definitions; learning is episodic memory accumulating into form.**
+
+**Why this matters:** Anki strips context from cards, so the front says "ラーメン" and the back says "ramen" and the result is grinding. Tideline's competitive premise is that **the back of every card is actually a stack of the lived moments where the user encountered the word** — the menu in Shibuya at 14:32, the cooking class on Sunday, the song lyric at midnight. Episodic context is the strongest retrieval anchor in cognitive science; reuniting language items with their original encounter is what makes the learning stick.
+
+**How to apply:**
+
+- **Drawer entries are episodic, not lexical.** Each row carries the original translation, plus available context: source (image / audio / text), surrounding snippet if any, timestamp, optional session grouping.
+- **Candidates point back to their drawer evidence.** A `candidate_evidence` join table preserves the full list of contributing drawer entries, not just a count.
+- **The UI never shows a candidate as "ramen × 6."** It shows the stack of six moments. The number is incidental; the moments are the point.
+- **Tier B intelligence (semantic clustering, cluster naming, summarization) must preserve provenance.** A cluster titled "your Tokyo lunches" links back to every constituent translation row; the cluster is a *view* over evidence, not a replacement for it.
 
 ### Demo narrative line
 
 > **"90% of the time it's just a translator. 7% light touches, 2% active harvest, 1% background autonomy."**
+> **"And every harvest carries the moment it grew from."**
 
-Headline impression for judges: **"an agent that knows when not to talk"** — an aesthetic statement about what *agency* means, not feature stacking.
+Headline impression for judges: **"an agent that knows when not to talk, and an agent that remembers where everything came from."** Two complementary statements about what *agency* and *memory* mean in this product.
 
 ---
 

@@ -37,7 +37,11 @@ def promote_candidates(
 ) -> int:
     """Promote drawer entries crossing `threshold` into candidates.
 
-    Returns the number of rows touched (inserted or updated).
+    Also writes one `candidate_evidence` row per contributing translation,
+    preserving the back-link from each candidate to the lived moments it
+    accumulated from (the episodic-anchoring principle from DESIGN.md §3.2).
+
+    Returns the number of candidate rows touched (inserted or updated).
     """
     if threshold < 1:
         raise ValueError(f"threshold must be >= 1, got {threshold}")
@@ -75,6 +79,18 @@ def promote_candidates(
             last_seen_at = excluded.last_seen_at
         """,
         rows,
+    )
+
+    # Evidence rows: link each candidate to every translation that
+    # contributed. UNIQUE constraint makes this idempotent across re-runs.
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO candidate_evidence (candidate_id, translation_id)
+        SELECT c.id, t.id
+        FROM candidates c
+        JOIN translations t
+          ON t.original = c.original AND t.target_lang = c.target_lang
+        """
     )
     conn.commit()
     return len(rows)

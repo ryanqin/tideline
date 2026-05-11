@@ -320,42 +320,8 @@ def test_cli_promotion_threshold_flag(tmp_path):
     assert "threshold=5" in result.stdout
 
 
-def test_cli_list_candidates_smoke(tmp_path):
-    """End-to-end: seed → promote → ask the agent → see top emergent terms."""
-    db_path = tmp_path / "test.db"
-    subprocess.run(
-        [sys.executable, "-m", "tideline.seed", "--db", str(db_path)],
-        capture_output=True, text=True, check=True,
-    )
-    subprocess.run(
-        [sys.executable, "-m", "tideline.promotion", "--db", str(db_path)],
-        capture_output=True, text=True, check=True,
-    )
-    result = subprocess.run(
-        [
-            sys.executable, "-m", "tideline.cli",
-            "--runtime", "mock", "--db", str(db_path),
-            "what have I been seeing lately?",
-        ],
-        capture_output=True, text=True,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "[seen" in result.stdout  # at least one candidate line surfaced
-
-
-def test_cli_step1_through_5_smoke_unchanged_after_step6b():
-    """All earlier behaviors must survive Step 6b's new candidate tool."""
-    def _cli(*extra: str) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            [
-                sys.executable, "-m", "tideline.cli",
-                "--runtime", "mock", "--db", ":memory:",
-                *extra,
-            ],
-            capture_output=True, text=True,
-        )
-
-    assert _cli("hello").stdout.strip() == "[mock] echo: hello"
-    assert _cli("please run noop").stdout.strip() == "noop done"
-    assert _cli("remember: cli smoke").stdout.strip() == "drawer #1 added"
-    assert "[mock-translated to zh] hello" in _cli("translate hello to zh").stdout
+# test_cli_list_candidates_smoke + test_cli_step1_through_5_smoke_unchanged
+# removed 2026-05-11: the CLI no longer routes natural-language queries
+# like "what have I been seeing lately?" — that's the UI's job to read from
+# SQL directly. The agent-bench harness keeps a custom registry that covers
+# ListCandidatesTool's agent-loop behavior in isolation.

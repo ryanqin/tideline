@@ -145,21 +145,16 @@ def _cli(*extra: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_cli_remember_smoke():
-    result = _cli("remember: cli smoke")
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "drawer #1 added"
+# test_cli_remember_smoke + test_cli_step2_noop_still_works_with_memory_layer
+# removed 2026-05-11: the CLI is now a translation engine only and no longer
+# registers AddDrawerTool or NoopTool. Tideline is not a chatbot — "remember:"
+# and "noop" are not real product interactions. Unit-level coverage of
+# AddDrawerTool / NoopTool remains via the agent + custom registry tests
+# above.
 
 
 def test_cli_step1_echo_still_works_with_memory_layer():
-    """Step 1's echo behavior must survive Step 3's L4 layer addition."""
+    """Mock's fallthrough echo behavior survives Step 3's L4 layer addition."""
     result = _cli("hello")
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[mock] echo: hello"
-
-
-def test_cli_step2_noop_still_works_with_memory_layer():
-    """Step 2's noop turn loop must survive Step 3's L4 layer addition."""
-    result = _cli("please run noop")
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "noop done"

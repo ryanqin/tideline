@@ -79,20 +79,11 @@ def test_auto_promote_uses_default_threshold_of_3(tmp_path):
     assert not bad, f"sub-threshold rows leaked: {bad}"
 
 
-def test_seed_then_cli_surfaces_candidates_no_explicit_promotion(tmp_path):
-    """End-to-end: seed → cli 'what have i been seeing' → see candidates.
-
-    This is the Step 6c happy path: the explicit `tideline.promotion` step
-    from Step 6b is no longer required between seed and surfacing.
-    """
-    db_path = tmp_path / "test.db"
-    subprocess.run(
-        [sys.executable, "-m", "tideline.seed", "--db", str(db_path)],
-        capture_output=True, text=True, check=True,
-    )
-    result = _cli("what have I been seeing lately?", db=str(db_path))
-    assert result.returncode == 0, result.stderr
-    assert "[seen" in result.stdout
+# test_seed_then_cli_surfaces_candidates_no_explicit_promotion removed
+# 2026-05-11: the CLI is no longer a conversational gateway to candidates.
+# Auto-promotion still fires silently on startup (verified by
+# test_seeded_db_then_cli_auto_promotes above, which reads the candidates
+# table directly to confirm the sweep happened).
 
 
 # --- The sweep is silent --------------------------------------------------
@@ -136,12 +127,10 @@ def test_drift_auto_promote_lives_in_cli_not_agent():
     assert "promote_candidates" in cli_source
 
 
-# --- Step 1-5 + 6b backward compatibility --------------------------------
+# --- Surviving CLI smoke after scope narrowing ---------------------------
 
 
-def test_step1_through_6b_unchanged_after_6c():
-    """All prior smokes must keep working with auto-promote enabled."""
+def test_translate_cli_still_works_with_auto_promote():
+    """Auto-promote on startup must not interfere with the translation flow."""
     assert _cli("hello").stdout.strip() == "[mock] echo: hello"
-    assert _cli("please run noop").stdout.strip() == "noop done"
-    assert _cli("remember: cli smoke").stdout.strip() == "drawer #1 added"
     assert "[mock-translated to zh] hello" in _cli("translate hello to zh").stdout

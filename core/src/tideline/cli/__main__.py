@@ -6,43 +6,36 @@ from pathlib import Path
 from tideline.agent import Agent
 from tideline.promotion import promote_candidates
 from tideline.runtimes import get_runtime
-from tideline.tools import (
-    AddDrawerTool,
-    AddTranslationTool,
-    ListCandidatesTool,
-    ListDrawersTool,
-    ListTranslationsTool,
-    NoopTool,
-    ToolRegistry,
-    init_all_tables,
-)
+from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
 _DEFAULT_DB = Path(".tideline") / "drawers.db"
 
+# Tideline is a translation engine, not a chatbot. The system message is
+# tight on purpose: one job (translate + record), strict output discipline
+# (no preamble, no commentary), no invitation to converse.
 _TIDELINE_SYSTEM = (
-    "You are Tideline, a local-first translation assistant. "
-    "When the user explicitly asks to translate text, perform the translation "
-    "yourself, then call the add_translation tool to record "
-    "(original, target_lang, translated) before responding to the user with "
-    "the translated text. For other requests, use the available tools as "
-    "appropriate. Be concise."
+    "You are Tideline, a local-first translation engine. "
+    "Translate the user's text into the requested target language. "
+    "Output only the translated text — no preamble, no quotation marks, "
+    "no explanatory notes. After translating, call the add_translation tool "
+    "to record (original, target_lang, translated)."
 )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="tideline",
-        description="Tideline CLI — local-first translation agent",
+        description="Tideline CLI — local-first translation engine",
     )
     parser.add_argument("--runtime", default="mock", help="Model backend (default: mock)")
     parser.add_argument(
         "--db",
         default=str(_DEFAULT_DB),
-        help="SQLite path for drawer / translation store "
+        help="SQLite path for translation store "
         "(':memory:' for ephemeral; default: ./.tideline/drawers.db)",
     )
-    parser.add_argument("prompt", help="The text to send to the agent")
+    parser.add_argument("prompt", help="The text to translate")
     args = parser.parse_args(argv)
 
     try:
@@ -61,17 +54,14 @@ def main(argv: list[str] | None = None) -> int:
     promote_candidates(conn)
 
     registry = ToolRegistry()
-    registry.register(NoopTool)
-    registry.register(AddDrawerTool)
-    registry.register(ListDrawersTool)
     registry.register(AddTranslationTool)
-    registry.register(ListTranslationsTool)
-    registry.register(ListCandidatesTool)
 
+    # source="text" is the CLI's input modality. Future Android/HTTP entry
+    # points override this to "image" or "audio" via their own context.
     agent = Agent(
         runtime,
         registry=registry,
-        context={"db": conn},
+        context={"db": conn, "source": "text"},
         system_message=_TIDELINE_SYSTEM,
     )
     print(agent.run(args.prompt))

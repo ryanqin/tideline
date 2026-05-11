@@ -184,8 +184,7 @@ def test_cli_translate_smoke():
     assert "[mock-translated to zh] hello" in result.stdout
 
 
-def test_cli_step1_2_3_smoke_unchanged_after_step5():
-    """All earlier behaviors must survive Step 5's translation layer."""
-    assert _cli("hello").stdout.strip() == "[mock] echo: hello"
-    assert _cli("please run noop").stdout.strip() == "noop done"
-    assert _cli("remember: cli smoke").stdout.strip() == "drawer #1 added"
+# test_cli_step1_2_3_smoke_unchanged_after_step5 removed 2026-05-11: the
+# noop/remember CLI assertions covered behaviors that no longer exist after
+# the translation-engine scope narrowing. The "hello" echo assertion is
+# still covered by test_step2.test_cli_smoke_step1_unchanged.

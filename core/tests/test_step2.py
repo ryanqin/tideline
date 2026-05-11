@@ -138,12 +138,9 @@ def test_cli_smoke_step1_unchanged():
     assert result.stdout.strip() == "[mock] echo: hello"
 
 
-def test_cli_smoke_noop_drives_turn_loop():
-    """New Step 2 CLI smoke: 'noop' triggers tool dispatch and returns 'noop done'."""
-    result = subprocess.run(
-        [sys.executable, "-m", "tideline.cli", "--runtime", "mock", "--db", ":memory:", "please run noop"],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, f"stderr: {result.stderr}"
-    assert result.stdout.strip() == "noop done"
+# test_cli_smoke_noop_drives_turn_loop removed 2026-05-11: NoopTool is a test
+# fixture, not a product feature. After the translation-engine scope
+# narrowing, the CLI registers only AddTranslationTool. Noop dispatch via
+# CLI is no longer a supported interaction. The agent-level turn loop is
+# still covered by test_agent_run_noop_completes_turn_loop above (which
+# constructs a custom registry directly).
