@@ -57,6 +57,10 @@ def test_drift_cli_imports_only_public_surface():
         "tideline.runtimes",
         "tideline.tools",
         "tideline.tools.memory",
+        # Step 6c: night-watch sweep hook on CLI startup. Promotion engine
+        # is a background process, not a tool, so it lives outside tools/
+        # and gets imported here as a deliberate lifecycle dependency.
+        "tideline.promotion",
     }
     imports: set[str] = set()
     for node in ast.walk(tree):

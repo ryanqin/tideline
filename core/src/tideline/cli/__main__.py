@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from tideline.agent import Agent
+from tideline.promotion import promote_candidates
 from tideline.runtimes import get_runtime
 from tideline.tools import (
     AddDrawerTool,
@@ -54,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.db).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
     init_all_tables(conn)
+
+    # Night-watch sweep: silently promote any drawer entries that crossed the
+    # repetition threshold during prior sessions. Idempotent, cheap, no output.
+    promote_candidates(conn)
 
     registry = ToolRegistry()
     registry.register(NoopTool)
