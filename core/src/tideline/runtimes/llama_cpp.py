@@ -9,7 +9,12 @@ ModelRuntime.generate(prompt: str) -> str surface stays unchanged.
 Model path resolution (priority):
   1. `model_path` constructor argument
   2. `TIDELINE_GEMMA_PATH` environment variable
-  3. `./models/gemma-4-E2B-it-Q4_K_M.gguf` (canonical local install)
+  3. `<repo_root>/models/gemma-4-E2B-it-Q4_K_M.gguf` (canonical local install)
+
+The default is resolved relative to this source file, not the current
+working directory — so `python -m tideline.cli` from any cwd finds the
+GGUF as long as it lives at the canonical repo-root `models/` location.
+For wheel installs without a repo, set TIDELINE_GEMMA_PATH explicitly.
 """
 
 from __future__ import annotations
@@ -20,7 +25,10 @@ from pathlib import Path
 from tideline.runtime import ModelRuntime
 
 
-_DEFAULT_MODEL_PATH = "./models/gemma-4-E2B-it-Q4_K_M.gguf"
+# core/src/tideline/runtimes/llama_cpp.py → parents[4] = repo root
+_DEFAULT_MODEL_PATH = (
+    Path(__file__).resolve().parents[4] / "models" / "gemma-4-E2B-it-Q4_K_M.gguf"
+)
 
 
 class LlamaCppRuntime(ModelRuntime):
