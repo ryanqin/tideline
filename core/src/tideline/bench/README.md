@@ -42,50 +42,73 @@ than true model differences.
 Native speakers reviewing and refining the references would meaningfully
 strengthen this bench. PRs welcome.
 
-## Reference numbers — Gemma 4 E2B, 2026-05-11
+## Reference numbers — Gemma 4 E2B & E4B, 2026-05-11
 
-Captured on Apple Silicon (CPU only, llama-cpp-python 0.3.22, temperature 0.3,
-agent full-loop including `add_translation` tool call). Re-run on your hardware
-to verify reproducibility:
+Captured on Apple Silicon (CPU only, llama-cpp-python 0.3.22, Q4_K_M GGUF
+from unsloth, temperature 0.3, agent full-loop including `add_translation`
+tool call). Re-run on your hardware to verify reproducibility:
 
 ```
-python -m tideline.bench --runtime llama_cpp
+python -m tideline.bench --runtime llama_cpp                                   # E2B (default)
+TIDELINE_GEMMA_PATH=models/gemma-4-E4B-it-Q4_K_M.gguf python -m tideline.bench --runtime llama_cpp   # E4B
 ```
 
 ### Phrases (60 pairs, 5 scenarios × 12 each)
 
-| Scenario | n  | exact_match | chrF |
-|---|---:|---:|---:|
-| de-en | 12 |  91.7% | 84.7 |
-| es-en | 12 |  75.0% | 71.6 |
-| fr-en | 12 |  66.7% | 68.6 |
-| ja-en | 12 |  83.3% | 74.3 |
-| zh-en | 12 |  91.7% | 96.9 |
-| **all** | **60** | **81.7%** | **80.4** |
+| Scenario | n  | E2B EM | E2B chrF | E4B EM | E4B chrF |
+|---|---:|---:|---:|---:|---:|
+| de-en | 12 |  91.7% | 84.7 |  91.7% | 85.6 |
+| es-en | 12 |  75.0% | 71.6 |  83.3% | 75.6 |
+| fr-en | 12 |  66.7% | 68.6 |  75.0% | 83.1 |
+| ja-en | 12 |  83.3% | 74.3 |  66.7% | 61.4 |
+| zh-en | 12 |  91.7% | 96.9 |  83.3% | 90.5 |
+| **all** | **60** | **81.7%** | **80.4** | **80.0%** | **79.0** |
 
 ### Sentences (30 pairs, 5 scenarios × 6 each)
 
-| Scenario | n | exact_match | chrF | BLEU |
-|---|---:|---:|---:|---:|
-| de-en | 6 | 100.0% | 100.0 | 100.0 |
-| es-en | 6 |  83.3% |  93.1 |  85.4 |
-| fr-en | 6 |  50.0% |  78.2 |  69.0 |
-| ja-en | 6 |  66.7% |  69.6 |  53.7 |
-| zh-en | 6 |  16.7% |  72.2 |  39.6 |
-| **all** | **30** | **63.3%** | **82.4** | **68.3** |
+| Scenario | n | E2B EM | E2B chrF | E2B BLEU | E4B EM | E4B chrF | E4B BLEU |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| de-en | 6 | 100.0% | 100.0 | 100.0 | 100.0% | 100.0 | 100.0 |
+| es-en | 6 |  83.3% |  93.1 |  85.4 |  83.3% |  94.2 |  89.3 |
+| fr-en | 6 |  50.0% |  78.2 |  69.0 |  33.3% |  82.4 |  64.5 |
+| ja-en | 6 |  66.7% |  69.6 |  53.7 |  66.7% |  69.4 |  54.3 |
+| zh-en | 6 |  16.7% |  72.2 |  39.6 |  50.0% |  81.8 |  67.1 |
+| **all** | **30** | **63.3%** | **82.4** | **68.3** | **66.7%** | **85.7** | **74.0** |
+
+### Latency (CPU only, 60-pair phrase tier)
+
+| Model | Wall-clock | Per-pair |
+|---|---:|---:|
+| E2B (~3 GB) | ~1:30 | ~1.5 s |
+| E4B (~4.6 GB) | ~2:22 | ~2.4 s |
 
 ### Reading the numbers
 
-- **zh-en sentence 16.7% EM + 72 chrF** is the classic "low EM, high chrF"
-  pattern — Gemma's translations are correct but phrased differently from the
-  reference (e.g., "The contract requires signing" vs. "The contract needs to
-  be signed"). The chrF score is the more honest signal here.
-- **fr-en phrase 66.7% EM** is the weakest single cell — likely driven by
-  short polysemous words (e.g., "four" = oven, but also the number) where
-  the reference forces one interpretation.
-- **Cross-tier drop** (phrases 81.7% → sentences 63.3% EM) is partly
-  metric strictness (one wording variation = a miss on the whole sentence,
-  not just one word) and partly reflects the genuine difficulty difference.
+**E4B is not uniformly better than E2B.** It's a different shape, not a strict upgrade:
+
+- **Sentence tier: E4B wins clearly.** +3.3 pt EM, +3.3 chrF, +5.7 BLEU
+  averaged across scenarios. Particularly dramatic on zh-en sentences
+  (16.7% → 50.0% EM) where E4B's richer reasoning unlocks idiomatic
+  phrasings E2B fumbles.
+- **Phrase tier: E2B is microscopically better overall** (81.7% vs 80.0% EM)
+  but the geographic split is the real story — E4B is **+8 pt on es / fr**,
+  E2B is **+9-17 pt on ja / zh**. E4B leans Indo-European; E2B is more
+  even-handed across CJK.
+- **fr-en sentence EM 50% → 33%, chrF 78 → 82** under E4B is another
+  classic "low EM, high chrF" case — E4B paraphrases more naturally but my
+  rigid single reference penalizes it. chrF is the honest signal here.
+- **zh-en sentence 16.7% EM + 72 chrF (E2B)** is the same pattern from a
+  different model: Gemma's translations are correct ("The contract requires
+  signing") but phrased differently from the reference ("needs to be signed").
+
+### Implication for product
+
+The default is **E2B**: faster, smaller, and more consistent on short CJK
+lookups — which is the modal Tideline use case (a learner pointing a camera
+at a menu / sign / lyric). **E4B is the high-gear switch** when the user
+needs sentence-length translation or non-CJK target languages — its
+sentence-tier dominance and European-language strength justify the 1.5x
+inference cost in those contexts.
 
 ---
 
