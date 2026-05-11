@@ -8,6 +8,7 @@ from tideline.runtimes import get_runtime
 from tideline.tools import (
     AddDrawerTool,
     AddTranslationTool,
+    ListCandidatesTool,
     ListDrawersTool,
     ListTranslationsTool,
     NoopTool,
@@ -60,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     registry.register(ListDrawersTool)
     registry.register(AddTranslationTool)
     registry.register(ListTranslationsTool)
+    registry.register(ListCandidatesTool)
 
     agent = Agent(
         runtime,
