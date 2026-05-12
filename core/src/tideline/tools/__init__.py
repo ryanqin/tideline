@@ -17,6 +17,11 @@ def init_all_tables(conn: sqlite3.Connection) -> None:
     _init_drawers(conn)
     _init_translations(conn)
     _init_candidates(conn)
+    # Cluster engine tables (Tier B). Init here so any code path that calls
+    # init_all_tables (CLI, bench, tests) gets the full schema; the cluster
+    # engine itself also has its own init_db for direct callers.
+    from tideline.cluster import init_db as _init_clusters
+    _init_clusters(conn)
 
 
 __all__ = [

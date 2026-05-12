@@ -5,19 +5,21 @@ a background sweep can ask it on O(N^2) pairs to build a similarity
 graph; pairs with vote-accumulated affinity become a cluster. Cheap
 weak signals + accumulation → cluster emergence.
 
-Eval: parse first yes/no token from response.
+Prompt construction and response parsing live in
+`tideline.intelligence.concept_match` so the bench measures the exact
+prompts the cluster engine (`tideline.cluster`) uses in production.
 """
 
 from __future__ import annotations
+
+from tideline.intelligence import concept_match
 
 
 ID = "B1"
 NAME = "Concept match (binary)"
 CATEGORY = "tier_b"
 
-SYSTEM_PROMPT = (
-    "You answer with exactly one word: 'yes' or 'no'. No other text."
-)
+SYSTEM_PROMPT = concept_match.SYSTEM_PROMPT
 
 
 CASES = [
@@ -42,22 +44,12 @@ CASES = [
 def build_prompt(case: dict) -> str:
     t1, l1 = case["term1"]
     t2, l2 = case["term2"]
-    return (
-        f"Are these two terms referring to the same concept?\n"
-        f"1. '{t1}' ({l1})\n"
-        f"2. '{t2}' ({l2})"
-    )
+    return concept_match.build_prompt(t1, l1, t2, l2)
 
 
 def evaluate(case: dict, response: str) -> bool:
-    low = response.lower().strip()
-    has_yes = "yes" in low.split()
-    has_no = "no" in low.split()
-    # Hedged or contradictory ("yes and no") doesn't count as a clean answer.
-    if has_yes and has_no:
+    parsed = concept_match.parse_response(response)
+    if parsed is None:
         return False
-    if low.startswith("yes") or has_yes:
-        return case["expected"] == "yes"
-    if low.startswith("no") or has_no:
-        return case["expected"] == "no"
-    return False
+    expected_yes = case["expected"] == "yes"
+    return parsed == expected_yes

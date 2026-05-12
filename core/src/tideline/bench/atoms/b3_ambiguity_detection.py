@@ -41,13 +41,12 @@ def build_prompt(case: dict) -> str:
 
 
 def evaluate(case: dict, response: str) -> bool:
-    low = response.lower().strip()
-    has_yes = "yes" in low.split()
-    has_no = "no" in low.split()
-    if has_yes and has_no:
+    # Reuse the concept_match parser — same yes/no shape, same hedged-
+    # answer behavior. parse_response returns None for ambiguous answers
+    # (like "yes and no"), which here means the model didn't comply.
+    from tideline.intelligence import concept_match
+
+    parsed = concept_match.parse_response(response)
+    if parsed is None:
         return False
-    if low.startswith("yes") or has_yes:
-        return case["expected"] == "yes"
-    if low.startswith("no") or has_no:
-        return case["expected"] == "no"
-    return False
+    return (parsed is True) == (case["expected"] == "yes")
