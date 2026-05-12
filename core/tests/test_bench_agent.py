@@ -40,20 +40,16 @@ from tideline.tools import AddDrawerTool, NoopTool, init_all_tables
 # --- Case catalog --------------------------------------------------------
 
 
-def test_case_catalog_has_three_categories():
+def test_case_catalog_is_translation_flow_only():
+    """Post-2026-05-11 scope narrowing: agent bench measures only the
+    translation flow. S* / N* chatbot cases were retired; their atomic
+    capability roles moved to bench/atoms/."""
     by_cat = cases_by_category()
-    assert set(by_cat.keys()) == {"translation_flow", "tool_selection", "no_tool_off_task"}
+    assert set(by_cat.keys()) == {"translation_flow"}
 
 
 def test_case_catalog_minimum_size():
-    assert len(CASES) >= 12, f"expected >= 12 cases, got {len(CASES)}"
-
-
-def test_each_category_has_minimum_cases():
-    by_cat = cases_by_category()
-    assert len(by_cat["translation_flow"]) >= 4
-    assert len(by_cat["tool_selection"]) >= 4
-    assert len(by_cat["no_tool_off_task"]) >= 2
+    assert len(CASES) >= 5, f"expected >= 5 translation_flow cases, got {len(CASES)}"
 
 
 def test_case_ids_are_unique():
@@ -61,15 +57,8 @@ def test_case_ids_are_unique():
     assert len(ids) == len(set(ids))
 
 
-def test_no_tool_cases_have_empty_expected_calls():
-    by_cat = cases_by_category()
-    for c in by_cat["no_tool_off_task"]:
-        assert c.expected_tool_calls == (), f"{c.id} should expect no tool calls"
-
-
 def test_translation_cases_expect_add_translation():
-    by_cat = cases_by_category()
-    for c in by_cat["translation_flow"]:
+    for c in CASES:
         names = [exp.name for exp in c.expected_tool_calls]
         assert "add_translation" in names, f"{c.id} should expect add_translation"
 
@@ -163,28 +152,11 @@ def test_mock_passes_simple_translation_pattern():
         )
 
 
-def test_mock_passes_emergence_cue_cases():
-    """S1 and S5 trigger Mock's 'been seeing' / 'emerging' keywords."""
-    runtime = get_runtime("mock")
-    for case_id in ("S1", "S5"):
-        case = next(c for c in CASES if c.id == case_id)
-        result = run_case(runtime, case)
-        assert result.expected_tools_called, (
-            f"{case_id} matches Mock's emergence keywords and should pass"
-        )
-
-
-def test_mock_no_tool_cases_correctly_fire_nothing():
-    """N1-N3: Mock has no pattern for these → must not fire any tool."""
-    runtime = get_runtime("mock")
-    by_cat = cases_by_category()
-    for case in by_cat["no_tool_off_task"]:
-        result = run_case(runtime, case)
-        assert not result.any_tool_called, (
-            f"{case.id} ({case.prompt!r}) should fire NO tools under Mock; "
-            f"got {result.num_tool_calls} calls"
-        )
-        assert result.expected_tools_called  # no expectation → trivially OK
+# test_mock_passes_emergence_cue_cases and test_mock_no_tool_cases_*
+# removed 2026-05-11: those S* / N* cases were retired with the chatbot
+# scope. Their replacement signal lives in bench/atoms/ — concept matching
+# (B1), ambiguity (B3), etc. are now measured as direct LLM atoms without
+# tool dispatch.
 
 
 # --- run() and summarize() -----------------------------------------------
@@ -195,13 +167,11 @@ def test_full_mock_run_produces_full_case_count():
     assert len(results) == len(CASES)
 
 
-def test_summarize_includes_per_category_plus_all():
+def test_summarize_includes_translation_flow_plus_all():
     results = run_agent_bench("mock")
     summaries = summarize(results)
     cats = {s.category for s in summaries}
     assert "translation_flow" in cats
-    assert "tool_selection" in cats
-    assert "no_tool_off_task" in cats
     assert "all" in cats
 
 

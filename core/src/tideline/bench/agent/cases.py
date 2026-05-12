@@ -1,17 +1,19 @@
-"""Canonical Tideline agent cases.
+"""Canonical Tideline agent cases (translation flow only).
 
-Three categories of prompts probe distinct agent capabilities:
+Post-2026-05-11 scope narrowing: Tideline is a translation engine, not a
+chatbot. The agent bench measures **end-to-end translation flow with
+correct tool invocation** — equivalently, the A4 atom (which is too
+composite to fit the direct-prompt atomic bench infrastructure).
 
-- translation_flow: "translate X to Y" must call add_translation with
-  shapely-matched args (original ≈ X, target_lang signals Y).
-- tool_selection: ambient requests must dispatch to the right tool from
-  the memory capability cluster.
-- no_tool_off_task: requests that are out of scope should NOT fire any
-  tool — the agent's restraint matters as much as its tool use.
+Earlier S* (tool_selection: "what have I been seeing") and N* (no_tool:
+"hello") cases tested chatbot behaviors that aren't real product
+interactions (drawer/candidate queries are UI-direct, not dialogue).
+They were removed; their measurement role is now covered by the atomic
+bench's Tier B suite — concept matching, theme extraction, etc., as
+direct LLM operations not gated through tool dispatch.
 
 Arg checks are intentionally lenient: `target_lang` may come in as "zh"
-or "chinese" or "Chinese"; either is acceptable. Strict equality would
-penalize valid model variation we don't actually care about.
+or "chinese" or "Chinese"; either is acceptable.
 """
 
 from __future__ import annotations
@@ -121,61 +123,6 @@ CASES: tuple[AgentCase, ...] = (
                 ),
             ),
         ),
-    ),
-    # --- tool_selection ---------------------------------------------------
-    AgentCase(
-        id="S1",
-        category="tool_selection",
-        prompt="what have I been seeing lately?",
-        expected_tool_calls=(ToolCallExpectation(name="list_candidates"),),
-    ),
-    AgentCase(
-        id="S2",
-        category="tool_selection",
-        prompt="show me my drawers",
-        expected_tool_calls=(ToolCallExpectation(name="list_drawers"),),
-    ),
-    AgentCase(
-        id="S3",
-        category="tool_selection",
-        prompt="remember: try yakisoba next time",
-        expected_tool_calls=(
-            ToolCallExpectation(
-                name="add_drawer",
-                args_check=lambda a: "yakisoba" in a.get("content", "").lower(),
-            ),
-        ),
-    ),
-    AgentCase(
-        id="S4",
-        category="tool_selection",
-        prompt="list my translations",
-        expected_tool_calls=(ToolCallExpectation(name="list_translations"),),
-    ),
-    AgentCase(
-        id="S5",
-        category="tool_selection",
-        prompt="what's emerging?",
-        expected_tool_calls=(ToolCallExpectation(name="list_candidates"),),
-    ),
-    # --- no_tool_off_task -------------------------------------------------
-    AgentCase(
-        id="N1",
-        category="no_tool_off_task",
-        prompt="hello",
-        expected_tool_calls=(),
-    ),
-    AgentCase(
-        id="N2",
-        category="no_tool_off_task",
-        prompt="what is 2 plus 2?",
-        expected_tool_calls=(),
-    ),
-    AgentCase(
-        id="N3",
-        category="no_tool_off_task",
-        prompt="write me a poem about clouds",
-        expected_tool_calls=(),
     ),
 )
 

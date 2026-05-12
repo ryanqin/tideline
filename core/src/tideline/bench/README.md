@@ -1,18 +1,30 @@
 # Tideline Bench Suites
 
-Two orthogonal bench suites share one CLI entry:
+Three orthogonal bench suites share one CLI entry, each measuring a
+different facet of model + harness fitness:
 
 - **translate**: BLEU / chrF / exact-match on curated reference pairs.
   Scores text quality.
-- **agent**: tool-call correctness, turn efficiency, restraint.
-  Scores how well a model behaves inside our agent harness.
+- **agent**: tool-call correctness on the end-to-end translation flow.
+  Scores how reliably the model behaves inside our agent harness with
+  the production system message.
+- **atoms**: per-operation reliability of every LLM atom Tideline depends
+  on, measured via direct prompts (no agent loop). Tier A atoms are
+  translation-engine operations (word/sentence translation, source-lang
+  ID, output discipline, term extraction). Tier B atoms are intelligence-
+  layer operations (concept match, register classification, ambiguity
+  detection, theme extraction, complexity tier, episodic title) — these
+  measure whether each future Tier B feature is technically viable
+  before we build it.
 
 ```
 python -m tideline.bench                                 # translate (default)
 python -m tideline.bench --suite translate
 python -m tideline.bench --suite agent
-python -m tideline.bench --suite all                     # both
+python -m tideline.bench --suite atoms
+python -m tideline.bench --suite all                     # all three
 python -m tideline.bench --suite agent --per-case        # show pass/fail per case
+python -m tideline.bench --suite atoms --per-case        # show failure samples
 
 # Real model:
 python -m tideline.bench --suite all --runtime llama_cpp
@@ -149,84 +161,144 @@ inference cost in those contexts.
 
 # Agent Capability Bench
 
-Scores agent-loop behavior, not translation text. 13 canonical Tideline
-prompts across three categories probe distinct capabilities:
+Scores agent-loop behavior on the end-to-end translation flow. Post-
+2026-05-11 scope narrowing, this bench measures **one thing**: does the
+model, given a user translation request, both produce a correct
+translation AND call `add_translation` with correctly-shaped args?
 
-| Category | n | What it probes |
-|---|---:|---|
-| translation_flow | 5 | Model calls `add_translation` with correctly-shaped args after producing a translation |
-| tool_selection | 5 | Model dispatches to the right tool (`list_drawers`, `list_candidates`, etc.) for ambient memory requests |
-| no_tool_off_task | 3 | Model **restrains** — off-task prompts ("hello", "what is 2+2?") fire NO tools |
+5 canonical cases (T1-T5) cover variations in phrasing ("translate X
+to Y", "could you translate 'X' into Y", direction switches) and source
+script. Earlier S* (chatbot-style tool selection) and N* (off-task
+restraint) cases were retired with the chatbot scope — their roles
+moved to the atomic bench's Tier B (direct LLM operations, no harness).
 
 ## Metrics
 
-- **task_success_rate**: cases where the right tool fired with shapely
-  args (no-tool cases pass when no tool fires)
-- **wrong_tool_rate**: cases where some tool fired but not the expected
-  one — distinguishes "didn't understand" from "didn't try"
+- **task_success_rate**: cases where add_translation fired with shapely args
+- **wrong_tool_rate**: cases where some tool fired but not the expected one
 - **budget_exhaustion_rate**: cases that hit max_turns without resolving
 - **mean num_tool_calls / response_words**: distributional shape
 
-## Reference numbers — Mock vs E2B vs E4B, 2026-05-11
+## Reference numbers — E2B vs E4B, 2026-05-11 (post-narrowing)
 
-| Category | n | Mock | E2B | E4B |
+| Metric | n | E2B | E4B |
+|---|---:|---:|---:|
+| task_success_rate | 5 | 80.0% | **100.0%** |
+| wrong_tool_rate | 5 |  20.0% |   0.0% |
+| budget_exhaustion_rate | 5 |   0.0% |   0.0% |
+| mean num_tool_calls | 5 | 1.00 | 1.00 |
+| mean response_words | 5 | 3.0 | 1.0 |
+
+E4B is uniformly stronger; the same E4B "high gear" pattern from translate
+bench holds for tool-call correctness. The single E2B wrong-tool case is
+likely an OCR-style off-by-one on the `original` arg.
+
+## Regression caught by this bench (worth recording)
+
+During scope narrowing, an early system-message rewrite said:
+
+> Translate the user's text... Output only the translated text. **After**
+> translating, call the add_translation tool.
+
+E2B's agent score dropped from 80% to 20% under this prompt — the model
+output the translation, considered the turn done, and skipped the tool
+call. Reordering to "first call the add_translation tool, then respond"
+restored 80%.
+
+**The atom bench saw nothing wrong** — A1 still scored 100%, because
+direct-prompt translation doesn't require a tool call. Only the agent
+bench's end-to-end measurement caught the regression. This is exactly
+why both benches exist: atoms measure ceiling capability, agent measures
+harness-fitness reality.
+
+---
+
+# Atomic Capability Bench
+
+Per-operation reliability for every LLM atom Tideline depends on.
+Direct-prompt evaluation — no agent loop, no tool dispatch — so each
+score reflects the model's ceiling capability on that atom, isolated
+from harness effects.
+
+## Atoms
+
+| ID | Tier | Operation | Why measure it |
+|---|---|---|---|
+| A1 | A | Translate word/phrase | Foundation of every drawer entry |
+| A2 | A | Translate sentence | Captures longer-text cases |
+| A3 | A | Source language ID | Lets background tag drawer rows without a `source` field |
+| A5 | A | Output discipline (no preamble) | Diagnostic for whether system prompt holds discipline alone |
+| A6 | A | Extract translatable term | Future image/audio pipeline needs to pick the term out of noisy OCR |
+| B1 | B | Concept match (yes/no) | If reliable, accumulated pair votes drive clustering |
+| B2 | B | Register classification | Letting candidate surfacing filter by register |
+| B3 | B | Ambiguity detection | Attaching alternative-meaning hints to drawers |
+| B4 | B | Common theme (3 terms) | Precursor to B6 — generic theme extraction |
+| B5 | B | Complexity tier (word/phrase/sentence) | Routing between A1-style and A2-style processing |
+| B6 | B | Episodic title generation | THE memory-anchor atom — names a cluster by lived moment, not generic category |
+
+A4 (tool-call correctness) is not a direct-prompt atom — it's measured
+by the agent bench's translation_flow cases above.
+
+## Reference numbers — E2B vs E4B, 2026-05-11
+
+| Atom | n | E2B | E4B | Δ |
 |---|---:|---:|---:|---:|
-| translation_flow | 5 | 80.0% | 80.0% | **100.0%** |
-| tool_selection | 5 | 60.0% | 40.0% | 60.0% |
-| no_tool_off_task | 3 | 100.0% | 100.0% | 100.0% |
-| **all** | **13** | 76.9% | 69.2% | **84.6%** |
+| A1 word translation | 12 | **100.0%** | 100.0% | 0 |
+| A2 sentence translation | 10 | 80.0% | 90.0% | +10 |
+| A3 source language ID | 12 | **100.0%** | 91.7% | −8 |
+| A5 output discipline | 10 | **100.0%** | 100.0% | 0 |
+| A6 term extraction | 10 | 70.0% | **90.0%** | +20 |
+| B1 concept match | 12 | **100.0%** | 83.3% | −17 |
+| B2 register classification | 12 | 83.3% | 83.3% | 0 |
+| B3 ambiguity detection | 12 | 91.7% | **100.0%** | +8 |
+| B4 common theme | 10 | 70.0% | 60.0% | −10 |
+| B5 complexity tier | 12 | 75.0% | **91.7%** | +17 |
+| B6 episodic title | 5 | 100.0% | 100.0% | 0 (small sample) |
 
-Wall time (CPU only): Mock <1s, E2B ~16s, E4B ~37s.
+Wall time (CPU only, ~117 cases): E2B ~35s, E4B ~58s.
 
-### Reading the agent bench
+## Reading the atomic bench — actionable findings
 
-**E4B is uniformly stronger on agent behavior** — clear translation_flow
-dominance (100% vs E2B's 80%), same tool_selection score but with
-sharper restraint. Combined with E4B's sentence-tier translation lead,
-the case for the E4B "high gear" gets stronger as task complexity rises.
+**Most Tier B atoms are usable at the atom level on both models.**
+This is the central finding: even the smaller E2B is ≥70% on every
+atom except B4 (theme=60% on E4B). The "weak signal + accumulation"
+strategy works — a background sweep that runs B1 (concept match) 1000
+times during idle hours will produce a stable similarity graph for
+clustering, even at E2B's 83-100% per-call accuracy.
 
-**Mock outscores E2B at 76.9% vs 69.2%** — surprising at first, but the
-explanation matters: Mock is a hand-tuned pattern matcher whose failure
-modes (T4 "into" vs "to", S2/S4 plural nouns) are different from a real
-model's failure modes (S1/S3/S5 — see below). The bench is doing exactly
-what it should: revealing that "model quality" and "harness fit" are
-distinct axes.
+**Per-atom priority for Tier B development:**
 
-### Universal failure points (both E2B and E4B)
+| Confidence | Atoms | Implication |
+|---|---|---|
+| ✅ Ship-ready | A1, A3, A5, B1, B3, B6 (E2B; A1, A2, A5, B3, B5 on E4B) | Can be built into Tier B features now |
+| ⚠️ Needs prompt work | A6, B2, B4, B5 | Below 80% on one or both models — prompt tweaks or smaller decomposition first |
+| 🚫 Insufficient | (none below 60% on either model) | No atom is fundamentally broken |
 
-Three cases fail across both real models, with **0 wrong_tool calls** —
-the models simply don't fire any tool, treating these as plain
-conversation:
+**B4 theme extraction at 60-70%** is the weakest cell. For semantic
+clustering, this means using B1 pair-votes (100%/83%) is more reliable
+than asking B4 to name a cluster — let the cluster emerge from votes,
+then maybe use B6 for the title separately.
 
-- **S1: "what have I been seeing lately?"** — should trigger
-  `list_candidates`, whose description literally says "use when the user
-  asks what they've been seeing lately." Verbatim match in the description,
-  still missed.
-- **S3: "remember: try yakisoba next time"** — should trigger `add_drawer`.
-  Mock catches this via the "remember:" prefix; real models likely treat
-  it as a mental note rather than an explicit tool invocation.
-- **S5: "what's emerging?"** — same family as S1, same miss.
+**B6 episodic title 100% on both is suspect** (only 5 cases, lenient
+"contains any episodic token" eval). The atom is the most important
+one for the memory-anchor product principle and warrants a larger
+case set + stricter eval in a follow-up bench iteration.
 
-This is an actionable finding: **the gap is in our tool descriptions and
-system message, not in Gemma 4's intrinsic capability**. Future work:
-sharpen tool descriptions, possibly add few-shot examples in the system
-prompt for the surfacing intents.
+**Mock atom scores are infrastructure noise** — Mock isn't a real LLM
+and gets accidental hits (e.g., 100% on A6 because Mock echoes input
+which contains the expected term). Look at E2B/E4B columns only.
 
-### What the agent bench measures
+## What the atom bench doesn't measure
 
-Each case runs through the full agent loop with a `RecordingRegistry`
-that captures every tool invocation. Pass criteria:
-
-1. Every expected tool fires at least once with matching args
-2. For no-tool cases: no tool fires at all
-3. Argument matchers are lenient on common variations (e.g.,
-   `target_lang` matches both "zh" and "Chinese")
-
-### What it doesn't measure
-
-- Quality of the final response text (translation BLEU/chrF covers
-  that orthogonally)
-- Multi-turn coherence (every case is a single user prompt)
-- Latency under load — single-pair throughput only
-- Real-user prompt diversity — 13 cases is enough to discriminate but
-  not exhaustive
+- Compositional reliability: P(success at A1) × P(success at A4) gives
+  a ceiling estimate for translation_flow, but real models have
+  correlated failures the joint probability misses. Agent bench
+  measures the actual composition.
+- Cross-prompt drift: each atom uses its own SYSTEM_PROMPT. A real
+  product run uses ONE system prompt for many atom types — concurrent
+  prompt mass could degrade individual atoms.
+- Latency: the bench runs CPU only; mobile inference rates differ.
+- Cost of false positives: B3 ambiguity at 100% on E4B sounds great,
+  but if it ever says "yes" on an unambiguous word, the user sees a
+  hint that doesn't make sense. The bench measures aggregate accuracy,
+  not failure asymmetry.

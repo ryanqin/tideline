@@ -18,27 +18,19 @@ from tideline.agent import Agent
 from tideline.bench.agent.cases import CASES, AgentCase, ToolCallExpectation
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
-from tideline.tools import (
-    AddDrawerTool,
-    AddTranslationTool,
-    ListCandidatesTool,
-    ListDrawersTool,
-    ListTranslationsTool,
-    NoopTool,
-    ToolRegistry,
-    init_all_tables,
-)
+from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
 _BUDGET_EXHAUSTED_SENTINEL = "[agent] turn budget exhausted"
 
+# Mirror the CLI's production system message + registered tools exactly.
+# Bench numbers reflect what users actually experience post-scope-narrowing.
 _TIDELINE_SYSTEM = (
-    "You are Tideline, a local-first translation assistant. "
-    "When the user explicitly asks to translate text, perform the translation "
-    "yourself, then call the add_translation tool to record "
-    "(original, target_lang, translated) before responding to the user with "
-    "the translated text. For other requests, use the available tools as "
-    "appropriate. Be concise."
+    "You are Tideline, a local-first translation engine. "
+    "When the user provides text to translate: first call the add_translation "
+    "tool with (original, target_lang, translated), then respond to the user "
+    "with only the translated text — no preamble, no quotation marks, no "
+    "commentary."
 )
 
 
@@ -95,16 +87,11 @@ def _build_agent(runtime: ModelRuntime) -> tuple[Agent, RecordingRegistry, sqlit
     conn = sqlite3.connect(":memory:")
     init_all_tables(conn)
     registry = RecordingRegistry()
-    registry.register(NoopTool)
-    registry.register(AddDrawerTool)
-    registry.register(ListDrawersTool)
     registry.register(AddTranslationTool)
-    registry.register(ListTranslationsTool)
-    registry.register(ListCandidatesTool)
     agent = Agent(
         runtime,
         registry=registry,
-        context={"db": conn},
+        context={"db": conn, "source": "text"},
         system_message=_TIDELINE_SYSTEM,
     )
     return agent, registry, conn
