@@ -33,7 +33,11 @@ from tideline.runtimes import get_runtime
 
 
 _DEFAULT_VOTE_THRESHOLD = 0.66
-_DEFAULT_MIN_VOTES = 1
+# Phase B4: multi-vote accumulation is the default. Same-original pairs
+# still converge in 3 cheap yes-votes; cross-original pairs (the real
+# Tier B value) need 3 votes with ≥2 yes to form an edge — that's the
+# guard against single-false-positive cluster pollution.
+_DEFAULT_MIN_VOTES = 3
 
 
 def init_db(conn: sqlite3.Connection) -> None:
@@ -143,35 +147,59 @@ def vote_on_pair(
 
 
 def _pending_pairs(
-    conn: sqlite3.Connection, limit: int
+    conn: sqlite3.Connection,
+    limit: int,
+    min_votes_per_pair: int = 1,
+    exclude: set[tuple[int, int]] | None = None,
 ) -> list[tuple[int, int]]:
-    """Pick unvoted within-target_lang pairs, prioritizing pairs likely
-    to be yes-edges so early sweeps build clusters quickly:
+    """Pick within-target_lang pairs that still need votes.
 
-      1. Pairs with identical original text (almost always concept-equal)
-      2. Then random sampling of cross-original within-lang pairs
+    A pair is "pending" while its accumulated vote count is strictly
+    less than `min_votes_per_pair`.
 
-    This is the MVP "prioritize cheap signal" heuristic. Future iterations
-    can replace it with embedding-distance-ordered candidates etc.
+    Priority order (Phase B4):
+      1. Same-original pairs (cheapest signal — always converges to yes)
+      2. Within each tier, pairs already partially voted come first —
+         finishing accumulation on an in-progress pair is cheaper than
+         starting a new one, and converges to clusters faster
+      3. RANDOM tiebreaker
+
+    With `min_votes_per_pair=1` (single-vote semantics for tests that
+    exercise Phase B1 behavior), a pair leaves the pending set after
+    one vote. With `min_votes_per_pair=3` (the Phase B4 default), each
+    pair stays in the rotation until three votes accumulate, and the
+    partial-progress priority concentrates the budget on completing
+    pairs rather than spraying single votes across the whole pair space.
     """
     rows = conn.execute(
         """
-        SELECT t1.id, t2.id
+        SELECT
+            t1.id,
+            t2.id,
+            (SELECT COUNT(*) FROM pair_similarity_votes v
+             WHERE v.translation_id_a = t1.id
+               AND v.translation_id_b = t2.id) AS votes_so_far
         FROM translations t1
         JOIN translations t2 ON t2.id > t1.id
         WHERE t1.target_lang = t2.target_lang
-          AND NOT EXISTS (
-            SELECT 1 FROM pair_similarity_votes v
-            WHERE v.translation_id_a = t1.id AND v.translation_id_b = t2.id
-          )
+          AND (SELECT COUNT(*) FROM pair_similarity_votes v
+               WHERE v.translation_id_a = t1.id
+                 AND v.translation_id_b = t2.id) < ?
         ORDER BY
             CASE WHEN t1.original = t2.original THEN 0 ELSE 1 END,
+            votes_so_far DESC,
             RANDOM()
         LIMIT ?
         """,
-        (limit,),
+        # Over-fetch so the Python-side exclude filter still leaves
+        # `limit` candidates in normal cases. Excluded set is bounded
+        # by the caller's budget so this stays cheap.
+        (min_votes_per_pair, limit + (len(exclude) if exclude else 0)),
     ).fetchall()
-    return [(row[0], row[1]) for row in rows]
+    pairs = [(row[0], row[1]) for row in rows]
+    if exclude:
+        pairs = [p for p in pairs if p not in exclude]
+    return pairs[:limit]
 
 
 def compare_pairs(
@@ -179,14 +207,35 @@ def compare_pairs(
     runtime: ModelRuntime,
     max_pairs: int = 10,
     model_label: str = "unknown",
+    min_votes_per_pair: int = _DEFAULT_MIN_VOTES,
 ) -> dict[str, int]:
-    """Vote on up to `max_pairs` unvoted within-target_lang pairs.
+    """Vote on up to `max_pairs` pending within-target_lang pairs.
+
+    A pair is pending while its vote count < `min_votes_per_pair`.
+    See `_pending_pairs` for the Phase B1 vs Phase B4 semantics.
+
+    Pairs are fetched one at a time so the priority order (already-
+    partially-voted pairs first) actually takes effect — a single bulk
+    SELECT would see all pairs at zero votes and degenerate into random
+    sampling, defeating Phase B4's "concentrate budget on completing
+    pairs" goal. SQL is cheap compared to LLM calls, so re-fetching
+    per iteration is fine.
 
     Returns {'voted': N, 'yes': N, 'no': N, 'unparseable': N}.
     """
-    pairs = _pending_pairs(conn, max_pairs)
     yes_count = no_count = bad_count = 0
-    for a, b in pairs:
+    # Track pairs that hedged within this call so we don't keep retrying
+    # them and exhausting budget on a single unparseable case.
+    hedged_pairs: set[tuple[int, int]] = set()
+    for _ in range(max_pairs):
+        pending = _pending_pairs(
+            conn, limit=1,
+            min_votes_per_pair=min_votes_per_pair,
+            exclude=hedged_pairs,
+        )
+        if not pending:
+            break
+        a, b = pending[0]
         result = vote_on_pair(conn, runtime, a, b, model_label=model_label)
         if result is True:
             yes_count += 1
@@ -194,6 +243,7 @@ def compare_pairs(
             no_count += 1
         else:
             bad_count += 1
+            hedged_pairs.add((a, b))
     return {
         "voted": yes_count + no_count,
         "yes": yes_count,
@@ -359,6 +409,8 @@ def cluster_sweep(
     runtime: ModelRuntime,
     max_pairs: int = _DEFAULT_SWEEP_BUDGET,
     model_label: str = "sweep",
+    min_votes_per_pair: int = _DEFAULT_MIN_VOTES,
+    vote_threshold: float = _DEFAULT_VOTE_THRESHOLD,
 ) -> dict[str, int]:
     """One round of background cluster work: vote, rebuild, name.
 
@@ -366,13 +418,21 @@ def cluster_sweep(
     exceptions for a fail-soft UX. Returns aggregate stats so tests (and
     explicit `--name-clusters` etc.) can verify what happened.
 
-    Budget controls compare_pairs(); rebuild_clusters and name_clusters
-    are cheap (SQL + at most one LLM call per unnamed cluster).
+    `min_votes_per_pair` is applied uniformly: pairs stay in the voting
+    rotation until they reach it, and rebuild_clusters requires the
+    same minimum before counting an edge. Budget controls compare_pairs();
+    rebuild and name are cheap (SQL + at most one LLM call per unnamed
+    cluster).
     """
     vote_stats = compare_pairs(
-        conn, runtime, max_pairs=max_pairs, model_label=model_label,
+        conn, runtime,
+        max_pairs=max_pairs,
+        model_label=model_label,
+        min_votes_per_pair=min_votes_per_pair,
     )
-    n_clusters = rebuild_clusters(conn)
+    n_clusters = rebuild_clusters(
+        conn, vote_threshold=vote_threshold, min_votes=min_votes_per_pair,
+    )
     name_stats = name_clusters(conn, runtime)
     return {
         "voted": vote_stats["voted"],

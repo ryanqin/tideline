@@ -173,16 +173,19 @@ def test_vote_on_pair_returns_none_for_missing_translation(conn):
 
 
 def test_compare_pairs_processes_unvoted_pairs_only(conn):
+    """Single-vote semantics: with min_votes_per_pair=1 a pair leaves
+    the pending set after one vote — that's Phase B1 behavior, still
+    valid for callers that want cheap one-shot voting."""
     a = _add_translation(conn, "ramen", "English", "ramen")
     b = _add_translation(conn, "sushi", "English", "sushi")
     c = _add_translation(conn, "tempura", "English", "tempura")
 
-    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=10)
+    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=10, min_votes_per_pair=1)
     assert stats["voted"] == 3   # (a,b), (a,c), (b,c)
     assert stats["yes"] == 3
 
     # Re-run: no new pairs left
-    stats2 = compare_pairs(conn, _AlwaysYes(), max_pairs=10)
+    stats2 = compare_pairs(conn, _AlwaysYes(), max_pairs=10, min_votes_per_pair=1)
     assert stats2["voted"] == 0
 
 
@@ -192,7 +195,9 @@ def test_compare_pairs_skips_cross_target_lang_pairs(conn):
     _add_translation(conn, "ramen", "English", "ramen")
     _add_translation(conn, "寿司", "Japanese", "寿司")
 
-    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=10)
+    # Single-vote semantics so the test measures cross-language skipping,
+    # not the multi-vote accumulation loop.
+    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=10, min_votes_per_pair=1)
     # Only English-English (1 pair: hello, ramen) and Japanese-Japanese
     # (1 pair: ラーメン, 寿司). Cross-language pairs skipped.
     assert stats["voted"] == 2
@@ -209,7 +214,11 @@ def test_compare_pairs_respects_max_pairs(conn):
 def test_compare_pairs_counts_unparseable_separately(conn):
     a = _add_translation(conn, "hello", "zh", "你好")
     b = _add_translation(conn, "world", "zh", "世界")
-    stats = compare_pairs(conn, _AlwaysHedged(), max_pairs=10)
+    # Single-vote semantics so the hedged pair leaves the pending set
+    # after one attempt. (Under multi-vote default, a hedged pair would
+    # stay pending forever — a known limitation since hedged responses
+    # don't record a row in pair_similarity_votes.)
+    stats = compare_pairs(conn, _AlwaysHedged(), max_pairs=10, min_votes_per_pair=1)
     assert stats["voted"] == 0
     assert stats["unparseable"] == 1
 
@@ -246,7 +255,8 @@ def test_rebuild_clusters_single_yes_edge_creates_pair(conn):
     b = _add_translation(conn, "noodle soup", "en", "noodle soup")
     vote_on_pair(conn, _AlwaysYes(), a, b)
 
-    n = rebuild_clusters(conn)
+    # Single-vote rebuild path (Phase B1 semantics): min_votes=1 explicit.
+    n = rebuild_clusters(conn, min_votes=1)
     assert n == 1
     members = conn.execute(
         "SELECT translation_id FROM cluster_members ORDER BY translation_id"
@@ -263,7 +273,7 @@ def test_rebuild_clusters_transitive_closure(conn):
     vote_on_pair(conn, _AlwaysYes(), b, c)
     # a and c never directly voted; transitive union should still merge.
 
-    n = rebuild_clusters(conn)
+    n = rebuild_clusters(conn, min_votes=1)
     assert n == 1
     members = conn.execute(
         "SELECT translation_id FROM cluster_members ORDER BY translation_id"
@@ -289,7 +299,7 @@ def test_rebuild_clusters_separates_disjoint_groups(conn):
     vote_on_pair(conn, _AlwaysYes(), c, d)
     # NO link between (a,b) and (c,d)
 
-    n = rebuild_clusters(conn)
+    n = rebuild_clusters(conn, min_votes=1)
     assert n == 2
 
     cluster_sizes = sorted(
@@ -305,9 +315,9 @@ def test_rebuild_clusters_is_idempotent(conn):
     b = _add_translation(conn, "udon", "en", "udon")
     vote_on_pair(conn, _AlwaysYes(), a, b)
 
-    rebuild_clusters(conn)
+    rebuild_clusters(conn, min_votes=1)
     first = conn.execute("SELECT COUNT(*) FROM cluster_members").fetchone()[0]
-    rebuild_clusters(conn)
+    rebuild_clusters(conn, min_votes=1)
     second = conn.execute("SELECT COUNT(*) FROM cluster_members").fetchone()[0]
     assert first == second == 2
 
@@ -410,7 +420,7 @@ def test_name_clusters_writes_title_to_unnamed_cluster(conn):
     a = _add_translation(conn, "ramen", "en", "ramen")
     b = _add_translation(conn, "udon", "en", "udon")
     vote_on_pair(conn, _AlwaysYes(), a, b)
-    rebuild_clusters(conn)
+    rebuild_clusters(conn, min_votes=1)
 
     stats = name_clusters(conn, _AlwaysFixedTitle("your Tokyo lunches"))
     assert stats == {"named": 1, "skipped": 0, "unparseable": 0}
@@ -423,7 +433,7 @@ def test_name_clusters_does_not_overwrite_existing_titles(conn):
     a = _add_translation(conn, "ramen", "en", "ramen")
     b = _add_translation(conn, "udon", "en", "udon")
     vote_on_pair(conn, _AlwaysYes(), a, b)
-    rebuild_clusters(conn)
+    rebuild_clusters(conn, min_votes=1)
 
     name_clusters(conn, _AlwaysFixedTitle("original"))
     stats = name_clusters(conn, _AlwaysFixedTitle("different"))
@@ -442,7 +452,7 @@ def test_name_clusters_counts_unparseable_responses(conn):
     a = _add_translation(conn, "ramen", "en", "ramen")
     b = _add_translation(conn, "udon", "en", "udon")
     vote_on_pair(conn, _AlwaysYes(), a, b)
-    rebuild_clusters(conn)
+    rebuild_clusters(conn, min_votes=1)
 
     stats = name_clusters(conn, _AlwaysEmpty())
     assert stats == {"named": 0, "skipped": 0, "unparseable": 1}
@@ -465,7 +475,7 @@ def test_name_clusters_forwards_context_snippet_to_prompt(conn):
     b = cursor.lastrowid
     conn.commit()
     vote_on_pair(conn, _AlwaysYes(), a, b)
-    rebuild_clusters(conn)
+    rebuild_clusters(conn, min_votes=1)
 
     captured: dict[str, str] = {}
 
@@ -486,7 +496,8 @@ def test_cluster_sweep_end_to_end_on_seeded_translations(conn):
     """cluster_sweep is the night-watch entry point: vote → rebuild →
     name in one call. With AlwaysYes voting + AlwaysFixedTitle naming
     the seeded translations should collapse into a single cluster with
-    the stub title."""
+    the stub title. Single-vote semantics explicit so the test stays
+    focused on the pipeline, not the multi-vote default."""
     for term in ("ramen", "udon", "soba"):
         _add_translation(conn, term, "en", term)
 
@@ -494,6 +505,7 @@ def test_cluster_sweep_end_to_end_on_seeded_translations(conn):
         conn,
         _AlwaysYes(),
         max_pairs=10,
+        min_votes_per_pair=1,
     )
     # All three pairs voted yes → one cluster of three members
     assert stats["voted"] == 3
@@ -523,12 +535,12 @@ def test_cluster_sweep_safe_on_empty_db(conn):
 
 def test_cluster_sweep_is_idempotent(conn):
     """Running twice on the same DB must not double-create clusters or
-    re-vote already-voted pairs."""
+    re-vote already-voted pairs. Single-vote semantics explicit."""
     for term in ("ramen", "udon"):
         _add_translation(conn, term, "en", term)
 
-    first = cluster_sweep(conn, _AlwaysYes(), max_pairs=10)
-    second = cluster_sweep(conn, _AlwaysYes(), max_pairs=10)
+    first = cluster_sweep(conn, _AlwaysYes(), max_pairs=10, min_votes_per_pair=1)
+    second = cluster_sweep(conn, _AlwaysYes(), max_pairs=10, min_votes_per_pair=1)
 
     assert first["voted"] == 1
     assert second["voted"] == 0   # no unvoted pairs left
@@ -537,6 +549,111 @@ def test_cluster_sweep_is_idempotent(conn):
 
     count = conn.execute("SELECT COUNT(*) FROM clusters").fetchone()[0]
     assert count == 1
+
+
+# --- Phase B4: multi-vote accumulation ----------------------------------
+
+
+class _MostlyYes(ModelRuntime):
+    """Returns 'yes' twice, then 'no' — used to test partial yes ratio."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+
+    def generate(self, prompt: str) -> str:
+        self._calls += 1
+        return "yes" if self._calls <= 2 else "no"
+
+
+class _MostlyNo(ModelRuntime):
+    """Returns 'yes' once, then 'no' twice."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+
+    def generate(self, prompt: str) -> str:
+        self._calls += 1
+        return "yes" if self._calls == 1 else "no"
+
+
+def test_compare_pairs_default_min_votes_keeps_pair_pending_until_three(conn):
+    """With the Phase B4 default (min_votes_per_pair=3), a single pair
+    is voted on three times in one compare_pairs call — the per-vote
+    refetch loop keeps picking the same partially-voted pair until it
+    reaches the threshold."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+
+    # One pair only; budget=10 means the loop will refetch until the
+    # pair is no longer pending (3 votes) or budget exhausts.
+    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=10)
+    assert stats["voted"] == 3   # pair completed in one call
+
+    # Re-run: pair already has 3 votes, no longer pending
+    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=10)
+    assert stats["voted"] == 0
+
+
+def test_compare_pairs_concentrates_budget_on_partial_pair(conn):
+    """The per-vote refetch + 'partially voted first' priority means a
+    pair that's halfway through accumulation will be completed before
+    we open a new pair. Critical Phase B4 property — without it, budget
+    spreads thinly and no pair ever reaches the cluster threshold."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    c = _add_translation(conn, "soba", "en", "soba")
+    # Three pairs, but seed one with one prior vote so it's "partially voted".
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    # Budget=2 — should both votes go to the partial pair (a,b)?
+    stats = compare_pairs(conn, _AlwaysYes(), max_pairs=2)
+    assert stats["voted"] == 2
+
+    # Verify (a,b) reached 3 votes (1 prior + 2 from this sweep)
+    cnt_ab = conn.execute(
+        "SELECT COUNT(*) FROM pair_similarity_votes "
+        "WHERE translation_id_a=? AND translation_id_b=?",
+        (a, b),
+    ).fetchone()[0]
+    assert cnt_ab == 3
+
+
+def test_rebuild_clusters_default_min_votes_rejects_single_vote(conn):
+    """Default Phase B4 rebuild_clusters requires min_votes=3. A single
+    yes vote isn't enough — guards against single-false-positive
+    cluster pollution on cross-original pairs."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "noodle soup", "en", "noodle soup")
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+
+    n = rebuild_clusters(conn)
+    assert n == 0   # 1 vote < default min_votes=3
+
+
+def test_rebuild_clusters_default_accepts_two_of_three_yes(conn):
+    """Phase B4 threshold default (0.66) accepts 2 yes / 3 votes."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "noodle soup", "en", "noodle soup")
+    runtime = _MostlyYes()
+    # Three explicit votes
+    vote_on_pair(conn, runtime, a, b)
+    vote_on_pair(conn, runtime, a, b)
+    vote_on_pair(conn, runtime, a, b)
+
+    n = rebuild_clusters(conn)
+    assert n == 1   # 2 yes / 3 votes = 0.666... ≥ 0.66
+
+
+def test_rebuild_clusters_default_rejects_one_of_three_yes(conn):
+    """Inverse: 1 yes / 3 votes = 0.33 fails the 0.66 threshold."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    runtime = _MostlyNo()
+    vote_on_pair(conn, runtime, a, b)
+    vote_on_pair(conn, runtime, a, b)
+    vote_on_pair(conn, runtime, a, b)
+
+    n = rebuild_clusters(conn)
+    assert n == 0   # 1 yes / 3 votes = 0.33 < 0.66
 
 
 # --- CLI smoke ----------------------------------------------------------

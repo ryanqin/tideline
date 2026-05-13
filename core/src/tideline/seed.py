@@ -131,6 +131,32 @@ SCENARIOS: list[dict[str, Any]] = [
             ("Verbindung", "connection"),
         ],
     },
+    # Phase B4 substrate: cross-original same-concept drawers. Models a
+    # polyglot user encountering the same concept across different
+    # source languages / phrasings over time. Same target_lang (English)
+    # means _pending_pairs will pair them; B1 should call them concept-
+    # equivalent across these originals, producing the first real
+    # cross-original Tier B clusters.
+    {
+        "name": "Polyglot crossings — same concept, different originals",
+        "target_lang": "English",
+        "frequent": [
+            # noodle concept across Chinese / English descriptive
+            ("拉面", "ramen"),
+            ("noodle soup", "noodle soup"),
+            # subway concept across Chinese / English
+            ("地铁", "subway"),
+            ("metro", "metro"),
+        ],
+        "occasional": [
+            # love concept across French / Chinese
+            ("l'amour", "love"),
+            ("爱", "love"),
+        ],
+        "rare": [
+            ("evening train", "evening train"),
+        ],
+    },
 ]
 
 
