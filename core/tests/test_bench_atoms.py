@@ -175,6 +175,41 @@ def test_b2_evaluator_picks_first_valid_option():
     assert b2.evaluate(case, "menu (also possible in conversation)")
 
 
+def test_b6_evaluator_word_boundary_rejects_generic_taxonomy():
+    """B6 episodic_tokens hit must be word-boundary, not substring.
+
+    The whole point of B6 is to reject generic taxonomic labels
+    ("Japanese food", "Spanish words") in favor of episodic ones
+    ("your Tokyo lunches", "a Sunday baking session"). A substring
+    matcher silently accepted "Japanese words" because "japan" is in
+    the token list — this regression-tests the word-boundary fix.
+    """
+    from tideline.bench.atoms import b6_episodic_title as b6
+
+    tokyo_case = b6.CASES[0]   # tokens include "tokyo", "japan", "lunch", ...
+    assert b6.evaluate(tokyo_case, "your Tokyo lunches")
+    assert b6.evaluate(tokyo_case, "a Japan trip")        # "Japan" word OK
+    assert b6.evaluate(tokyo_case, "dinner at Ichiran")   # "dinner" matches
+    # Generic taxonomy answers must NOT pass under word-boundary anchoring:
+    assert not b6.evaluate(tokyo_case, "Japanese words")
+    assert not b6.evaluate(tokyo_case, "Japanese food vocabulary")
+    assert not b6.evaluate(tokyo_case, "")
+
+
+def test_b6_evaluator_handles_multiword_tokens():
+    """Multi-word episodic_tokens (e.g. 'spanish music') need to match as
+    a phrase. And token 'lyric' must NOT accept 'lyrical' under
+    word-boundary anchoring — the exact regression that prompted the fix
+    on the parallel case of 'japan' / 'Japanese'."""
+    from tideline.bench.atoms import b6_episodic_title as b6
+
+    music_case = b6.CASES[4]   # tokens include "spanish music", "lyric", ...
+    assert b6.evaluate(music_case, "a spanish music playlist")
+    assert b6.evaluate(music_case, "favorite lyric")
+    # "lyrical" extends "lyric" — substring impl would accept, w-b rejects:
+    assert not b6.evaluate(music_case, "lyrical poetry analysis")
+
+
 # --- Runner & metrics ----------------------------------------------------
 
 

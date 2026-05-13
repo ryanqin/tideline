@@ -17,6 +17,8 @@ time, activity, or specific situation cue). Generic taxonomy tokens
 
 from __future__ import annotations
 
+import re
+
 from tideline.intelligence import episodic_title
 
 
@@ -86,5 +88,16 @@ def build_prompt(case: dict) -> str:
 
 
 def evaluate(case: dict, response: str) -> bool:
+    """Episodic-token hit using word-boundary matching.
+
+    Substring matching falsely accepts generic taxonomy answers — e.g.
+    "Japanese words" hits the token "japan" by substring even though
+    "Japanese" is exactly the kind of categorical label B6 is meant to
+    reject. Word-boundary anchoring requires the token to appear as its
+    own word (or multi-word phrase) in the response.
+    """
     low = response.lower()
-    return any(token in low for token in case["episodic_tokens"])
+    return any(
+        re.search(rf"\b{re.escape(token)}\b", low)
+        for token in case["episodic_tokens"]
+    )
