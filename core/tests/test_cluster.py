@@ -29,9 +29,11 @@ from tideline.cluster import (
     _pending_pairs,
     compare_pairs,
     init_db,
+    name_clusters,
     rebuild_clusters,
     vote_on_pair,
 )
+from tideline.intelligence import episodic_title
 from tideline.runtime import ModelRuntime
 from tideline.tools import init_all_tables
 
@@ -49,6 +51,19 @@ class _AlwaysNo(ModelRuntime):
 class _AlwaysHedged(ModelRuntime):
     def generate(self, prompt: str) -> str:
         return "yes and no, it depends"
+
+
+class _AlwaysFixedTitle(ModelRuntime):
+    def __init__(self, title: str = "your Tokyo lunches") -> None:
+        self._title = title
+
+    def generate(self, prompt: str) -> str:
+        return self._title
+
+
+class _AlwaysEmpty(ModelRuntime):
+    def generate(self, prompt: str) -> str:
+        return "   \n  "
 
 
 @pytest.fixture
@@ -354,6 +369,113 @@ def test_union_find_basic():
     uf.union(2, 3)
     assert uf.find(1) == uf.find(4)
     assert uf.find(1) != uf.find(99) or 99 not in uf._parent
+
+
+# --- episodic_title.parse_response --------------------------------------
+
+
+def test_parse_response_strips_title_prefix():
+    assert episodic_title.parse_response("Title: your Tokyo lunches") == "your Tokyo lunches"
+    assert episodic_title.parse_response("title - Sunday baking") == "Sunday baking"
+    assert episodic_title.parse_response("Episodic Title: a recipe session") == "a recipe session"
+
+
+def test_parse_response_strips_surrounding_quotes():
+    assert episodic_title.parse_response('"your Tokyo lunches"') == "your Tokyo lunches"
+    assert episodic_title.parse_response("'Sunday baking session'") == "Sunday baking session"
+
+
+def test_parse_response_returns_first_line():
+    response = "your Tokyo lunches\n\nThis title captures the shared moment."
+    assert episodic_title.parse_response(response) == "your Tokyo lunches"
+
+
+def test_parse_response_handles_empty_and_whitespace():
+    assert episodic_title.parse_response("") is None
+    assert episodic_title.parse_response("   \n  ") is None
+
+
+def test_parse_response_caps_runaway_length():
+    long = " ".join(["word"] * 30)
+    result = episodic_title.parse_response(long)
+    assert result is not None
+    assert len(result.split()) == 12
+
+
+# --- name_clusters ------------------------------------------------------
+
+
+def test_name_clusters_writes_title_to_unnamed_cluster(conn):
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    rebuild_clusters(conn)
+
+    stats = name_clusters(conn, _AlwaysFixedTitle("your Tokyo lunches"))
+    assert stats == {"named": 1, "skipped": 0, "unparseable": 0}
+
+    row = conn.execute("SELECT title FROM clusters").fetchone()
+    assert row[0] == "your Tokyo lunches"
+
+
+def test_name_clusters_does_not_overwrite_existing_titles(conn):
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    rebuild_clusters(conn)
+
+    name_clusters(conn, _AlwaysFixedTitle("original"))
+    stats = name_clusters(conn, _AlwaysFixedTitle("different"))
+
+    assert stats["named"] == 0
+    row = conn.execute("SELECT title FROM clusters").fetchone()
+    assert row[0] == "original"
+
+
+def test_name_clusters_safe_on_empty_db(conn):
+    stats = name_clusters(conn, _AlwaysFixedTitle())
+    assert stats == {"named": 0, "skipped": 0, "unparseable": 0}
+
+
+def test_name_clusters_counts_unparseable_responses(conn):
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    rebuild_clusters(conn)
+
+    stats = name_clusters(conn, _AlwaysEmpty())
+    assert stats == {"named": 0, "skipped": 0, "unparseable": 1}
+    row = conn.execute("SELECT title FROM clusters").fetchone()
+    assert row[0] is None
+
+
+def test_name_clusters_forwards_context_snippet_to_prompt(conn):
+    cursor = conn.execute(
+        "INSERT INTO translations (original, target_lang, translated, context_snippet) "
+        "VALUES (?, ?, ?, ?)",
+        ("ラーメン", "en", "ramen", "menu at Ichiran in Shibuya"),
+    )
+    a = cursor.lastrowid
+    cursor = conn.execute(
+        "INSERT INTO translations (original, target_lang, translated, context_snippet) "
+        "VALUES (?, ?, ?, ?)",
+        ("寿司", "en", "sushi", "conveyor sushi, Tokyo"),
+    )
+    b = cursor.lastrowid
+    conn.commit()
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    rebuild_clusters(conn)
+
+    captured: dict[str, str] = {}
+
+    class _Capturer(ModelRuntime):
+        def generate(self, prompt: str) -> str:
+            captured["prompt"] = prompt
+            return "your Tokyo food trip"
+
+    name_clusters(conn, _Capturer())
+    assert "Shibuya" in captured["prompt"]
+    assert "Tokyo" in captured["prompt"]
 
 
 # --- CLI smoke ----------------------------------------------------------

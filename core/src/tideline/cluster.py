@@ -27,7 +27,7 @@ from pathlib import Path
 
 from tideline.format import build_prompt as _build_turn_prompt
 from tideline.format import make_turn
-from tideline.intelligence import concept_match
+from tideline.intelligence import concept_match, episodic_title
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
 
@@ -290,6 +290,64 @@ def rebuild_clusters(
     return cluster_count
 
 
+# --- Naming (B6 episodic title) -------------------------------------------
+
+
+def _unnamed_clusters(conn: sqlite3.Connection) -> list[int]:
+    rows = conn.execute(
+        "SELECT id FROM clusters WHERE title IS NULL OR title = '' ORDER BY id"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def _cluster_items(conn: sqlite3.Connection, cluster_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT t.original, COALESCE(t.context_snippet, '')
+        FROM cluster_members cm
+        JOIN translations t ON t.id = cm.translation_id
+        WHERE cm.cluster_id = ?
+        ORDER BY t.id
+        """,
+        (cluster_id,),
+    ).fetchall()
+    return [{"term": r[0], "context": r[1]} for r in rows]
+
+
+def name_clusters(
+    conn: sqlite3.Connection,
+    runtime: ModelRuntime,
+) -> dict[str, int]:
+    """Generate an episodic title for every unnamed cluster.
+
+    For each cluster with NULL/empty title, call the B6 atom with the
+    members' (original, context_snippet) pairs and write the parsed
+    title back. Already-named clusters are left untouched so user-edited
+    titles survive a re-run.
+
+    Returns {'named': N, 'skipped': N, 'unparseable': N}.
+    """
+    named = skipped = bad = 0
+    for cluster_id in _unnamed_clusters(conn):
+        items = _cluster_items(conn, cluster_id)
+        if not items:
+            skipped += 1
+            continue
+        prompt = episodic_title.build_prompt(items)
+        response = _direct_generate(runtime, episodic_title.SYSTEM_PROMPT, prompt)
+        title = episodic_title.parse_response(response)
+        if not title:
+            bad += 1
+            continue
+        conn.execute(
+            "UPDATE clusters SET title = ? WHERE id = ?",
+            (title, cluster_id),
+        )
+        named += 1
+    conn.commit()
+    return {"named": named, "skipped": skipped, "unparseable": bad}
+
+
 # --- CLI ------------------------------------------------------------------
 
 
@@ -312,6 +370,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Rebuild clusters from accumulated votes",
     )
     parser.add_argument(
+        "--name-clusters", action="store_true",
+        help="Generate episodic titles (B6) for clusters that lack one",
+    )
+    parser.add_argument(
         "--vote-threshold", type=float, default=_DEFAULT_VOTE_THRESHOLD,
         help=f"Yes-ratio threshold to count as similarity edge "
              f"(default: {_DEFAULT_VOTE_THRESHOLD})",
@@ -331,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
     init_all_tables(conn)
     init_db(conn)
 
+    runtime: ModelRuntime | None = None
+
     if args.compare > 0:
         runtime = get_runtime(args.runtime)
         stats = compare_pairs(conn, runtime, max_pairs=args.compare, model_label=args.runtime)
@@ -347,6 +411,16 @@ def main(argv: list[str] | None = None) -> int:
             min_votes=args.min_votes,
         )
         print(f"Built {n} cluster(s) (size >= 2)")
+
+    if args.name_clusters:
+        if runtime is None:
+            runtime = get_runtime(args.runtime)
+        nstats = name_clusters(conn, runtime)
+        print(
+            f"Named {nstats['named']} cluster(s); "
+            f"skipped {nstats['skipped']}; "
+            f"{nstats['unparseable']} unparseable"
+        )
 
     conn.close()
     return 0

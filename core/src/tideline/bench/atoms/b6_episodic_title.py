@@ -3,8 +3,12 @@
 The defining atom for Tideline's memory-anchor product principle
 (DESIGN.md §3.2). Generic categorical naming ("Japanese food") fails;
 we want lived, episodic naming ("your Tokyo lunches", "a Sunday recipe
-session"). The cases include `context_snippet` hints so the model has
-material to anchor with — not just the terms in isolation.
+session"). The cases include `context` hints so the model has material
+to anchor with — not just the terms in isolation.
+
+Prompt construction lives in `tideline.intelligence.episodic_title` so
+the bench measures the exact prompts the cluster naming engine
+(`tideline.cluster.name_clusters`) uses in production.
 
 Eval: response must contain at least one episodic-hook token (a place,
 time, activity, or specific situation cue). Generic taxonomy tokens
@@ -13,16 +17,14 @@ time, activity, or specific situation cue). Generic taxonomy tokens
 
 from __future__ import annotations
 
+from tideline.intelligence import episodic_title
+
 
 ID = "B6"
 NAME = "Episodic title (memory-anchored)"
 CATEGORY = "tier_b"
 
-SYSTEM_PROMPT = (
-    "Generate a 3-7 word episodic title that captures the lived moment "
-    "behind a group of translations. Be specific about place, time, or "
-    "activity — not generic categories. Output only the title, no preamble."
-)
+SYSTEM_PROMPT = episodic_title.SYSTEM_PROMPT
 
 
 CASES = [
@@ -80,15 +82,7 @@ CASES = [
 
 
 def build_prompt(case: dict) -> str:
-    lines = []
-    for item in case["items"]:
-        lines.append(f"  - '{item['term']}' — encountered: {item['context']}")
-    items_text = "\n".join(lines)
-    return (
-        f"These translations were encountered together. Generate a 3-7 word "
-        f"title that captures their shared episodic moment (place, time, "
-        f"activity):\n{items_text}"
-    )
+    return episodic_title.build_prompt(case["items"])
 
 
 def evaluate(case: dict, response: str) -> bool:
