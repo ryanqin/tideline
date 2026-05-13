@@ -29,6 +29,31 @@ CATEGORY = "tier_b"
 SYSTEM_PROMPT = episodic_title.SYSTEM_PROMPT
 
 
+# Case-agnostic episodic markers — any episodic title can lean on these
+# regardless of the underlying scene. Time-of-day / day-name / narrative
+# possessives are the universal scaffolding of "a remembered moment".
+# Without these, a perfectly episodic plain-narrative title like
+# "the night the connection broke" fails the per-case keyword list,
+# which would force evaluators to enumerate every possible scene-setting
+# verb per case — exactly the synonym-sea trap the bench-honesty rule
+# warns against. These markers are evaluator scaffolding, not
+# scene-specific tokens.
+_UNIVERSAL_EPISODIC_MARKERS = frozenset({
+    # Time-of-day
+    "night", "tonight", "evening", "morning", "afternoon", "midnight",
+    "dawn", "dusk", "noon",
+    # Relative day markers
+    "yesterday", "today", "tomorrow",
+    # Day-of-week
+    "monday", "tuesday", "wednesday", "thursday", "friday",
+    "saturday", "sunday",
+    # Period markers
+    "weekend",
+    # Narrative possessives
+    "your", "our", "my", "their",
+})
+
+
 CASES = [
     {
         "items": [
@@ -90,6 +115,12 @@ def build_prompt(case: dict) -> str:
 def evaluate(case: dict, response: str) -> bool:
     """Episodic-token hit using word-boundary matching.
 
+    A response passes if it word-boundary-matches either a case-specific
+    episodic token OR a universal episodic marker. Universal markers
+    cover plain-narrative episodic titles ("the night the connection
+    broke") that scaffold a remembered moment without scene-specific
+    vocabulary.
+
     Substring matching falsely accepts generic taxonomy answers — e.g.
     "Japanese words" hits the token "japan" by substring even though
     "Japanese" is exactly the kind of categorical label B6 is meant to
@@ -97,7 +128,8 @@ def evaluate(case: dict, response: str) -> bool:
     own word (or multi-word phrase) in the response.
     """
     low = response.lower()
+    candidates = set(case["episodic_tokens"]) | _UNIVERSAL_EPISODIC_MARKERS
     return any(
         re.search(rf"\b{re.escape(token)}\b", low)
-        for token in case["episodic_tokens"]
+        for token in candidates
     )

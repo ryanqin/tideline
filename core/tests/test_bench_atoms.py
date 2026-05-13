@@ -210,6 +210,31 @@ def test_b6_evaluator_handles_multiword_tokens():
     assert not b6.evaluate(music_case, "lyrical poetry analysis")
 
 
+def test_b6_evaluator_accepts_universal_episodic_markers():
+    """Plain-narrative episodic titles ('the night X broke') should pass
+    even when the case-specific token list doesn't list a scene-setting
+    verb. Universal markers (time-of-day, day-name, possessives) are
+    evaluator scaffolding — without them, every case would need to
+    enumerate every possible narrative verb."""
+    from tideline.bench.atoms import b6_episodic_title as b6
+
+    # case 3 (incident postmortem) tokens are technical:
+    # ["debug","incident","outage","postmortem","ops","engineer",
+    #  "german tech","troubleshoot"]
+    incident_case = b6.CASES[3]
+    # Plain-narrative episodic, no case-specific token hit — universal
+    # marker 'night' must let it through:
+    assert b6.evaluate(incident_case, "The night the connection broke")
+    # Possessive narrative:
+    assert b6.evaluate(incident_case, "our database meltdown last week")
+    # Day-of-week:
+    assert b6.evaluate(incident_case, "the Tuesday outage we still talk about")
+    # Categorical answers must still fail — universal markers don't
+    # rescue 'vocabulary' / 'words' style outputs:
+    assert not b6.evaluate(incident_case, "Database vocabulary list")
+    assert not b6.evaluate(incident_case, "German technical terms")
+
+
 # --- Runner & metrics ----------------------------------------------------
 
 

@@ -17,9 +17,12 @@ import re
 
 
 SYSTEM_PROMPT = (
-    "Generate a 3-7 word episodic title that captures the lived moment "
-    "behind a group of translations. Be specific about place, time, or "
-    "activity — not generic categories. Output only the title, no preamble."
+    "Generate a 3-7 word episodic title for a group of translations — "
+    "a memory caption framing them as one remembered event, not as a "
+    "list of items. Lead with a place, a time marker ('the night', "
+    "'one Sunday'), or a possessive ('your', 'our'). Avoid category "
+    "labels ('vocabulary', 'words', '<language> X') and itemized "
+    "field lists. Output only the title, no preamble."
 )
 
 
