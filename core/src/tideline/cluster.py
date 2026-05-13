@@ -348,6 +348,43 @@ def name_clusters(
     return {"named": named, "skipped": skipped, "unparseable": bad}
 
 
+# --- Night-watch sweep (Phase B3) -----------------------------------------
+
+
+_DEFAULT_SWEEP_BUDGET = 3
+
+
+def cluster_sweep(
+    conn: sqlite3.Connection,
+    runtime: ModelRuntime,
+    max_pairs: int = _DEFAULT_SWEEP_BUDGET,
+    model_label: str = "sweep",
+) -> dict[str, int]:
+    """One round of background cluster work: vote, rebuild, name.
+
+    Designed for the CLI startup hook — caller decides whether to swallow
+    exceptions for a fail-soft UX. Returns aggregate stats so tests (and
+    explicit `--name-clusters` etc.) can verify what happened.
+
+    Budget controls compare_pairs(); rebuild_clusters and name_clusters
+    are cheap (SQL + at most one LLM call per unnamed cluster).
+    """
+    vote_stats = compare_pairs(
+        conn, runtime, max_pairs=max_pairs, model_label=model_label,
+    )
+    n_clusters = rebuild_clusters(conn)
+    name_stats = name_clusters(conn, runtime)
+    return {
+        "voted": vote_stats["voted"],
+        "yes": vote_stats["yes"],
+        "no": vote_stats["no"],
+        "unparseable_votes": vote_stats["unparseable"],
+        "clusters": n_clusters,
+        "named": name_stats["named"],
+        "unparseable_names": name_stats["unparseable"],
+    }
+
+
 # --- CLI ------------------------------------------------------------------
 
 

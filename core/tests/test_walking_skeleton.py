@@ -61,6 +61,10 @@ def test_drift_cli_imports_only_public_surface():
         # is a background process, not a tool, so it lives outside tools/
         # and gets imported here as a deliberate lifecycle dependency.
         "tideline.promotion",
+        # Phase B3: Tier B cluster sweep on CLI startup. Vote / rebuild /
+        # name in one budgeted call; same lifecycle-dependency rationale
+        # as promotion above.
+        "tideline.cluster",
     }
     imports: set[str] = set()
     for node in ast.walk(tree):

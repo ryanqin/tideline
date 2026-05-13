@@ -27,6 +27,7 @@ from tideline.cluster import (
     _UnionFind,
     _canonical_pair,
     _pending_pairs,
+    cluster_sweep,
     compare_pairs,
     init_db,
     name_clusters,
@@ -476,6 +477,66 @@ def test_name_clusters_forwards_context_snippet_to_prompt(conn):
     name_clusters(conn, _Capturer())
     assert "Shibuya" in captured["prompt"]
     assert "Tokyo" in captured["prompt"]
+
+
+# --- cluster_sweep (Phase B3) -------------------------------------------
+
+
+def test_cluster_sweep_end_to_end_on_seeded_translations(conn):
+    """cluster_sweep is the night-watch entry point: vote → rebuild →
+    name in one call. With AlwaysYes voting + AlwaysFixedTitle naming
+    the seeded translations should collapse into a single cluster with
+    the stub title."""
+    for term in ("ramen", "udon", "soba"):
+        _add_translation(conn, term, "en", term)
+
+    stats = cluster_sweep(
+        conn,
+        _AlwaysYes(),
+        max_pairs=10,
+    )
+    # All three pairs voted yes → one cluster of three members
+    assert stats["voted"] == 3
+    assert stats["yes"] == 3
+    assert stats["clusters"] == 1
+    assert stats["named"] == 1
+
+    row = conn.execute("SELECT title FROM clusters").fetchone()
+    assert row[0] is not None
+
+
+def test_cluster_sweep_respects_budget(conn):
+    for term in ("a", "b", "c", "d", "e"):
+        _add_translation(conn, term, "en", term)
+
+    stats = cluster_sweep(conn, _AlwaysYes(), max_pairs=2)
+    assert stats["voted"] == 2
+
+
+def test_cluster_sweep_safe_on_empty_db(conn):
+    stats = cluster_sweep(conn, _AlwaysYes())
+    assert stats == {
+        "voted": 0, "yes": 0, "no": 0, "unparseable_votes": 0,
+        "clusters": 0, "named": 0, "unparseable_names": 0,
+    }
+
+
+def test_cluster_sweep_is_idempotent(conn):
+    """Running twice on the same DB must not double-create clusters or
+    re-vote already-voted pairs."""
+    for term in ("ramen", "udon"):
+        _add_translation(conn, term, "en", term)
+
+    first = cluster_sweep(conn, _AlwaysYes(), max_pairs=10)
+    second = cluster_sweep(conn, _AlwaysYes(), max_pairs=10)
+
+    assert first["voted"] == 1
+    assert second["voted"] == 0   # no unvoted pairs left
+    assert first["clusters"] == 1
+    assert second["clusters"] == 1   # same cluster, not duplicated
+
+    count = conn.execute("SELECT COUNT(*) FROM clusters").fetchone()[0]
+    assert count == 1
 
 
 # --- CLI smoke ----------------------------------------------------------

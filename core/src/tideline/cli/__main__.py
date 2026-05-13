@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 
 from tideline.agent import Agent
+from tideline.cluster import cluster_sweep
+from tideline.cluster import init_db as init_cluster_db
 from tideline.promotion import promote_candidates
 from tideline.runtimes import get_runtime
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
@@ -48,10 +50,19 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.db).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
     init_all_tables(conn)
+    init_cluster_db(conn)
 
     # Night-watch sweep: silently promote any drawer entries that crossed the
     # repetition threshold during prior sessions. Idempotent, cheap, no output.
     promote_candidates(conn)
+
+    # Tier B sweep: budgeted background voting + cluster rebuild + naming.
+    # Wrapped fail-soft because it calls the LLM; a runtime / model glitch
+    # must never break the user's primary translation flow.
+    try:
+        cluster_sweep(conn, runtime)
+    except Exception:
+        pass
 
     registry = ToolRegistry()
     registry.register(AddTranslationTool)
