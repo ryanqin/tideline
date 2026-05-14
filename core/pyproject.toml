@@ -12,7 +12,10 @@ authors = [{ name = "Ryan Qin" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "httpx>=0.27"]
+# `dev` is the test-and-develop bundle: includes sacrebleu so the bench
+# tests pass without forcing the heavier `real` extra. llama-cpp-python
+# stays in `real` because building it needs a C++ toolchain.
+dev = ["pytest>=8.0", "httpx>=0.27", "sacrebleu>=2.4"]
 real = ["llama-cpp-python>=0.3"]
 bench = ["sacrebleu>=2.4"]
 web = ["fastapi>=0.110", "uvicorn[standard]>=0.30"]

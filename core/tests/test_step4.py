@@ -18,6 +18,11 @@ from pathlib import Path
 
 import pytest
 
+# llama-cpp-python is in the `real` extra, not `dev` — skip the whole
+# module if it isn't installed so `pip install -e './core[dev]'` users
+# still get a green pytest run.
+pytest.importorskip("llama_cpp")
+
 GEMMA_PATH = Path(
     os.environ.get(
         "TIDELINE_GEMMA_PATH",
