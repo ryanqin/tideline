@@ -48,10 +48,15 @@ class LlamaCppRuntime(ModelRuntime):
             or _DEFAULT_MODEL_PATH
         )
 
-        # Metal segfaults on Gemma 4's mixed V-embedding architecture in
-        # llama-cpp-python 0.3.22 (kernel issue, not our code). Default to CPU
-        # for stability. Override with TIDELINE_GEMMA_GPU_LAYERS=-1 to retry
-        # Metal once the upstream fix lands.
+        # Metal full offload (n_gpu_layers=-1) still segfaults on Gemma 4's
+        # forward graph as of llama-cpp-python 0.3.23 — likely the PLE /
+        # final-norm kernels that llama.cpp upstream tracks in issue #22243.
+        # Empirically (Apple M2 Pro, 2026-05-13) n_gpu_layers=28 is the
+        # stable upper bound and yields ~1.4-1.9x speedup vs CPU on Tideline
+        # workloads with identical output. CUDA backend untested.
+        # Default stays 0 (pure CPU) for cross-platform stability — Linux
+        # CUDA users may need a different stable cutoff. Override with
+        # TIDELINE_GEMMA_GPU_LAYERS=28 to enable Metal acceleration on Mac.
         if n_gpu_layers is None:
             n_gpu_layers = int(os.environ.get("TIDELINE_GEMMA_GPU_LAYERS", "0"))
         resolved = Path(path).expanduser().resolve()
