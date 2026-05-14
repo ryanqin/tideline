@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tideline — translate</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Tideline</h1>
+    <nav>
+      <a href="/" class="active">Translate</a>
+      <a href="/learnings">Learnings</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="translator">
+      <label for="text">What do you want to translate?</label>
+      <textarea id="text" rows="4" placeholder="Type text, paste a menu line, drop in a phrase..."></textarea>
+
+      <div class="row">
+        <label for="lang">Target language</label>
+        <select id="lang">
+          <option value="Chinese">Chinese</option>
+          <option value="English">English</option>
+          <option value="Japanese">Japanese</option>
+          <option value="French">French</option>
+          <option value="Spanish">Spanish</option>
+          <option value="German">German</option>
+        </select>
+        <button id="go">Translate</button>
+      </div>
+
+      <output id="result" aria-live="polite"></output>
+    </section>
+
+    <p class="hint">
+      Everything you translate is stored locally. After enough translations
+      pile up, head to <a href="/learnings">Learnings</a> to see the clusters
+      that have quietly formed in the background.
+    </p>
+  </main>
+
+  <script>
+    const textEl = document.getElementById('text');
+    const langEl = document.getElementById('lang');
+    const goEl = document.getElementById('go');
+    const resultEl = document.getElementById('result');
+
+    async function translate() {
+      const text = textEl.value.trim();
+      if (!text) return;
+      goEl.disabled = true;
+      resultEl.textContent = '…';
+      try {
+        const r = await fetch('/api/translate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({text, target_lang: langEl.value}),
+        });
+        if (!r.ok) {
+          resultEl.textContent = `error: ${r.status}`;
+        } else {
+          const data = await r.json();
+          resultEl.textContent = data.translated;
+        }
+      } catch (e) {
+        resultEl.textContent = `error: ${e}`;
+      } finally {
+        goEl.disabled = false;
+      }
+    }
+
+    goEl.addEventListener('click', translate);
+    textEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) translate();
+    });
+  </script>
+</body>
+</html>

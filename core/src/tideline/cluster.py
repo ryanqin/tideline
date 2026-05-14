@@ -320,6 +320,24 @@ def rebuild_clusters(
     for node in uf._parent:
         groups[uf.find(node)].append(node)
 
+    # Snapshot existing (membership_signature → title) so a rebuild that
+    # produces the same connected components preserves human-readable
+    # titles. Without this, every cluster_sweep wipes titles and the
+    # next name_clusters call regenerates them — model sampling drift
+    # would make titles oscillate, and mock runtime would replace good
+    # titles with echo noise.
+    preserved: dict[tuple[int, ...], str] = {}
+    for cid, title in conn.execute("SELECT id, title FROM clusters"):
+        if not title:
+            continue
+        member_ids = [
+            r[0] for r in conn.execute(
+                "SELECT translation_id FROM cluster_members WHERE cluster_id = ?",
+                (cid,),
+            )
+        ]
+        preserved[tuple(sorted(member_ids))] = title
+
     # Wipe existing clusters and rebuild
     conn.execute("DELETE FROM cluster_members")
     conn.execute("DELETE FROM clusters")
@@ -328,7 +346,11 @@ def rebuild_clusters(
     for members in groups.values():
         if len(members) < 2:
             continue
-        cursor = conn.execute("INSERT INTO clusters (title) VALUES (NULL)")
+        sig = tuple(sorted(members))
+        title = preserved.get(sig)
+        cursor = conn.execute(
+            "INSERT INTO clusters (title) VALUES (?)", (title,)
+        )
         cluster_id = cursor.lastrowid
         conn.executemany(
             "INSERT INTO cluster_members (cluster_id, translation_id) VALUES (?, ?)",

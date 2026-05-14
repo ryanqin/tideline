@@ -322,6 +322,24 @@ def test_rebuild_clusters_is_idempotent(conn):
     assert first == second == 2
 
 
+def test_rebuild_clusters_preserves_title_when_membership_unchanged(conn):
+    """A rebuild that produces the same connected components must keep
+    the existing cluster titles — otherwise every cluster_sweep would
+    wipe names and force regeneration (model sampling drift / mock noise
+    would corrupt human-readable titles)."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    rebuild_clusters(conn, min_votes=1)
+    conn.execute("UPDATE clusters SET title = ?", ("your Tokyo lunches",))
+    conn.commit()
+
+    # Rebuild without changing votes — title must persist
+    rebuild_clusters(conn, min_votes=1)
+    row = conn.execute("SELECT title FROM clusters").fetchone()
+    assert row[0] == "your Tokyo lunches"
+
+
 def test_rebuild_clusters_threshold_filters(conn):
     """vote_threshold=0.5 means a pair with 1 yes / 1 no doesn't survive."""
     a = _add_translation(conn, "ramen", "en", "ramen")

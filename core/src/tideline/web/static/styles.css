@@ -1,0 +1,228 @@
+:root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --ink: #1a1a1a;
+  --muted: #6a6a6a;
+  --accent: #1f3a5f;
+  --accent-soft: #e8eef5;
+  --border: #e3e1da;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --max-width: 720px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+               "PingFang SC", "Hiragino Sans", sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+header {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 2rem;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+header h1 {
+  font-size: 1.4rem;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+header nav {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.95rem;
+}
+
+header nav a {
+  text-decoration: none;
+  color: var(--muted);
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+header nav a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+header nav a:hover { color: var(--accent); }
+
+main {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+textarea, select, button {
+  font: inherit;
+  color: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.7rem 0.9rem;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 5rem;
+  box-shadow: var(--shadow);
+}
+
+textarea:focus, select:focus {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.row {
+  display: flex;
+  align-items: end;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.row label { margin-bottom: 0.2rem; }
+
+select { min-width: 140px; }
+
+button {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  cursor: pointer;
+  font-weight: 500;
+  padding-left: 1.3rem;
+  padding-right: 1.3rem;
+}
+
+button:hover { background: #1a3252; }
+button:disabled { opacity: 0.5; cursor: wait; }
+
+output {
+  display: block;
+  margin-top: 1.5rem;
+  padding: 1rem 1.2rem;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  font-size: 1.1rem;
+  min-height: 1.5rem;
+  white-space: pre-wrap;
+}
+
+output:empty {
+  background: transparent;
+  border-left-color: transparent;
+}
+
+.hint {
+  margin-top: 3rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.hint a { color: var(--accent); }
+
+/* --- learnings page --- */
+
+.cluster {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.2rem 1.4rem;
+  margin-bottom: 1.2rem;
+  box-shadow: var(--shadow);
+}
+
+.cluster h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.6rem;
+  color: var(--accent);
+}
+
+.cluster .members {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.cluster .member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-top: 1px dashed var(--border);
+}
+
+.cluster .member:first-child { border-top: none; }
+
+.cluster .original {
+  font-weight: 500;
+}
+
+.cluster .translated {
+  color: var(--muted);
+}
+
+.cluster .context {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-left: 0.2rem;
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.section-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 2rem 0 1rem;
+  font-weight: 600;
+}
+
+.candidate {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+
+.candidate:last-child { border-bottom: none; }
+.candidate .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

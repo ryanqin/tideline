@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tideline — learnings</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Tideline</h1>
+    <nav>
+      <a href="/">Translate</a>
+      <a href="/learnings" class="active">Learnings</a>
+    </nav>
+  </header>
+
+  <main>
+    <p class="hint" style="margin-top:0;margin-bottom:2rem;">
+      What's quietly come together so far. Clusters group translations the
+      model judged to be the same concept — across different phrasings,
+      different source languages, or simply repeated encounters.
+    </p>
+
+    <div id="clusters"></div>
+
+    <h3 class="section-title">Candidates — repeated translations</h3>
+    <div id="candidates"></div>
+  </main>
+
+  <script>
+    async function loadClusters() {
+      const target = document.getElementById('clusters');
+      try {
+        const r = await fetch('/api/clusters');
+        const data = await r.json();
+        if (!data.length) {
+          target.innerHTML = '<div class="empty">No clusters yet. Keep translating and they\'ll surface on their own.</div>';
+          return;
+        }
+        target.innerHTML = data.map(c => `
+          <div class="cluster">
+            <h2>${escape(c.title || `Cluster #${c.id}`)}</h2>
+            <div class="members">
+              ${c.members.map(m => `
+                <div class="member">
+                  <span class="original">${escape(m.original)}</span>
+                  <span class="translated">${escape(m.translated)}</span>
+                  ${m.context ? `<span class="context">${escape(m.context)}</span>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        target.innerHTML = `<div class="empty">Couldn't load clusters: ${escape(String(e))}</div>`;
+      }
+    }
+
+    async function loadCandidates() {
+      const target = document.getElementById('candidates');
+      try {
+        const r = await fetch('/api/candidates');
+        const data = await r.json();
+        if (!data.length) {
+          target.innerHTML = '<div class="empty">No candidates yet.</div>';
+          return;
+        }
+        target.innerHTML = data.map(c => `
+          <div class="candidate">
+            <span>${escape(c.original)} → ${escape(c.translated)}</span>
+            <span class="count">${c.count}×</span>
+          </div>
+        `).join('');
+      } catch (e) {
+        target.innerHTML = `<div class="empty">Couldn't load candidates: ${escape(String(e))}</div>`;
+      }
+    }
+
+    function escape(s) {
+      return String(s).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[ch]);
+    }
+
+    loadClusters();
+    loadCandidates();
+  </script>
+</body>
+</html>
