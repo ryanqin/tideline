@@ -94,7 +94,7 @@ tideline/
 ├── .gitignore
 ├── core/              ← Python agent (75% of my time budget)
 ├── cli/               ← Python CLI client — first end-to-end target
-├── android/           ← reserved for future in-tree mobile code; the shipped shell lives in a separate fork (see Android section below)
+├── android/           ← standalone Kotlin shell (see Android section below)
 ├── bench/             ← latency / accuracy / memory-footprint scripts
 ├── demo/              ← video script + judge_run.sh one-shot
 └── docs/              ← extended notes incl. borrowing diffs
@@ -113,8 +113,8 @@ tideline/
 - ✓ **`core/`** — Tier B Phase B1–B4 shipped (B1-vote semantic clustering, B6-driven episodic naming, cross-original multi-vote accumulation, CLI startup sweep). Atom bench + agent bench + translation bench all green on E2B/E4B
 - ✓ **`cli/`** — translation flow + memory-tool pressure tests
 - ✓ **Web playground** — FastAPI client + vanilla HTML/JS frontend; same three-layer API the Android shell calls
-- ✓ **Android shell** — Phase 0-3 shipped on a Galaxy S23 Ultra (fork at [ryanqin/gallery@tideline](https://github.com/ryanqin/gallery/tree/tideline)). See the dedicated section below for the on-device numbers and quality probe.
-- ⏳ Android Phase 5 (camera / mic / clustering UI), full demo polish, decision on whether to chase the next on-device hackathon or close out as portfolio
+- ✓ **Android shell** — Phase 0-4 shipped on a Galaxy S23 Ultra. Code extracted from the early-stage fork into [`android/`](android/) on 2026-05-22. See the dedicated section below for the on-device numbers and quality probe.
+- ⏳ Android Phase 5 (camera / mic / clustering UI / real episodic-session boundaries) — staged in the local task list, no firm ship date
 
 Engineering discipline that survived contact: **runtime is the last step, not the first.** Mock-first kept the core honest; the Android shell only got wired to real Gemma after the Python side passed its atom bench. If the shell had fallen behind, CLI + core would have shipped alone — Reproducibility was never at risk.
 
@@ -122,14 +122,30 @@ Engineering discipline that survived contact: **runtime is the last step, not th
 
 ## Android shell — Phase 0-3 shipped (2026-05-22)
 
-The mobile shell lives in a fork of Google AI Edge Gallery on a dedicated `tideline` branch: **[github.com/ryanqin/gallery@tideline](https://github.com/ryanqin/gallery/tree/tideline)**. The fork reuses Gemma's officially-supported LiteRT-LM runtime path; everything Tideline-specific is under `Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/tideline/` and `…/data/tideline/`. The Python core is untouched.
+The mobile shell is a self-contained Kotlin / Compose app in [`android/`](android/). The Python core is untouched; the shell talks to LiteRT-LM directly on-device.
+
+> **Origin note:** Phase 0–3 happened in a fork of Google AI Edge Gallery ([ryanqin/gallery@tideline](https://github.com/ryanqin/gallery/tree/tideline)) because the fork came pre-wired with LiteRT-LM, Compose scaffolding, and a verified model-load path. Once the trajectory was validated, the Tideline-specific code was extracted here and the upstream Gallery scaffolding was dropped. The fork remains as a historical reference for the early commits; new development happens in this tree.
 
 What's actually working on-device today, on a Galaxy S23 Ultra (Snapdragon 8 Gen 2 for Galaxy, Android 15):
 
-- **Translation flow:** Compose UI → `TidelineTranslateViewModel` → LiteRT-LM `Engine` + `Conversation` → Gemma 4 E2B (Q4) sideloaded at `/data/local/tmp/gemma-4-E2B-it.litertlm`. No HF OAuth dance, no Model Manager — direct API.
+- **Single-screen Compose UI** (`MainActivity` + `TidelineScreen`): input field, translate button, streamed result card, recent-history stack.
+- **Translation flow:** `TidelineTranslateViewModel` → LiteRT-LM `Engine` + `Conversation` → Gemma 4 E2B (Q4) sideloaded at `/data/local/tmp/gemma-4-E2B-it.litertlm`. No HF OAuth dance, no model manager — direct API.
 - **Prompt parity with Python core:** same `SYSTEM_PROMPT` and `Translate the following to {lang}: {original}` template that drive `core/src/tideline/bench/atoms/a1_word_translation.py` and `a2_sentence_translation.py`. On-phone behaviour matches the atom-bench reference by construction.
 - **Persistence via Room/SQLite:** the `translations` table mirrors the Python core's table 1:1 — `id / original / target_lang / translated / source / context_snippet / session_id / created_at`. Future export/import between the two stays trivial.
 - **Verified offline.** App was retested in airplane mode end-to-end; inference never reaches the network.
+
+### Build & install
+
+```bash
+cd android
+echo "sdk.dir=$ANDROID_HOME" > local.properties     # one-time
+./gradlew :app:assembleDebug                         # ~1 min first build
+adb push gemma-4-E2B-it.litertlm /data/local/tmp/   # one-time, ~2.4 GB
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.ryanqin.tideline/.MainActivity
+```
+
+Prereqs: JDK 21 (Android Studio's bundled JBR works), Android SDK platform 35 + build-tools 35, an Android 12+ device with Snapdragon 8 Gen 2 or newer (GPU backend uses Google Play services TFLite).
 
 ### Latency — GPU backend, plugged in, 20 back-to-back translations
 
