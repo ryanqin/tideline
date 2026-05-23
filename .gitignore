@@ -16,6 +16,7 @@ build/
 # Kotlin / Android / Gradle
 *.class
 *.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 *.apk
 *.aab
 .gradle/
