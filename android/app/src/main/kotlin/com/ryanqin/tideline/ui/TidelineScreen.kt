@@ -2,11 +2,15 @@
  * Tideline translate screen.
  *
  * Single Compose surface for: input → translate → result card → recent
- * history. Multi-modal input (camera / mic) lands in Phase 5a / 5b.
+ * history. Phase 5a adds image input via the system photo picker (no camera
+ * permission); live CameraX capture and mic input come later.
  */
 
 package com.ryanqin.tideline.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -51,6 +56,12 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
 
   // Kick off engine load on first composition.
   LaunchedEffect(Unit) { viewModel.initEngine() }
+
+  // Phase 5a image probe: system photo picker → bytes → multimodal translate.
+  // No camera permission needed; the picker runs in its own process.
+  val pickImage = rememberLauncherForActivityResult(
+    ActivityResultContracts.PickVisualMedia()
+  ) { uri -> if (uri != null) viewModel.translateImage(uri) }
 
   Scaffold { innerPadding ->
     Column(
@@ -95,6 +106,26 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         enabled = state.engineState == EngineState.READY && state.sourceText.isNotBlank(),
       ) {
         Text("Translate to ${state.targetLang}")
+      }
+
+      OutlinedButton(
+        onClick = {
+          pickImage.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+          )
+        },
+        modifier = Modifier.fillMaxWidth(),
+        enabled = state.engineState == EngineState.READY,
+      ) {
+        Text("从相册选图翻译 → ${state.targetLang}")
+      }
+
+      OutlinedButton(
+        onClick = viewModel::translateAudioProbe,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = state.engineState == EngineState.READY,
+      ) {
+        Text("翻译测试音频(probe) → ${state.targetLang}")
       }
 
       if (state.translation.isNotEmpty() || state.engineState == EngineState.INFERRING) {

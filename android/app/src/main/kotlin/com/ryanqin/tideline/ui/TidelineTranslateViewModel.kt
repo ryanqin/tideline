@@ -10,6 +10,7 @@
 package com.ryanqin.tideline.ui
 
 import android.app.Application
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -40,6 +41,11 @@ private const val TAG = "TidelineTranslateVM"
 // Sideload path. Push the model with:
 //   adb push gemma-4-E2B-it.litertlm /data/local/tmp/
 private const val MODEL_PATH = "/data/local/tmp/gemma-4-E2B-it.litertlm"
+
+// Phase 5b audio probe: a known-good 16 kHz mono WAV pushed to the device, so we can
+// verify the audio→translation path AND the expected format before building live mic
+// capture. Push with: adb push tideline_probe.wav /data/local/tmp/
+private const val AUDIO_PROBE_PATH = "/data/local/tmp/tideline_probe.wav"
 
 // Mirrors tideline/core/src/tideline/bench/atoms/a1_word_translation.py and a2_sentence_translation.py.
 // Same prompt is used by Tideline's Python core in production — keep them in sync.
@@ -94,10 +100,21 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         // When loading model from /data/local/tmp (read-only-ish sideload location),
         // LiteRT-LM needs an app-owned writable scratch path for compile cache.
         val cacheDir = getApplication<Application>().getExternalFilesDir(null)?.absolutePath
+        // Multimodal: the vision AND audio encoders are SEPARATE subgraphs, each with
+        // its own backend. Leaving visionBackend / audioBackend / maxNumImages unset
+        // (the original Phase 5a crash) meant an incoming image had no vision pipeline
+        // to flow through → native null-deref in liblitertlm on the engine thread
+        // (SIGSEGV, not a catchable error). The bundle carries both encoders
+        // (tf_lite_vision_encoder / tf_lite_audio_encoder_hw), so this is pure config.
+        // Keep the LLM on GPU (fast text TTFT); run the vision and audio encoders on
+        // CPU (the ops the GPU delegate choked on); reserve one image slot.
         val cfg = EngineConfig(
           modelPath = MODEL_PATH,
           backend = Backend.GPU(),
+          visionBackend = Backend.CPU(),
+          audioBackend = Backend.CPU(),
           maxNumTokens = DEFAULT_MAX_TOKENS,
+          maxNumImages = 1,
           cacheDir = cacheDir,
         )
         val e = Engine(cfg)
@@ -136,7 +153,6 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     if (state.engineState != EngineState.READY) return
     val src = state.sourceText.trim()
     if (src.isEmpty()) return
-    val conv = conversation ?: return
 
     _ui.value = state.copy(
       engineState = EngineState.INFERRING,
@@ -145,13 +161,128 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     )
 
     val userText = "Translate the following to ${state.targetLang}: $src"
+    dispatchInference(
+      contents = Contents.of(listOf(Content.Text(userText))),
+      originalLabel = src,
+      source = "text",
+      lang = state.targetLang,
+    )
+  }
+
+  /*
+   * Image translation — Phase 5a probe.
+   *
+   * Reads the picked image's bytes off the main thread, then sends them next to
+   * a translate instruction through the SAME multimodal Content path the text
+   * flow uses. The open question this exercises: does the sideloaded E2B bundle
+   * actually carry a vision tower? Capabilities can't report it (only
+   * hasSpeculativeDecodingSupport exists), so a real run is the only oracle.
+   *
+   * MVP shortcut (deliberate, to be closed before 5a is "done"): the picked
+   * image itself is NOT persisted — the drawer row stores original="[image …]"
+   * and contextSnippet=null. Real episodic anchoring (keep a path/thumbnail back
+   * to the photographed moment) is a follow-up, tracked against principle #2.
+   */
+  fun translateImage(uri: Uri) {
+    val state = _ui.value
+    if (state.engineState != EngineState.READY) return
+    val lang = state.targetLang
+
+    _ui.value = state.copy(
+      engineState = EngineState.INFERRING,
+      translation = "",
+      errorMessage = null,
+    )
+
+    viewModelScope.launch(Dispatchers.IO) {
+      val bytes = try {
+        getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes() }
+      } catch (t: Throwable) {
+        Log.e(TAG, "Reading picked image failed", t)
+        null
+      }
+      if (bytes == null || bytes.isEmpty()) {
+        _ui.value = _ui.value.copy(
+          engineState = EngineState.ERROR,
+          errorMessage = "Couldn't read the selected image",
+        )
+        return@launch
+      }
+      // Gemma 3n's multimodal format expects the image BEFORE the text question —
+      // image-then-text grounds the instruction on the visual tokens. (First pass
+      // had text-then-image and the model collapsed to a single "。".)
+      val prompt = "Read all the text in this image and translate it to $lang."
+      dispatchInference(
+        contents = Contents.of(listOf(Content.ImageBytes(bytes), Content.Text(prompt))),
+        originalLabel = "[image ${bytes.size} B]",
+        source = "image",
+        lang = lang,
+      )
+    }
+  }
+
+  /*
+   * Audio translation — Phase 5b probe.
+   *
+   * Reads a known-good 16 kHz mono WAV pushed to the device. Content.AudioFile lets
+   * the native engine open the /data/local/tmp path the same way it opens the model,
+   * so no app-side file IO and no mic permission. Verifies two things at once before
+   * any mic plumbing: (a) does the model do speech→translation end to end, and (b)
+   * does this audio format work. Conformer audio encoder is in the bundle; audioBackend
+   * is set to CPU in initEngine. Audio precedes text, mirroring the image path.
+   */
+  fun translateAudioProbe() {
+    val state = _ui.value
+    if (state.engineState != EngineState.READY) return
+    val lang = state.targetLang
+
+    _ui.value = state.copy(
+      engineState = EngineState.INFERRING,
+      translation = "",
+      errorMessage = null,
+    )
+
+    val prompt = "Translate the speech in this audio to $lang."
+    dispatchInference(
+      contents = Contents.of(listOf(Content.AudioFile(AUDIO_PROBE_PATH), Content.Text(prompt))),
+      originalLabel = "[audio probe]",
+      source = "audio",
+      lang = lang,
+    )
+  }
+
+  /*
+   * Shared inference dispatch for every input modality. Caller has already set
+   * engineState = INFERRING. Streams tokens into ui.translation, logs the BENCH
+   * triple (start / first_token / done), and persists the finished row tagged
+   * with `source`. Keeping one body means text and image stay strictly in sync.
+   */
+  private fun dispatchInference(
+    contents: Contents,
+    originalLabel: String,
+    source: String,
+    lang: String,
+  ) {
+    val conv = conversation ?: run {
+      _ui.value = _ui.value.copy(
+        engineState = EngineState.ERROR,
+        errorMessage = "Engine not ready",
+      )
+      return
+    }
+
     val tStart = System.currentTimeMillis()
     var tFirst = 0L
     var firstSeen = false
-    Log.i(TAG, "BENCH start t=$tStart src=\"$src\" lang=${state.targetLang}")
+    // litertlm streams INCREMENTAL deltas, not cumulative text — each onMessage is
+    // the next chunk. Accumulate them; the original code REPLACED, so it kept only
+    // the final token (a lone "。") even while real text streamed past on screen.
+    // Text-path never caught this because short outputs arrive in one chunk.
+    val acc = StringBuilder()
+    Log.i(TAG, "BENCH start t=$tStart src=\"$originalLabel\" source=$source lang=$lang")
     try {
       conv.sendMessageAsync(
-        Contents.of(listOf(Content.Text(userText))),
+        contents,
         object : MessageCallback {
           override fun onMessage(message: Message) {
             if (!firstSeen) {
@@ -159,13 +290,13 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
               firstSeen = true
               Log.i(TAG, "BENCH first_token ttft_ms=${tFirst - tStart}")
             }
-            _ui.value = _ui.value.copy(translation = message.toString())
+            acc.append(message.toString())
+            _ui.value = _ui.value.copy(translation = acc.toString())
           }
 
           override fun onDone() {
-            val finalState = _ui.value
-            _ui.value = finalState.copy(engineState = EngineState.READY)
-            val translated = finalState.translation.trim()
+            val translated = acc.toString().trim()
+            _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
             val tDone = System.currentTimeMillis()
             val total = tDone - tStart
             val genMs = if (firstSeen) tDone - tFirst else 0L
@@ -181,10 +312,10 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                 try {
                   dao.insert(
                     TranslationEntity(
-                      original = src,
-                      targetLang = finalState.targetLang,
+                      original = originalLabel,
+                      targetLang = lang,
                       translated = translated,
-                      source = "text",
+                      source = source,
                       contextSnippet = null,
                       sessionId = sessionId,
                     )
