@@ -24,7 +24,13 @@
     <h3 class="section-title">Your review deck — cards</h3>
     <div id="cards"></div>
 
-    <h3 class="section-title">Clusters — grouped by concept</h3>
+    <div class="section-head">
+      <h3 class="section-title">Clusters</h3>
+      <div class="toggle" id="cluster-toggle" role="tablist" aria-label="Cluster grouping">
+        <button type="button" data-view="concept" class="active" role="tab" aria-selected="true">By concept</button>
+        <button type="button" data-view="language" role="tab" aria-selected="false">By language</button>
+      </div>
+    </div>
     <div id="clusters"></div>
 
     <h3 class="section-title">Candidates — repeated translations</h3>
@@ -48,6 +54,12 @@
       // Gloss only helps when neither side is already your first language.
       const showGloss = gloss && tgt !== NATIVE_LANG && src !== NATIVE_LANG;
       return `<span class="langtag">(${showGloss ? escape(gloss) + ', ' : ''}${dir})</span>`;
+    }
+    // Inline gloss for the by-language view (the bucket header already carries
+    // the direction). Same first-language suppression as annot().
+    function glossSuffix(src, tgt, gloss) {
+      const show = gloss && tgt !== NATIVE_LANG && src !== NATIVE_LANG;
+      return show ? ' (' + escape(gloss) + ')' : '';
     }
 
     async function loadCards() {
@@ -106,6 +118,49 @@
       }
     }
 
+    async function loadClustersByLanguage() {
+      const target = document.getElementById('clusters');
+      try {
+        const r = await fetch('/api/clusters/by-language');
+        const data = await r.json();
+        if (!data.length) {
+          target.innerHTML = '<div class="empty">No learnings yet — once translations repeat, they group by source language here.</div>';
+          return;
+        }
+        target.innerHTML = data.map(g => `
+          <div class="cluster">
+            <h2>${escape(g.lang)} <span class="count">${g.total}×</span></h2>
+            <div class="members">
+              ${g.members.map(m => `
+                <div class="member">
+                  <span class="original">${escape(m.original)} → ${escape(m.translated)}${glossSuffix(m.source_lang, m.target_lang, m.native_gloss)}</span>
+                  <span class="count">${m.count}×</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        target.innerHTML = `<div class="empty">Couldn't load language groups: ${escape(String(e))}</div>`;
+      }
+    }
+
+    function setupClusterToggle() {
+      const toggle = document.getElementById('cluster-toggle');
+      if (!toggle) return;
+      toggle.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-view]');
+        if (!btn) return;
+        toggle.querySelectorAll('button').forEach(b => {
+          const on = b === btn;
+          b.classList.toggle('active', on);
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        if (btn.dataset.view === 'language') loadClustersByLanguage();
+        else loadClusters();
+      });
+    }
+
     async function loadCandidates() {
       const target = document.getElementById('candidates');
       try {
@@ -139,6 +194,7 @@
         const id = await r.json();
         if (id && id.native_lang) NATIVE_LANG = id.native_lang;
       } catch (e) { /* keep default */ }
+      setupClusterToggle();
       loadCards();
       loadClusters();
       loadCandidates();

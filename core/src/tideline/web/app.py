@@ -65,6 +65,42 @@ def _connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+# Candidates with their source language + native gloss derived live from the
+# translations they came from. The single source of truth for language
+# metadata is `translations`; candidates/cards/clusters never carry a copy,
+# they derive it — so a re-detect on the drawer flows everywhere for free.
+_CANDIDATES_SQL = """
+    SELECT id, original, target_lang, translated, occurrence_count,
+        (SELECT t.source_lang FROM translations t
+         WHERE t.original = candidates.original
+           AND t.target_lang = candidates.target_lang
+         ORDER BY t.id DESC LIMIT 1) AS source_lang,
+        (SELECT t.native_gloss FROM translations t
+         WHERE t.original = candidates.original
+           AND t.target_lang = candidates.target_lang
+           AND t.native_gloss IS NOT NULL
+         ORDER BY t.id DESC LIMIT 1) AS native_gloss
+    FROM candidates ORDER BY occurrence_count DESC, original
+"""
+
+
+def _fetch_candidates(
+    conn: sqlite3.Connection, limit: int | None = None
+) -> list[dict[str, Any]]:
+    """The emergent vocabulary, frequency-ranked. Shared by /api/candidates
+    (flat list) and /api/clusters/by-language (the same rows, bucketed by
+    source language) so the language derivation lives in exactly one place."""
+    sql = _CANDIDATES_SQL
+    if limit is not None:
+        sql += f" LIMIT {int(limit)}"
+    rows = conn.execute(sql).fetchall()
+    return [
+        {"id": cid, "original": o, "source_lang": sl, "target_lang": tl,
+         "translated": tr, "count": cnt, "native_gloss": ng}
+        for cid, o, tl, tr, cnt, sl, ng in rows
+    ]
+
+
 def create_app(
     runtime_name: str = "mock",
     db_path: str | None = None,
@@ -153,26 +189,34 @@ def create_app(
     def candidates() -> list[dict[str, Any]]:
         conn = _connect(db)
         try:
-            rows = conn.execute(
-                """
-                SELECT id, original, target_lang, translated, occurrence_count,
-                    (SELECT t.source_lang FROM translations t
-                     WHERE t.original = candidates.original
-                       AND t.target_lang = candidates.target_lang
-                     ORDER BY t.id DESC LIMIT 1) AS source_lang,
-                    (SELECT t.native_gloss FROM translations t
-                     WHERE t.original = candidates.original
-                       AND t.target_lang = candidates.target_lang
-                       AND t.native_gloss IS NOT NULL
-                     ORDER BY t.id DESC LIMIT 1) AS native_gloss
-                FROM candidates ORDER BY occurrence_count DESC, original LIMIT 50
-                """
-            ).fetchall()
-            return [
-                {"id": cid, "original": o, "source_lang": sl, "target_lang": tl,
-                 "translated": tr, "count": cnt, "native_gloss": ng}
-                for cid, o, tl, tr, cnt, sl, ng in rows
-            ]
+            return _fetch_candidates(conn, limit=50)
+        finally:
+            conn.close()
+
+    @app.get("/api/clusters/by-language")
+    def clusters_by_language() -> list[dict[str, Any]]:
+        """Deterministic counterpart to /api/clusters: the same emergent
+        vocabulary grouped by source language instead of by concept. Needs no
+        model — source_lang already rides on every drawer row — so unlike the
+        by-concept clusters (which only exist once B1 votes accumulate) this
+        lens is always available. Engineering carries the reliable view; the
+        model's clustering is the garnish on top, not the load-bearing path.
+
+        Each group is shaped like a cluster (a title + members) so the panel
+        can reuse the same card. Most-translated language first."""
+        conn = _connect(db)
+        try:
+            buckets: dict[str, dict[str, Any]] = {}
+            for cand in _fetch_candidates(conn):
+                key = cand["source_lang"] or "Unknown"
+                bucket = buckets.setdefault(
+                    key, {"lang": key, "members": [], "total": 0}
+                )
+                bucket["members"].append(cand)
+                bucket["total"] += cand["count"]
+            groups = list(buckets.values())
+            groups.sort(key=lambda g: (-g["total"], g["lang"]))
+            return groups
         finally:
             conn.close()
 

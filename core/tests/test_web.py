@@ -159,6 +159,81 @@ def test_clusters_shape_includes_members(tmp_path):
     assert all(m["source_lang"] == "Japanese" for m in cluster["members"])
 
 
+# --- /api/clusters/by-language (deterministic lens) ----------------------
+
+
+def test_clusters_by_language_endpoint_returns_list(client):
+    r = client.get("/api/clusters/by-language")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+def _seed_candidate(conn, original, target_lang, translated, source_lang, gloss, n):
+    for _ in range(n):
+        conn.execute(
+            "INSERT INTO translations "
+            "(original, target_lang, translated, source_lang, native_gloss, source) "
+            "VALUES (?, ?, ?, ?, ?, 'text')",
+            (original, target_lang, translated, source_lang, gloss),
+        )
+
+
+def test_clusters_by_language_groups_candidates_by_source_lang(tmp_path):
+    """The deterministic lens: candidates bucket by their source language,
+    most-translated language first, gloss and direction carried per member."""
+    db = str(tmp_path / "t.db")
+    app = create_app(runtime_name="mock", db_path=db)
+    c = TestClient(app)
+    conn = sqlite3.connect(db)
+    _seed_candidate(conn, "ラーメン", "English", "ramen", "Japanese", "拉面", 4)
+    _seed_candidate(conn, "寿司", "English", "sushi", "Japanese", "寿司", 3)
+    _seed_candidate(conn, "beurre", "English", "butter", "French", "黄油", 5)
+    conn.commit()
+    from tideline.promotion import promote_candidates
+    promote_candidates(conn)
+    conn.close()
+
+    data = c.get("/api/clusters/by-language").json()
+    # Japanese total (4+3=7) outranks French (5), so it sorts first.
+    assert [g["lang"] for g in data] == ["Japanese", "French"]
+    jp = data[0]
+    assert jp["total"] == 7
+    # within a bucket, most-repeated first
+    assert [m["original"] for m in jp["members"]] == ["ラーメン", "寿司"]
+    ramen = jp["members"][0]
+    assert ramen["count"] == 4
+    assert ramen["native_gloss"] == "拉面"
+    assert ramen["target_lang"] == "English"
+
+
+def test_clusters_by_language_buckets_unknown_source(tmp_path):
+    """A candidate whose source language was never detected lands in an
+    'Unknown' bucket rather than vanishing from the lens."""
+    db = str(tmp_path / "t.db")
+    app = create_app(runtime_name="mock", db_path=db)
+    c = TestClient(app)
+    conn = sqlite3.connect(db)
+    for _ in range(3):
+        conn.execute(
+            "INSERT INTO translations (original, target_lang, translated, source) "
+            "VALUES ('???', 'English', 'mystery', 'text')"
+        )
+    conn.commit()
+    from tideline.promotion import promote_candidates
+    promote_candidates(conn)
+    conn.close()
+
+    data = c.get("/api/clusters/by-language").json()
+    assert [g["lang"] for g in data] == ["Unknown"]
+
+
+def test_learnings_page_exposes_cluster_toggle(client):
+    """The panel ships both grouping tabs so the by-language view is reachable."""
+    r = client.get("/learnings")
+    assert 'data-view="concept"' in r.text
+    assert 'data-view="language"' in r.text
+
+
 # --- Drift gates ---------------------------------------------------------
 
 
