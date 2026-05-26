@@ -28,15 +28,14 @@ from tideline.promotion import (
 )
 from tideline.runtimes import get_runtime
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
+from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
 
 
 _DEFAULT_DB = Path(".tideline") / "drawers.db"
 _STATIC_DIR = Path(__file__).parent / "static"
 
-# L0 Identity (MVP): the user's first language. A persisted setting + UI control
-# is ②b-2; for now it's a fixed default the learnings view uses to (a) decide when
-# a native-language gloss is worth showing and (b) localize labels.
-_NATIVE_LANG = "Chinese"
+# L0 identity: the user's first language now persists in the settings table
+# (DEFAULT_NATIVE_LANG until they pick one) and is read/written via /api/identity.
 
 _TIDELINE_SYSTEM = (
     "You are Tideline, a local-first translation engine. "
@@ -63,6 +62,10 @@ class PromoteRequest(BaseModel):
 
 class SinkRequest(BaseModel):
     card_id: int
+
+
+class IdentityRequest(BaseModel):
+    native_lang: str
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -316,9 +319,28 @@ def create_app(
 
     @app.get("/api/identity")
     def identity() -> dict[str, str]:
-        """L0 identity (MVP): the user's first language. The learnings view uses
-        it to localize labels and to decide when a native gloss is worth showing."""
-        return {"native_lang": _NATIVE_LANG}
+        """L0 identity: the user's first language (persisted). The learnings view
+        uses it to localize labels and to decide when a native gloss is worth
+        showing — a gloss into a language you already speak is just noise."""
+        conn = _connect(db)
+        try:
+            return {"native_lang": get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)}
+        finally:
+            conn.close()
+
+    @app.post("/api/identity")
+    def set_identity(req: IdentityRequest) -> dict[str, str]:
+        """Persist the user's first language. Read back by every client off the
+        shared settings table; the gloss-suppression rule follows it live."""
+        lang = req.native_lang.strip()
+        if not lang:
+            raise HTTPException(status_code=400, detail="native_lang is empty")
+        conn = _connect(db)
+        try:
+            set_setting(conn, "native_lang", lang)
+            return {"native_lang": lang}
+        finally:
+            conn.close()
 
     if _STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")

@@ -16,11 +16,25 @@
   </header>
 
   <main>
-    <p class="hint" style="margin-top:0;margin-bottom:2rem;">
+    <p class="hint" style="margin-top:0;margin-bottom:1.5rem;">
       What's quietly come together so far. Cards surface on their own as terms
       repeat — keep the ones worth studying and sink the rest. Each card keeps
       the stack of moments it grew from.
     </p>
+
+    <div class="identity-bar">
+      <label for="native-lang">Your first language</label>
+      <select id="native-lang">
+        <option>Chinese</option>
+        <option>English</option>
+        <option>Japanese</option>
+        <option>French</option>
+        <option>Spanish</option>
+        <option>German</option>
+        <option>Italian</option>
+        <option>Korean</option>
+      </select>
+    </div>
 
     <h3 class="section-title">Your review deck — cards</h3>
     <div id="cards"></div>
@@ -190,6 +204,43 @@
       });
     }
 
+    function activeClusterView() {
+      const btn = document.querySelector('#cluster-toggle button.active');
+      return btn ? btn.dataset.view : 'concept';
+    }
+
+    // Re-render everything that depends on the first language (gloss suppression
+    // + direction tags), keeping whichever cluster view the user has open.
+    function refreshLearnings() {
+      loadCards();
+      if (activeClusterView() === 'language') loadClustersByLanguage();
+      else loadClusters();
+      loadCandidates();
+    }
+
+    // First-language picker: persist the choice, then refresh so glosses into a
+    // language you already speak drop away immediately.
+    function setupIdentity() {
+      const sel = document.getElementById('native-lang');
+      if (!sel) return;
+      sel.addEventListener('change', async () => {
+        const lang = sel.value;
+        sel.disabled = true;
+        try {
+          const r = await fetch('/api/identity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ native_lang: lang }),
+          });
+          if (r.ok) {
+            NATIVE_LANG = lang;
+            refreshLearnings();
+          }
+        } catch (e) { /* keep previous selection */ }
+        finally { sel.disabled = false; }
+      });
+    }
+
     async function loadCandidates() {
       const target = document.getElementById('candidates');
       try {
@@ -223,8 +274,11 @@
         const id = await r.json();
         if (id && id.native_lang) NATIVE_LANG = id.native_lang;
       } catch (e) { /* keep default */ }
+      const sel = document.getElementById('native-lang');
+      if (sel) sel.value = NATIVE_LANG;
       setupClusterToggle();
       setupSink();
+      setupIdentity();
       loadCards();
       loadClusters();
       loadCandidates();

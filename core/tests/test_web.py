@@ -386,6 +386,34 @@ def test_identity_endpoint_returns_native_lang(client):
     assert "native_lang" in r.json()
 
 
+def test_identity_defaults_to_chinese(client):
+    """Unset first language falls back to the MVP default."""
+    assert client.get("/api/identity").json()["native_lang"] == "Chinese"
+
+
+def test_identity_post_persists_across_restart(tmp_path):
+    """The chosen first language survives a fresh app boot on the same DB —
+    it's persisted in the shared settings table, not an in-process global."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    r = c.post("/api/identity", json={"native_lang": "Japanese"})
+    assert r.status_code == 200
+    assert r.json()["native_lang"] == "Japanese"
+
+    c2 = TestClient(create_app(runtime_name="mock", db_path=db))
+    assert c2.get("/api/identity").json()["native_lang"] == "Japanese"
+
+
+def test_identity_post_rejects_empty(client):
+    r = client.post("/api/identity", json={"native_lang": "   "})
+    assert r.status_code == 400
+
+
+def test_learnings_page_has_native_lang_selector(client):
+    r = client.get("/learnings")
+    assert 'id="native-lang"' in r.text
+
+
 # --- opt-out deck: auto-generation + sink over HTTP ----------------------
 
 

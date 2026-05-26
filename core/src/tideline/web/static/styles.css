@@ -149,6 +149,27 @@ output:empty {
 
 /* --- learnings page --- */
 
+.identity-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 2rem;
+}
+
+.identity-bar label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.identity-bar select {
+  min-width: auto;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.9rem;
+}
+
 .cluster {
   background: var(--surface);
   border: 1px solid var(--border);
