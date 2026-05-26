@@ -6,7 +6,7 @@ from pathlib import Path
 from tideline.agent import Agent
 from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
-from tideline.promotion import promote_candidates
+from tideline.promotion import auto_promote_cards, promote_candidates
 from tideline.runtimes import get_runtime
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
@@ -55,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
     # Night-watch sweep: silently promote any drawer entries that crossed the
     # repetition threshold during prior sessions. Idempotent, cheap, no output.
     promote_candidates(conn)
+
+    # Opt-out card generation: every candidate gets a review card the user can
+    # later sink. Idempotent, deterministic — never resurrects a sunk card.
+    auto_promote_cards(conn)
 
     # Tier B sweep: budgeted background voting + cluster rebuild + naming.
     # Wrapped fail-soft because it calls the LLM; a runtime / model glitch

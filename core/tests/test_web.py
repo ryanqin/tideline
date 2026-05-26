@@ -259,7 +259,7 @@ def test_drift_web_app_runs_same_startup_sweep_as_cli():
 
     cli_src = inspect.getsource(cli_main)
     web_src = inspect.getsource(web_app)
-    for token in ("promote_candidates", "cluster_sweep"):
+    for token in ("promote_candidates", "auto_promote_cards", "cluster_sweep"):
         assert token in cli_src, f"cli/__main__.py missing {token}"
         assert token in web_src, f"web/app.py missing {token}"
 
@@ -384,3 +384,53 @@ def test_identity_endpoint_returns_native_lang(client):
     r = client.get("/api/identity")
     assert r.status_code == 200
     assert "native_lang" in r.json()
+
+
+# --- opt-out deck: auto-generation + sink over HTTP ----------------------
+
+
+def _seed_repeats(db, original, target, translated, n=3):
+    conn = sqlite3.connect(db)
+    from tideline.tools import init_all_tables
+    init_all_tables(conn)
+    for _ in range(n):
+        conn.execute(
+            "INSERT INTO translations (original, target_lang, translated, source) "
+            "VALUES (?, ?, ?, 'text')",
+            (original, target, translated),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_startup_auto_generates_cards(tmp_path):
+    """Opt-out: a repeated term surfaces as a card from the boot sweep alone —
+    no manual promote anywhere in this test."""
+    db = str(tmp_path / "t.db")
+    _seed_repeats(db, "station", "Japanese", "駅")
+
+    app = create_app(runtime_name="mock", db_path=db)  # boot auto-promotes
+    c = TestClient(app)
+    cards = c.get("/api/cards").json()
+    assert any(card["original"] == "station" for card in cards)
+
+
+def test_sink_removes_card_from_deck(tmp_path):
+    db = str(tmp_path / "t.db")
+    _seed_repeats(db, "water", "Japanese", "水")
+    app = create_app(runtime_name="mock", db_path=db)
+    c = TestClient(app)
+
+    cards = c.get("/api/cards").json()
+    assert len(cards) == 1
+    card_id = cards[0]["id"]
+
+    r = c.post("/api/cards/sink", json={"card_id": card_id})
+    assert r.status_code == 200
+    assert r.json() == {"sunk": True}
+    assert c.get("/api/cards").json() == []
+
+
+def test_sink_unknown_card_404(client):
+    r = client.post("/api/cards/sink", json={"card_id": 99999})
+    assert r.status_code == 404

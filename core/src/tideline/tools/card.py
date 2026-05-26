@@ -30,11 +30,23 @@ def init_db(conn: sqlite3.Connection) -> None:
             original TEXT NOT NULL,
             target_lang TEXT NOT NULL,
             translated TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'active',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(candidate_id)
         )
         """
     )
+    # Opt-out lifecycle (DESIGN.md §3.1, 2026-05-25 revision): cards are
+    # auto-generated and the user curates by *sinking* the ones they don't
+    # want — `state` is 'active' (in the review deck) or 'sunk' (back to
+    # sediment, never resurfaced). Backfill the column for any pre-opt-out
+    # schema; existing cards default to 'active', which is the right
+    # migration — they were nodded in under the old opt-in flow.
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(cards)")}
+    if "state" not in existing:
+        conn.execute(
+            "ALTER TABLE cards ADD COLUMN state TEXT NOT NULL DEFAULT 'active'"
+        )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cards_candidate ON cards(candidate_id)"
     )
@@ -55,7 +67,7 @@ class ListCardsTool(Tool):
         conn: sqlite3.Connection = context["db"]
         rows = conn.execute(
             "SELECT original, target_lang, translated FROM cards "
-            "ORDER BY created_at DESC, original"
+            "WHERE state = 'active' ORDER BY created_at DESC, original"
         ).fetchall()
         if not rows:
             return "no cards yet"

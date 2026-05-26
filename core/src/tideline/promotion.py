@@ -132,6 +132,44 @@ def promote_to_card(conn: sqlite3.Connection, candidate_id: int) -> int | None:
     return row[0] if row else None
 
 
+def auto_promote_cards(conn: sqlite3.Connection) -> int:
+    """Opt-out card generation (DESIGN.md §3.1, 2026-05-25 revision).
+
+    Every candidate automatically gets a review card; the user curates the
+    deck by *sinking* cards they don't want, never by promoting. Engineering
+    surfaces everything (the load-bearing path); the user only does
+    subtraction. This runs in the night-watch sweep alongside
+    `promote_candidates`, so cards appear without any explicit nod.
+
+    `INSERT OR IGNORE` on the UNIQUE(candidate_id) key is what makes "a sunk
+    card stays sunk" hold: a card the user already sank (or any card that
+    already exists) is left untouched, so a later sweep never resurfaces it.
+    Returns the number of new cards created.
+    """
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO cards (candidate_id, original, target_lang, translated)
+        SELECT id, original, target_lang, translated FROM candidates
+        """
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def sink_card(conn: sqlite3.Connection, card_id: int) -> bool:
+    """Push a card back down to sediment — the only curation gesture in the
+    opt-out deck. Idempotent. Returns True if a card with that id exists.
+
+    A sunk card drops out of the review deck (readers filter on
+    state='active') and is never resurrected by `auto_promote_cards`.
+    """
+    cur = conn.execute(
+        "UPDATE cards SET state = 'sunk' WHERE id = ?", (card_id,)
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="tideline.promotion",

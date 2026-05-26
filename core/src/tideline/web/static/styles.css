@@ -165,6 +165,35 @@ output:empty {
   color: var(--accent);
 }
 
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.card-head h2 { margin-bottom: 0.6rem; }
+
+.sink-btn {
+  flex: none;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: none;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.sink-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sink-btn:disabled { opacity: 0.4; cursor: wait; }
+
 .cluster .members {
   display: grid;
   gap: 0.5rem;

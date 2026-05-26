@@ -17,8 +17,9 @@
 
   <main>
     <p class="hint" style="margin-top:0;margin-bottom:2rem;">
-      What's quietly come together so far. Promote a repeated candidate into a
-      review card — each card keeps the stack of moments it grew from.
+      What's quietly come together so far. Cards surface on their own as terms
+      repeat — keep the ones worth studying and sink the rest. Each card keeps
+      the stack of moments it grew from.
     </p>
 
     <h3 class="section-title">Your review deck — cards</h3>
@@ -68,12 +69,15 @@
         const r = await fetch('/api/cards');
         const data = await r.json();
         if (!data.length) {
-          target.innerHTML = '<div class="empty">No cards yet — cards surface on their own once concepts cluster; you keep the ones worth keeping and sink the rest.</div>';
+          target.innerHTML = '<div class="empty">No cards yet — cards surface on their own once a term repeats enough; you keep the ones worth studying and sink the rest.</div>';
           return;
         }
         target.innerHTML = data.map(c => `
-          <div class="cluster">
-            <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang, c.native_gloss)}</h2>
+          <div class="cluster card" data-card-id="${c.id}">
+            <div class="card-head">
+              <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang, c.native_gloss)}</h2>
+              <button type="button" class="sink-btn" data-card-id="${c.id}" title="Sink this card back to sediment">Sink</button>
+            </div>
             <div class="members">
               ${c.moments.map(m => `
                 <div class="member">
@@ -161,6 +165,31 @@
       });
     }
 
+    // Sink is the only curation gesture: push a card back to sediment. Delegated
+    // off the deck container so it survives every re-render of the cards.
+    function setupSink() {
+      const deck = document.getElementById('cards');
+      if (!deck) return;
+      deck.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.sink-btn');
+        if (!btn) return;
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/cards/sink', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_id: Number(btn.dataset.cardId) }),
+          });
+          if (!r.ok) { btn.disabled = false; return; }
+          const card = btn.closest('[data-card-id]');
+          if (card) card.remove();
+          if (!deck.querySelector('[data-card-id]')) loadCards();  // restore empty state
+        } catch (err) {
+          btn.disabled = false;
+        }
+      });
+    }
+
     async function loadCandidates() {
       const target = document.getElementById('candidates');
       try {
@@ -195,6 +224,7 @@
         if (id && id.native_lang) NATIVE_LANG = id.native_lang;
       } catch (e) { /* keep default */ }
       setupClusterToggle();
+      setupSink();
       loadCards();
       loadClusters();
       loadCandidates();
