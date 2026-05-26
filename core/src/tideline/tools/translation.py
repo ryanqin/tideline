@@ -31,6 +31,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             original TEXT NOT NULL,
             target_lang TEXT NOT NULL,
             translated TEXT NOT NULL,
+            source_lang TEXT,
+            native_gloss TEXT,
             source TEXT,
             context_snippet TEXT,
             session_id TEXT,
@@ -42,6 +44,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     # "ADD COLUMN IF NOT EXISTS", so probe and add per missing column.
     existing = {row[1] for row in conn.execute("PRAGMA table_info(translations)")}
     for column, ddl in (
+        ("source_lang", "ALTER TABLE translations ADD COLUMN source_lang TEXT"),
+        ("native_gloss", "ALTER TABLE translations ADD COLUMN native_gloss TEXT"),
         ("source", "ALTER TABLE translations ADD COLUMN source TEXT"),
         ("context_snippet", "ALTER TABLE translations ADD COLUMN context_snippet TEXT"),
         ("session_id", "ALTER TABLE translations ADD COLUMN session_id TEXT"),

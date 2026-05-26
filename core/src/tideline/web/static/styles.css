@@ -226,3 +226,13 @@ output:empty {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+.langtag {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.candidate .langtag { margin: 0 0.6rem; }
+
+.cluster .langtag { display: block; margin: -0.2rem 0 0.7rem; }

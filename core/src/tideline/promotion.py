@@ -1,4 +1,4 @@
-"""Drawer → candidate promotion engine.
+"""Tier-promotion engine: drawer → candidate (night-watch) + candidate → card (user nod).
 
 Scans the translations drawer, groups by (original, target_lang), and
 promotes any pair whose occurrence count crosses `threshold` into the
@@ -94,6 +94,42 @@ def promote_candidates(
     )
     conn.commit()
     return len(rows)
+
+
+def promote_to_card(conn: sqlite3.Connection, candidate_id: int) -> int | None:
+    """Promote one candidate into a card — the explicit user "nod".
+
+    Unlike `promote_candidates` (the silent night-watch sweep), this is
+    user-driven: cards are the only tier that enters review, and they appear
+    only when the user deliberately promotes a candidate (DESIGN.md §3.1).
+
+    Idempotent on candidate_id: re-promoting an existing card is a no-op. The
+    card stores `candidate_id`, so its episodic evidence stays reachable — and
+    keeps growing — through `candidate_evidence`; we don't freeze a copy.
+
+    Returns the card id, or None if the candidate doesn't exist.
+    """
+    cand = conn.execute(
+        "SELECT original, target_lang, translated FROM candidates WHERE id = ?",
+        (candidate_id,),
+    ).fetchone()
+    if cand is None:
+        return None
+
+    conn.execute(
+        """
+        INSERT INTO cards (candidate_id, original, target_lang, translated)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(candidate_id) DO NOTHING
+        """,
+        (candidate_id, cand[0], cand[1], cand[2]),
+    )
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT id FROM cards WHERE candidate_id = ?", (candidate_id,)
+    ).fetchone()
+    return row[0] if row else None
 
 
 def main(argv: list[str] | None = None) -> int:

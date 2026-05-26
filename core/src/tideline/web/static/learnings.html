@@ -17,11 +17,14 @@
 
   <main>
     <p class="hint" style="margin-top:0;margin-bottom:2rem;">
-      What's quietly come together so far. Clusters group translations the
-      model judged to be the same concept — across different phrasings,
-      different source languages, or simply repeated encounters.
+      What's quietly come together so far. Promote a repeated candidate into a
+      review card — each card keeps the stack of moments it grew from.
     </p>
 
+    <h3 class="section-title">Your review deck — cards</h3>
+    <div id="cards"></div>
+
+    <h3 class="section-title">Clusters — grouped by concept</h3>
     <div id="clusters"></div>
 
     <h3 class="section-title">Candidates — repeated translations</h3>
@@ -29,6 +32,52 @@
   </main>
 
   <script>
+    const LANG_SHORT = {
+      Japanese: '日', English: '英', Chinese: '中', French: '法',
+      Spanish: '西', German: '德', Italian: '意', Korean: '韩',
+    };
+    let NATIVE_LANG = 'Chinese';  // overwritten by /api/identity
+
+    function shortLang(name) {
+      return LANG_SHORT[name] || escape(name || '?');
+    }
+    // (gloss, src→tgt) — e.g. "(拉面, 日→英)". The native gloss only shows when the
+    // target isn't already your first language (no point repeating it there).
+    function annot(src, tgt, gloss) {
+      const dir = `${shortLang(src)}→${shortLang(tgt)}`;
+      // Gloss only helps when neither side is already your first language.
+      const showGloss = gloss && tgt !== NATIVE_LANG && src !== NATIVE_LANG;
+      return `<span class="langtag">(${showGloss ? escape(gloss) + ', ' : ''}${dir})</span>`;
+    }
+
+    async function loadCards() {
+      const target = document.getElementById('cards');
+      try {
+        const r = await fetch('/api/cards');
+        const data = await r.json();
+        if (!data.length) {
+          target.innerHTML = '<div class="empty">No cards yet — cards surface on their own once concepts cluster; you keep the ones worth keeping and sink the rest.</div>';
+          return;
+        }
+        target.innerHTML = data.map(c => `
+          <div class="cluster">
+            <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang, c.native_gloss)}</h2>
+            <div class="members">
+              ${c.moments.map(m => `
+                <div class="member">
+                  <span class="original">${escape(m.source || 'text')}</span>
+                  <span class="translated">${escape(m.at || '')}</span>
+                  <span class="context">${m.context ? escape(m.context) : '— no context captured —'}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        target.innerHTML = `<div class="empty">Couldn't load cards: ${escape(String(e))}</div>`;
+      }
+    }
+
     async function loadClusters() {
       const target = document.getElementById('clusters');
       try {
@@ -44,8 +93,8 @@
             <div class="members">
               ${c.members.map(m => `
                 <div class="member">
-                  <span class="original">${escape(m.original)}</span>
-                  <span class="translated">${escape(m.translated)}</span>
+                  <span class="original">${shortLang(m.source_lang)} ${escape(m.original)}</span>
+                  <span class="translated">${escape(m.translated)}${m.native_gloss ? ' (' + escape(m.native_gloss) + ')' : ''}</span>
                   ${m.context ? `<span class="context">${escape(m.context)}</span>` : ''}
                 </div>
               `).join('')}
@@ -69,6 +118,7 @@
         target.innerHTML = data.map(c => `
           <div class="candidate">
             <span>${escape(c.original)} → ${escape(c.translated)}</span>
+            ${annot(c.source_lang, c.target_lang, c.native_gloss)}
             <span class="count">${c.count}×</span>
           </div>
         `).join('');
@@ -83,8 +133,17 @@
       })[ch]);
     }
 
-    loadClusters();
-    loadCandidates();
+    async function init() {
+      try {
+        const r = await fetch('/api/identity');
+        const id = await r.json();
+        if (id && id.native_lang) NATIVE_LANG = id.native_lang;
+      } catch (e) { /* keep default */ }
+      loadCards();
+      loadClusters();
+      loadCandidates();
+    }
+    init();
   </script>
 </body>
 </html>

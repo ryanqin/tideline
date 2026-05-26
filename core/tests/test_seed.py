@@ -191,3 +191,32 @@ def test_cli_seed_clear_flag(tmp_path):
 
     assert doubled > after_clear
     assert after_clear == doubled // 2
+
+
+# --- source language (closed-loop A, step 2 labeling) --------------------
+
+
+def test_seed_sets_source_language(conn):
+    seed_db(conn)
+    # single-language scenario → all rows carry that scenario's source lang
+    assert conn.execute(
+        "SELECT DISTINCT source_lang FROM translations WHERE original='ラーメン'"
+    ).fetchall() == [("Japanese",)]
+    # polyglot scenario → per-pair source language override
+    assert conn.execute(
+        "SELECT DISTINCT source_lang FROM translations WHERE original='拉面'"
+    ).fetchall() == [("Chinese",)]
+    assert conn.execute(
+        "SELECT DISTINCT source_lang FROM translations WHERE original='noodle soup'"
+    ).fetchall() == [("English",)]
+
+
+def test_seed_sets_native_gloss(conn):
+    seed_db(conn)
+    # frequent terms carry a Chinese gloss for the learnings view
+    assert conn.execute(
+        "SELECT DISTINCT native_gloss FROM translations WHERE translated='ramen'"
+    ).fetchall() == [("拉面",)]
+    assert conn.execute(
+        "SELECT DISTINCT native_gloss FROM translations WHERE translated='heart'"
+    ).fetchall() == [("心",)]

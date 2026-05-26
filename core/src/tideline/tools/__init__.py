@@ -5,6 +5,8 @@ import sqlite3
 from tideline.tools.base import Tool, ToolRegistry
 from tideline.tools.candidate import ListCandidatesTool
 from tideline.tools.candidate import init_db as _init_candidates
+from tideline.tools.card import ListCardsTool
+from tideline.tools.card import init_db as _init_cards
 from tideline.tools.memory import AddDrawerTool, ListDrawersTool
 from tideline.tools.memory import init_db as _init_drawers
 from tideline.tools.noop import NoopTool
@@ -17,6 +19,7 @@ def init_all_tables(conn: sqlite3.Connection) -> None:
     _init_drawers(conn)
     _init_translations(conn)
     _init_candidates(conn)
+    _init_cards(conn)  # cards FK candidates → must init after candidates
     # Cluster engine tables (Tier B). Init here so any code path that calls
     # init_all_tables (CLI, bench, tests) gets the full schema; the cluster
     # engine itself also has its own init_db for direct callers.
@@ -33,5 +36,6 @@ __all__ = [
     "AddTranslationTool",
     "ListTranslationsTool",
     "ListCandidatesTool",
+    "ListCardsTool",
     "init_all_tables",
 ]
