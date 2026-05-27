@@ -52,12 +52,23 @@ const I18N = {
     reveal_all: "Reveal all",
     mask: "Mask",
     tap_reveal: "tap to reveal",
-    tap_recall: "tap to recall",
-    no_context: "— no context captured —",
+    tap_recall: "open to recall",
+    no_context: "a quiet one — no scene saved",
     moment_one: "moment",
     moment_many: "moments",
     cluster_fallback: "Cluster #",
     theme_fallback: "A theme #",
+
+    // how a moment was caught — warm, human, never "source: image"
+    src_image: "seen",
+    src_audio: "heard",
+    src_text: "looked up",
+    // humanized time — the moment matters, its clock-time recedes
+    time_just_now: "just now",
+    time_today: "today",
+    time_yesterday: "yesterday",
+    time_days_ago: "{n} days ago",
+    time_last_week: "last week",
 
     err_cards: "Couldn't load cards: ",
     err_clusters: "Couldn't load clusters: ",
@@ -109,12 +120,23 @@ const I18N = {
     reveal_all: "全部揭开",
     mask: "重新遮住",
     tap_reveal: "点一下揭开",
-    tap_recall: "点一下回忆",
-    no_context: "— 没有记录情景 —",
+    tap_recall: "翻开回忆",
+    no_context: "安静的一次 — 没留下情景",
     moment_one: "个片刻",
     moment_many: "个片刻",
     cluster_fallback: "聚类 #",
     theme_fallback: "主题 #",
+
+    // 这个片刻是怎么遇上的 — 用人话,不是 "来源:图片"
+    src_image: "看到的",
+    src_audio: "听到的",
+    src_text: "查过的",
+    // 人话时间 — 重要的是那个片刻,钟点退到后面
+    time_just_now: "刚刚",
+    time_today: "今天",
+    time_yesterday: "昨天",
+    time_days_ago: "{n} 天前",
+    time_last_week: "上周",
 
     err_cards: "卡片加载失败:",
     err_clusters: "聚类加载失败:",
@@ -143,6 +165,29 @@ function t(key) {
   const table = I18N[LOCALE] || I18N.en;
   const val = key in table ? table[key] : I18N.en[key];
   return val == null ? key : val;
+}
+
+// A moment's worth is in the moment, not its clock-time (DESIGN §3.2), so we
+// soften the ISO timestamp into something human and let it recede: "today",
+// "3 days ago", or — once it's old enough — a warm short date. Locale-aware.
+function humanTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) return "";
+  const now = new Date();
+  const ms = now - then;
+  if (ms < 60000) return t("time_just_now");
+  if (then.toDateString() === now.toDateString()) return t("time_today");
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (then.toDateString() === y.toDateString()) return t("time_yesterday");
+  const days = Math.floor(ms / 86400000);
+  if (days < 7) return t("time_days_ago").replace("{n}", days);
+  if (days < 14) return t("time_last_week");
+  return new Intl.DateTimeFormat(LOCALE === "zh" ? "zh-CN" : "en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(then);
 }
 
 // Fill every element tagged data-i18n / -placeholder / -title / -html from the

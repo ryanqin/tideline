@@ -55,6 +55,10 @@
     <div id="candidates"></div>
   </main>
 
+  <div class="shoreline" aria-hidden="true">
+    <svg viewBox="0 0 720 26"><path d="M0 14 Q 45 6 90 14 T 180 14 T 270 14 T 360 14 T 450 14 T 540 14 T 630 14 T 720 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  </div>
+
   <script>
     const LANG_SHORT = {
       Japanese: '日', English: '英', Chinese: '中', French: '法',
@@ -72,6 +76,49 @@
       return `<span class="langtag">(${shortLang(src)}→${shortLang(tgt)})</span>`;
     }
 
+    // How a moment was caught, drawn small and warm: a photo seen, a voice
+    // heard, a phrase looked up. Monochrome inline SVG (inherits currentColor),
+    // so it sits quietly inside the moment's glyph circle.
+    const SRC_GLYPH = {
+      image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>',
+      audio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 6v12M12 8.5v7M16 4v16M20 10v4"/></svg>',
+      text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    };
+    function srcGlyph(src) { return SRC_GLYPH[src] || SRC_GLYPH.text; }
+    function srcLabel(src) {
+      const key = { image: 'src_image', audio: 'src_audio', text: 'src_text' }[src];
+      return key ? t(key) : '';
+    }
+
+    // One lived moment in the stack behind a card. A moment with a captured
+    // scene leads with it, warm and full; its when/how recede beneath. A moment
+    // with no scene keeps only its quiet provenance (when/how) on one compact
+    // line — so a card whose moments were all silent stays a tidy little log
+    // instead of a wall of identical placeholders.
+    function momentRow(m) {
+      const meta = [humanTime(m.at), srcLabel(m.source)]
+        .filter(Boolean)
+        .map(escape)
+        .join('<span class="dot">·</span>');
+      if (!m.context) {
+        return `
+          <div class="moment moment--compact">
+            <span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span>
+            <span class="moment-meta">${meta || escape(t('no_context'))}</span>
+          </div>
+        `;
+      }
+      return `
+        <div class="moment">
+          <span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span>
+          <span class="moment-body">
+            <span class="moment-context">${escape(m.context)}</span>
+            ${meta ? `<span class="moment-meta">${meta}</span>` : ''}
+          </span>
+        </div>
+      `;
+    }
+
     async function loadCards() {
       const target = document.getElementById('cards');
       try {
@@ -87,14 +134,8 @@
               <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
               <button type="button" class="sink-btn" data-card-id="${c.id}" title="${escape(t('sink_title'))}">${escape(t('sink'))}</button>
             </div>
-            <div class="members">
-              ${c.moments.map(m => `
-                <div class="member">
-                  <span class="original">${escape(m.source || 'text')}</span>
-                  <span class="translated">${escape(m.at || '')}</span>
-                  <span class="context">${m.context ? escape(m.context) : escape(t('no_context'))}</span>
-                </div>
-              `).join('')}
+            <div class="moments">
+              ${c.moments.map(momentRow).join('')}
             </div>
           </div>
         `).join('');
@@ -177,8 +218,11 @@
       return `
         <div class="theme" data-theme-id="${theme.id}">
           <div class="theme-cover" role="button" tabindex="0" aria-expanded="false">
-            <h2>${escape(theme.title || (t('theme_fallback') + theme.id))}</h2>
-            <span class="theme-meta">${n} ${escape(moments)} · ${escape(t('tap_recall'))}</span>
+            <span class="theme-cover-text">
+              <h2>${escape(theme.title || (t('theme_fallback') + theme.id))}</h2>
+              <span class="theme-meta">${n} ${escape(moments)} · ${escape(t('tap_recall'))}</span>
+            </span>
+            <span class="theme-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
           </div>
           <div class="theme-recall" hidden>
             <div class="theme-tools">

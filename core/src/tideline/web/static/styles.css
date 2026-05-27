@@ -1,43 +1,80 @@
+/* Tideline — the line the tide leaves on warm sand.
+   Things wash up here, settle, and wait to be found again. The interface is
+   that shoreline: warm ground, golden-hour light, and a calm invitation to
+   walk along and see what the tide left. Restraint stays the rule (DESIGN §3.1)
+   — the warmth and the discovery live in how it *feels* to look, never in a
+   nudge to look. */
+
 :root {
-  --bg: #fafaf7;
-  --surface: #ffffff;
-  --ink: #1a1a1a;
-  --muted: #6a6a6a;
-  --accent: #1f3a5f;
-  --accent-soft: #e8eef5;
-  --border: #e3e1da;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+  /* Palette — golden-hour sand. Swap this block to change the whole mood. */
+  --bg: #faf4e9;          /* warm sand-cream ground */
+  --bg-deep: #f4e9d6;     /* deeper sand, for the light to pool into */
+  --surface: #fffdf8;     /* sun-warmed white — cards, inputs */
+  --surface-sink: #f8efe0;/* recessed warm — masked tiles, wells */
+  --ink: #2d2822;         /* soft espresso, never pure black */
+  --muted: #8a7c69;       /* warm taupe */
+  --faint: #b6a890;       /* faintest warm — timestamps, hairlines of text */
+  --accent: #c2742f;      /* golden amber — the low sun */
+  --accent-deep: #a85f22; /* pressed / hover */
+  --accent-soft: #f3e3ca; /* pale sand wash */
+  --spark: #d9725a;       /* warm coral — the reward of a reveal */
+  --spark-soft: #f8ddd1;
+  --accent-glow: rgba(194, 116, 47, 0.22); /* the soft halo under the button */
+  --border: #ebdfc8;      /* warm sand line */
+  --border-soft: #f1e8d7;
+
+  --shadow: 0 1px 2px rgba(122, 88, 38, 0.05), 0 6px 18px rgba(122, 88, 38, 0.06);
+  --shadow-lift: 0 2px 4px rgba(122, 88, 38, 0.07), 0 14px 34px rgba(122, 88, 38, 0.10);
+
+  --radius: 14px;
+  --radius-sm: 9px;
   --max-width: 720px;
+
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC",
+           "STSong", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+          "PingFang SC", "Hiragino Sans", sans-serif;
 }
 
 * { box-sizing: border-box; }
 
+html { height: 100%; }
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-               "PingFang SC", "Hiragino Sans", sans-serif;
+  min-height: 100%;
+  font-family: var(--sans);
   font-size: 16px;
   line-height: 1.55;
   color: var(--ink);
-  background: var(--bg);
+  /* Golden-hour light, pooling toward the horizon at the foot of the page. */
+  background:
+    radial-gradient(120% 80% at 50% -10%, #fdf8ee 0%, rgba(253, 248, 238, 0) 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg) 55%, var(--bg-deep) 100%)
+    fixed;
 }
+
+/* --- header: the always-present shoreline + the "me" anchor --- */
 
 header {
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.86), rgba(255, 253, 248, 0.66));
+  backdrop-filter: saturate(1.1) blur(6px);
   padding: 1rem 1.5rem;
   display: flex;
   align-items: baseline;
-  gap: 2rem;
+  gap: 1.6rem;
   max-width: var(--max-width);
   margin: 0 auto;
 }
 
 header h1 {
-  font-size: 1.4rem;
+  font-family: var(--serif);
+  font-size: 1.55rem;
   margin: 0;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
+  color: var(--accent);
 }
 
 header nav {
@@ -49,8 +86,9 @@ header nav {
 header nav a {
   text-decoration: none;
   color: var(--muted);
-  padding-bottom: 2px;
+  padding-bottom: 3px;
   border-bottom: 2px solid transparent;
+  transition: color 0.18s ease, border-color 0.18s ease;
 }
 
 header nav a.active {
@@ -58,7 +96,7 @@ header nav a.active {
   border-bottom-color: var(--accent);
 }
 
-header nav a:hover { color: var(--accent); }
+header nav a:hover { color: var(--accent-deep); }
 
 /* First language lives in the header — the always-visible "me" anchor that
    drives the translation target, the UI locale, and how learnings cluster. */
@@ -77,29 +115,28 @@ header nav a:hover { color: var(--accent); }
 }
 .identity select {
   min-width: auto;
-  padding: 0.3rem 0.55rem;
+  padding: 0.32rem 0.6rem;
   font-size: 0.85rem;
 }
 
 main {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 2.4rem 1.5rem 5rem;
 }
 
 label {
   display: block;
   font-size: 0.85rem;
   color: var(--muted);
-  margin-bottom: 0.4rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  margin-bottom: 0.45rem;
+  letter-spacing: 0.01em;
 }
 
 textarea, select, button {
   font: inherit;
   color: inherit;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   padding: 0.7rem 0.9rem;
@@ -108,82 +145,110 @@ textarea, select, button {
 textarea {
   width: 100%;
   resize: vertical;
-  min-height: 5rem;
+  min-height: 5.5rem;
   box-shadow: var(--shadow);
+  transition: border-color 0.18s ease, box-shadow 0.25s ease;
 }
 
 textarea:focus, select:focus {
-  outline: 2px solid var(--accent-soft);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
 .row {
   display: flex;
-  align-items: end;
+  align-items: center;
   gap: 0.8rem;
-  margin-top: 1rem;
+  margin-top: 1.1rem;
 }
 
 .row label { margin-bottom: 0.2rem; }
 
-select { min-width: 140px; }
+select { min-width: 140px; cursor: pointer; }
 
 button {
   background: var(--accent);
-  color: white;
+  color: #fff;
   border-color: var(--accent);
   cursor: pointer;
   font-weight: 500;
-  padding-left: 1.3rem;
-  padding-right: 1.3rem;
+  padding-left: 1.4rem;
+  padding-right: 1.4rem;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(122, 88, 38, 0.12), 0 6px 16px var(--accent-glow);
+  transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.2s ease;
 }
 
-button:hover { background: #1a3252; }
-button:disabled { opacity: 0.5; cursor: wait; }
+button:hover { background: var(--accent-deep); transform: translateY(-1px); }
+button:active { transform: translateY(0); }
+button:disabled { opacity: 0.55; cursor: wait; transform: none; }
 
+/* The translation result: what the tide just brought in. */
 output {
   display: block;
-  margin-top: 1.5rem;
-  padding: 1rem 1.2rem;
-  background: var(--accent-soft);
+  margin-top: 1.6rem;
+  padding: 1.1rem 1.3rem;
+  background: linear-gradient(180deg, var(--surface), var(--accent-soft));
+  border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
-  font-size: 1.1rem;
+  border-radius: var(--radius-sm);
+  font-size: 1.15rem;
   min-height: 1.5rem;
   white-space: pre-wrap;
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  output:not(:empty) { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 }
 
 output:empty {
   background: transparent;
-  border-left-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .hint {
   margin-top: 3rem;
   color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.65;
+  font-size: 0.95rem;
+  line-height: 1.7;
 }
 
-.hint a { color: var(--accent); }
+.hint a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+.hint a:hover { border-bottom-color: var(--accent); }
+
+/* A faint shoreline at the foot of the page — the tideline itself, drawn once,
+   never explained. Pure decoration; hidden from assistive tech. */
+.shoreline {
+  display: block;
+  max-width: var(--max-width);
+  margin: 3.5rem auto 0;
+  padding: 0 1.5rem;
+  color: var(--accent);
+  opacity: 0.32;
+}
+.shoreline svg { width: 100%; height: 26px; display: block; }
 
 /* --- learnings page --- */
 
 .cluster {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.2rem 1.4rem;
+  border-radius: var(--radius);
+  padding: 1.3rem 1.5rem;
   margin-bottom: 1.2rem;
   box-shadow: var(--shadow);
 }
 
 .cluster h2 {
-  font-size: 1.15rem;
+  font-family: var(--serif);
+  font-size: 1.2rem;
   font-weight: 600;
-  margin: 0 0 0.6rem;
-  color: var(--accent);
+  margin: 0 0 0.7rem;
+  color: var(--ink);
+  letter-spacing: -0.003em;
 }
 
 .card-head {
@@ -193,24 +258,26 @@ output:empty {
   gap: 1rem;
 }
 
-.card-head h2 { margin-bottom: 0.6rem; }
+.card-head h2 { margin-bottom: 0.7rem; }
 
+/* Sink is the one quiet way to send a card back to the sediment. */
 .sink-btn {
   flex: none;
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 999px;
   box-shadow: none;
-  padding: 0.2rem 0.7rem;
+  padding: 0.22rem 0.8rem;
   font-size: 0.78rem;
   font-weight: 500;
 }
 
 .sink-btn:hover {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-deep);
   border-color: var(--accent);
+  transform: none;
 }
 
 .sink-btn:disabled { opacity: 0.4; cursor: wait; }
@@ -225,41 +292,125 @@ output:empty {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.6rem;
-  padding: 0.4rem 0;
+  padding: 0.45rem 0;
   border-top: 1px dashed var(--border);
 }
 
 .cluster .member:first-child { border-top: none; }
 
-.cluster .original {
-  font-weight: 500;
-}
-
-.cluster .translated {
-  color: var(--muted);
-}
+.cluster .original { font-weight: 500; }
+.cluster .translated { color: var(--muted); }
 
 .cluster .context {
   grid-column: 1 / -1;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-style: italic;
   margin-left: 0.2rem;
 }
 
+/* --- the moment stack: the back of every card is a pile of lived moments
+   (DESIGN §3.2). The moment is the point; its when/where is incidental, so the
+   captured detail leads and the metadata recedes beneath it. --- */
+.moments {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.2rem;
+}
+
+.moment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-sink);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+/* A small warm mark for how the moment was caught: seen / heard / looked up. */
+.moment-glyph {
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  margin-top: 0.05rem;
+}
+.moment-glyph svg { width: 16px; height: 16px; display: block; }
+
+.moment-body { min-width: 0; }
+
+.moment-context {
+  display: block;
+  color: var(--ink);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.moment-context.is-empty { color: var(--faint); font-style: italic; }
+
+.moment-meta {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--faint);
+  letter-spacing: 0.01em;
+}
+.moment-meta .dot { margin: 0 0.45rem; opacity: 0.6; }
+
+/* A moment with no scene saved — just its quiet when/how, on one tidy line.
+   Recedes so it never crowds out the moments that do carry a lived detail. */
+.moment--compact {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.38rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  border-radius: 0;
+}
+.moments > .moment--compact:last-child { border-bottom: none; }
+.moment--compact .moment-glyph {
+  width: 1.4rem;
+  height: 1.4rem;
+  background: transparent;
+  color: var(--faint);
+}
+.moment--compact .moment-glyph svg { width: 13px; height: 13px; }
+.moment--compact .moment-meta { margin-top: 0; }
+
 .empty {
   color: var(--muted);
   font-style: italic;
-  padding: 2rem 0;
+  padding: 2.2rem 0;
   text-align: center;
+  line-height: 1.7;
+}
+
+/* A faint shoreline above an empty stretch — nothing's washed up here yet,
+   but the shore is still warm. */
+.empty::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 9px;
+  margin: 0 auto 1rem;
+  border-bottom: 1.5px solid var(--accent);
+  border-radius: 0 0 40px 40px / 0 0 9px 9px;
+  opacity: 0.32;
 }
 
 .section-title {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  margin: 2rem 0 1rem;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 2.6rem 0 1rem;
   font-weight: 600;
 }
 
@@ -268,7 +419,7 @@ output:empty {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin: 2rem 0 1rem;
+  margin: 2.6rem 0 1rem;
 }
 
 .section-head .section-title { margin: 0; }
@@ -277,24 +428,27 @@ output:empty {
   display: inline-flex;
   flex: none;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   overflow: hidden;
+  background: var(--surface);
 }
 
 .toggle button {
-  background: var(--surface);
+  background: transparent;
   color: var(--muted);
   border: none;
   border-radius: 0;
   box-shadow: none;
-  padding: 0.3rem 0.85rem;
+  padding: 0.32rem 0.95rem;
   font-size: 0.78rem;
   font-weight: 500;
+  transition: background 0.18s ease, color 0.18s ease;
 }
 
 .toggle button + button { border-left: 1px solid var(--border); }
 .toggle button.active { background: var(--accent); color: #fff; }
-.toggle button:hover:not(.active) { background: var(--accent-soft); color: var(--accent); }
+.toggle button.active:hover { background: var(--accent); transform: none; }
+.toggle button:hover:not(.active) { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
 
 .cluster h2 .count {
   color: var(--muted);
@@ -311,13 +465,17 @@ output:empty {
 
 .candidate {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0.8rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  margin-bottom: 0.4rem;
   font-size: 0.95rem;
+  box-shadow: 0 1px 1px rgba(122, 88, 38, 0.03);
 }
 
-.candidate:last-child { border-bottom: none; }
 .candidate .count {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -330,59 +488,97 @@ output:empty {
 }
 
 .candidate .langtag { margin: 0 0.6rem; }
-
 .cluster .langtag { display: block; margin: -0.2rem 0 0.7rem; }
 
-/* --- themes (album-style recall) --- */
+/* --- themes: an album of remembered scenes you choose to open --- */
 
 .theme {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   margin-bottom: 1.2rem;
   box-shadow: var(--shadow);
   overflow: hidden;
+  transition: box-shadow 0.22s ease, transform 0.18s ease, border-color 0.2s ease;
+}
+
+.theme:hover { box-shadow: var(--shadow-lift); border-color: var(--accent-soft); }
+.theme:has(.theme-cover[aria-expanded="true"]) { transform: none; }
+
+/* A closed scene rests like a small stack of snapshots — two faint sheet-edges
+   peeking out below, a quiet "there's a pile in here" you can open. Drawn purely
+   with the card's own box-shadow (never clipped by its overflow, never touches
+   layout); it falls away the moment the scene opens. */
+.theme:has(.theme-cover[aria-expanded="false"]) {
+  box-shadow: var(--shadow),
+    0 7px 0 -3px var(--surface), 0 8px 0 -3px var(--border),
+    0 14px 0 -6px var(--surface), 0 15px 0 -6px var(--border);
+}
+.theme:has(.theme-cover[aria-expanded="false"]):hover {
+  box-shadow: var(--shadow-lift),
+    0 7px 0 -3px var(--surface), 0 8px 0 -3px var(--border),
+    0 14px 0 -6px var(--surface), 0 15px 0 -6px var(--border);
 }
 
 .theme-cover {
-  padding: 1.2rem 1.4rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
   cursor: pointer;
 }
 
-.theme-cover:hover { background: var(--accent-soft); }
-.theme-cover:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: -2px; }
+.theme-cover:hover { background: linear-gradient(180deg, transparent, var(--accent-soft)); }
+.theme-cover:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+.theme-cover-text { flex: 1; min-width: 0; }
 
 .theme-cover h2 {
-  font-size: 1.15rem;
+  font-family: var(--serif);
+  font-size: 1.22rem;
   font-weight: 600;
-  margin: 0 0 0.2rem;
-  color: var(--accent);
+  margin: 0 0 0.25rem;
+  color: var(--ink);
+  letter-spacing: -0.003em;
 }
 
 .theme-meta { font-size: 0.82rem; color: var(--muted); }
 
+/* A chevron that turns as the scene opens — the one bit of "there's more here". */
+.theme-chevron {
+  flex: none;
+  color: var(--accent);
+  transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.theme-chevron svg { width: 18px; height: 18px; display: block; }
+.theme-cover[aria-expanded="true"] .theme-chevron { transform: rotate(90deg); }
+
 .theme-recall {
-  padding: 0 1.4rem 1.2rem;
+  padding: 0 1.5rem 1.3rem;
   border-top: 1px solid var(--border);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .theme-recall:not([hidden]) { animation: unfold 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 }
 
 .theme-tools {
   display: flex;
   justify-content: flex-end;
-  padding: 0.7rem 0;
+  padding: 0.8rem 0;
 }
 
 .reveal-all {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 999px;
   box-shadow: none;
-  padding: 0.2rem 0.7rem;
+  padding: 0.22rem 0.8rem;
   font-size: 0.78rem;
   font-weight: 500;
 }
-.reveal-all:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.reveal-all:hover { background: var(--accent-soft); color: var(--accent-deep); border-color: var(--accent); transform: none; }
 
 .theme .members {
   display: grid;
@@ -395,33 +591,38 @@ output:empty {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.6rem;
   align-items: baseline;
-  padding: 0.45rem 0;
+  padding: 0.5rem 0;
   border-top: 1px dashed var(--border);
 }
 .theme .member:first-child { border-top: none; }
 
-/* The word to recall, hidden behind its meaning until you ask for it. */
+/* The word to recall, frosted over until you reach for it. */
 .masked {
   justify-self: end;
   color: transparent;
-  background: var(--accent-soft);
-  border-radius: 5px;
-  padding: 0.1rem 0.6rem;
-  min-width: 2.5rem;
+  background: var(--surface-sink);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.12rem 0.65rem;
+  min-width: 2.6rem;
+  text-align: center;
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
 }
-.masked:hover { background: #d8e3f0; }
+.masked:hover { background: var(--accent-soft); border-color: var(--accent-soft); transform: translateY(-1px); }
 .masked.revealed {
-  color: var(--accent);
+  color: var(--spark);
   background: transparent;
-  font-weight: 500;
+  border-color: transparent;
+  font-weight: 600;
   padding-left: 0;
+  padding-right: 0;
   cursor: default;
+  transform: none;
 }
 
-.theme .translated { color: var(--muted); justify-self: start; }
+.theme .translated { color: var(--ink); justify-self: start; }
 .theme .context {
   grid-column: 1 / -1;
   color: var(--muted);
@@ -434,5 +635,26 @@ output:empty {
 .target-note {
   flex: 1;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
+}
+
+/* --- gentle arrival: cards rise like things settling onto the sand --- */
+@media (prefers-reduced-motion: no-preference) {
+  .cluster, .theme, .candidate {
+    animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  .cluster:nth-child(2), .theme:nth-child(2), .candidate:nth-child(2) { animation-delay: 0.04s; }
+  .cluster:nth-child(3), .theme:nth-child(3), .candidate:nth-child(3) { animation-delay: 0.08s; }
+  .cluster:nth-child(4), .theme:nth-child(4), .candidate:nth-child(4) { animation-delay: 0.12s; }
+  .cluster:nth-child(n+5), .theme:nth-child(n+5), .candidate:nth-child(n+5) { animation-delay: 0.15s; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes unfold {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
 }
