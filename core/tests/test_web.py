@@ -87,6 +87,35 @@ def test_translate_writes_drawer_row(tmp_path):
     assert n >= 1
 
 
+def test_translate_tags_source_lang_live_on_first_occurrence(tmp_path):
+    """The model-free backfill tags source_lang right after a translation —
+    deterministically, even before the word is a candidate."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    c.post("/api/translate", json={"text": "ラーメン", "target_lang": "English"})
+
+    conn = sqlite3.connect(db)
+    sl = conn.execute(
+        "SELECT source_lang FROM translations WHERE original='ラーメン'"
+    ).fetchone()[0]
+    conn.close()
+    assert sl == "Japanese"
+
+
+def test_translate_promotes_and_cards_live_without_restart(tmp_path):
+    """A word repeated to threshold becomes a tagged candidate and an auto-card
+    within the same app run — the learnings view is live, not restart-gated."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    for _ in range(3):
+        r = c.post("/api/translate", json={"text": "ラーメン", "target_lang": "English"})
+        assert r.status_code == 200
+
+    row = next(d for d in c.get("/api/candidates").json() if d["original"] == "ラーメン")
+    assert row["source_lang"] == "Japanese"  # deterministic, immediate
+    assert any(x["original"] == "ラーメン" for x in c.get("/api/cards").json())
+
+
 # --- /api/clusters and /api/candidates ----------------------------------
 
 

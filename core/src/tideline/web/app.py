@@ -73,9 +73,29 @@ def _connect(db_path: str) -> sqlite3.Connection:
     if db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
+    # The live post-translate backfill means a request can write while another
+    # is mid-write; wait briefly for the lock instead of erroring out.
+    conn.execute("PRAGMA busy_timeout = 3000")
     init_all_tables(conn)
     init_cluster_db(conn)
     return conn
+
+
+def _light_sweep(conn: sqlite3.Connection) -> None:
+    """Live, model-free backfill run right after a translation, so the
+    learnings view reflects new words between restarts: promote by frequency,
+    auto-generate cards, and tag source_lang deterministically (kana → Japanese,
+    hangul → Korean).
+
+    Deliberately model-free. The expensive model sweeps — clustering, native
+    gloss, Latin-script language id — stay in the startup sweep: running them
+    in the translate path would add model latency to every translation (against
+    principle 1, "translation first, learning is a passive byproduct") and, with
+    a shared llama_cpp runtime, risk a re-entrant model call from a concurrent
+    request."""
+    promote_candidates(conn)
+    auto_promote_cards(conn)
+    tag_source_langs(conn, runtime=None)  # deterministic only — no model here
 
 
 # Candidates with their source language + native gloss derived live from the
@@ -174,6 +194,12 @@ def create_app(
             )
             prompt = f"translate {req.text} to {req.target_lang}"
             translated = agent.run(prompt)
+            # Live backfill so the new word shows up in learnings immediately.
+            # Fail-soft: a backfill hiccup must never break the translation.
+            try:
+                _light_sweep(conn)
+            except Exception:
+                pass
         finally:
             conn.close()
         return TranslateResponse(translated=translated, source="text")
