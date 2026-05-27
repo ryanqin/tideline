@@ -27,6 +27,7 @@ from tideline.promotion import (
     sink_card,
 )
 from tideline.runtimes import get_runtime
+from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
 
@@ -132,6 +133,10 @@ def create_app(
     auto_promote_cards(boot_conn)
     try:
         cluster_sweep(boot_conn, runtime)
+    except Exception:
+        pass
+    try:
+        tag_source_langs(boot_conn, runtime)
     except Exception:
         pass
     boot_conn.close()

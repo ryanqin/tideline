@@ -8,6 +8,7 @@ from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
 from tideline.promotion import auto_promote_cards, promote_candidates
 from tideline.runtimes import get_runtime
+from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
@@ -65,6 +66,13 @@ def main(argv: list[str] | None = None) -> int:
     # must never break the user's primary translation flow.
     try:
         cluster_sweep(conn, runtime)
+    except Exception:
+        pass
+
+    # Tag sweep: backfill source_lang on untagged rows. Deterministic for
+    # non-Latin scripts (free); model fallback for Latin. Fail-soft.
+    try:
+        tag_source_langs(conn, runtime)
     except Exception:
         pass
 

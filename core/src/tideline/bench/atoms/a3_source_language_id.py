@@ -3,20 +3,23 @@
 Lenient eval: the response matches if it contains either the language name
 or its ISO code, case-insensitive. The model may answer "Japanese" or "ja"
 or "日本語" — all acceptable. This is the kind of operation a background
-sweep might invoke 1000s of times to tag drawer rows that lack `source`.
+sweep invokes to tag drawer rows that lack `source_lang`.
+
+The prompt lives in `tideline.intelligence.source_language` so this benchmark
+measures exactly the prompt the production tag-sweep runs — never two prompts
+for one atom.
 """
 
 from __future__ import annotations
 
+from tideline.intelligence.source_language import SYSTEM_PROMPT
+from tideline.intelligence.source_language import build_prompt as _build_prompt
 
 ID = "A3"
 NAME = "Identify source language"
 CATEGORY = "tier_a"
 
-SYSTEM_PROMPT = (
-    "You are a precise language identifier. Respond with only the language "
-    "name in English, no preamble."
-)
+__all__ = ["ID", "NAME", "CATEGORY", "SYSTEM_PROMPT", "CASES", "build_prompt", "evaluate"]
 
 
 CASES = [
@@ -36,7 +39,7 @@ CASES = [
 
 
 def build_prompt(case: dict) -> str:
-    return f"What language is this text written in? '{case['text']}'"
+    return _build_prompt(case["text"])
 
 
 def evaluate(case: dict, response: str) -> bool:

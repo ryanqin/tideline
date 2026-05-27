@@ -65,6 +65,10 @@ def test_drift_cli_imports_only_public_surface():
         # name in one budgeted call; same lifecycle-dependency rationale
         # as promotion above.
         "tideline.cluster",
+        # ②b-2: source-language tag sweep on CLI startup. Backfills source_lang
+        # on untagged rows (deterministic script + model fallback). Same
+        # background-lifecycle rationale as promotion / cluster above.
+        "tideline.tagging",
     }
     imports: set[str] = set()
     for node in ast.walk(tree):
