@@ -32,6 +32,7 @@ _ATOM_MODULES: tuple[str, ...] = (
     "tideline.bench.atoms.b4_common_theme",
     "tideline.bench.atoms.b5_complexity_tier",
     "tideline.bench.atoms.b6_episodic_title",
+    "tideline.bench.atoms.b7_topic_relatedness",
 )
 
 

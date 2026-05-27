@@ -6,7 +6,7 @@ module declaring ID / NAME / CATEGORY / SYSTEM_PROMPT / CASES /
 build_prompt / evaluate.
 
 Functional gates:
-- All 11 atom modules load and expose the required interface
+- All 12 atom modules load and expose the required interface
 - Each atom has at least 5 cases (statistical floor for accuracy claims)
 - Atom IDs are unique
 - Categories are constrained to {"tier_a", "tier_b"}
@@ -41,9 +41,9 @@ _REQUIRED_CALLABLES = ("build_prompt", "evaluate")
 # --- Atom module interface -----------------------------------------------
 
 
-def test_load_atoms_returns_eleven_modules():
+def test_load_atoms_returns_twelve_modules():
     atoms = load_atoms()
-    assert len(atoms) == 11, f"expected 11 atoms, got {len(atoms)}"
+    assert len(atoms) == 12, f"expected 12 atoms, got {len(atoms)}"
 
 
 def test_each_atom_module_exposes_required_attributes():
@@ -63,7 +63,7 @@ def test_atom_ids_are_unique():
 def test_atom_ids_match_expected_pattern():
     ids = {atom.ID for atom in load_atoms()}
     expected = {"A1", "A2", "A3", "A5", "A6",
-                "B1", "B2", "B3", "B4", "B5", "B6"}
+                "B1", "B2", "B3", "B4", "B5", "B6", "B7"}
     assert ids == expected
 
 
@@ -253,13 +253,13 @@ def test_run_atom_with_mock_returns_one_result_per_case():
 def test_run_full_mock_produces_results_for_all_atoms():
     results = run_atoms("mock")
     atom_ids = {r.atom_id for r in results}
-    assert len(atom_ids) == 11
+    assert len(atom_ids) == 12
 
 
 def test_summarize_produces_one_row_per_atom():
     results = run_atoms("mock")
     summaries = summarize(results)
-    assert len(summaries) == 11
+    assert len(summaries) == 12
     for s in summaries:
         assert isinstance(s, AtomSummary)
         assert 0.0 <= s.accuracy <= 1.0
