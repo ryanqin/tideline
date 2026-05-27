@@ -60,6 +60,27 @@ header nav a.active {
 
 header nav a:hover { color: var(--accent); }
 
+/* First language lives in the header — the always-visible "me" anchor that
+   drives the translation target, the UI locale, and how learnings cluster. */
+.identity {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.identity label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.identity select {
+  min-width: auto;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.85rem;
+}
+
 main {
   max-width: var(--max-width);
   margin: 0 auto;
@@ -148,27 +169,6 @@ output:empty {
 .hint a { color: var(--accent); }
 
 /* --- learnings page --- */
-
-.identity-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 2rem;
-}
-
-.identity-bar label {
-  margin: 0;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-
-.identity-bar select {
-  min-width: auto;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.9rem;
-}
 
 .cluster {
   background: var(--surface);

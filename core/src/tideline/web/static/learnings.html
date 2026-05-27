@@ -5,53 +5,53 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tideline — learnings</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/i18n.js"></script>
 </head>
 <body>
   <header>
     <h1>Tideline</h1>
     <nav>
-      <a href="/">Translate</a>
-      <a href="/learnings" class="active">Learnings</a>
+      <a href="/" data-i18n="nav_translate">Translate</a>
+      <a href="/learnings" class="active" data-i18n="nav_learnings">Learnings</a>
     </nav>
+    <div class="identity">
+      <label for="native-lang" data-i18n="first_lang_label">Your first language</label>
+      <select id="native-lang">
+        <option value="Chinese" data-i18n="lang_Chinese">Chinese</option>
+        <option value="English" data-i18n="lang_English">English</option>
+        <option value="Japanese" data-i18n="lang_Japanese">Japanese</option>
+        <option value="French" data-i18n="lang_French">French</option>
+        <option value="Spanish" data-i18n="lang_Spanish">Spanish</option>
+        <option value="German" data-i18n="lang_German">German</option>
+        <option value="Italian" data-i18n="lang_Italian">Italian</option>
+        <option value="Korean" data-i18n="lang_Korean">Korean</option>
+      </select>
+    </div>
   </header>
 
   <main>
-    <p class="hint" style="margin-top:0;margin-bottom:1.5rem;">
+    <p class="hint" style="margin-top:0;margin-bottom:1.5rem;" data-i18n="learnings_hint">
       What's quietly come together so far. Cards surface on their own as terms
       repeat — keep the ones worth studying and sink the rest. Each card keeps
       the stack of moments it grew from.
     </p>
 
-    <div class="identity-bar">
-      <label for="native-lang">Your first language</label>
-      <select id="native-lang">
-        <option>Chinese</option>
-        <option>English</option>
-        <option>Japanese</option>
-        <option>French</option>
-        <option>Spanish</option>
-        <option>German</option>
-        <option>Italian</option>
-        <option>Korean</option>
-      </select>
-    </div>
-
-    <h3 class="section-title">Your review deck — cards</h3>
+    <h3 class="section-title" data-i18n="deck_title">Your review deck — cards</h3>
     <div id="cards"></div>
 
     <div class="section-head">
-      <h3 class="section-title">Clusters</h3>
+      <h3 class="section-title" data-i18n="clusters_title">Clusters</h3>
       <div class="toggle" id="cluster-toggle" role="tablist" aria-label="Cluster grouping">
-        <button type="button" data-view="concept" class="active" role="tab" aria-selected="true">By concept</button>
-        <button type="button" data-view="language" role="tab" aria-selected="false">By language</button>
+        <button type="button" data-view="concept" class="active" role="tab" aria-selected="true" data-i18n="by_concept">By concept</button>
+        <button type="button" data-view="language" role="tab" aria-selected="false" data-i18n="by_language">By language</button>
       </div>
     </div>
     <div id="clusters"></div>
 
-    <h3 class="section-title">Themes — moments that belong together</h3>
+    <h3 class="section-title" data-i18n="themes_title">Themes — moments that belong together</h3>
     <div id="themes"></div>
 
-    <h3 class="section-title">Candidates — repeated translations</h3>
+    <h3 class="section-title" data-i18n="candidates_title">Candidates — repeated translations</h3>
     <div id="candidates"></div>
   </main>
 
@@ -78,28 +78,28 @@
         const r = await fetch('/api/cards');
         const data = await r.json();
         if (!data.length) {
-          target.innerHTML = '<div class="empty">No cards yet — cards surface on their own once a term repeats enough; you keep the ones worth studying and sink the rest.</div>';
+          target.innerHTML = `<div class="empty">${escape(t('cards_empty'))}</div>`;
           return;
         }
         target.innerHTML = data.map(c => `
           <div class="cluster card" data-card-id="${c.id}">
             <div class="card-head">
               <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
-              <button type="button" class="sink-btn" data-card-id="${c.id}" title="Sink this card back to sediment">Sink</button>
+              <button type="button" class="sink-btn" data-card-id="${c.id}" title="${escape(t('sink_title'))}">${escape(t('sink'))}</button>
             </div>
             <div class="members">
               ${c.moments.map(m => `
                 <div class="member">
                   <span class="original">${escape(m.source || 'text')}</span>
                   <span class="translated">${escape(m.at || '')}</span>
-                  <span class="context">${m.context ? escape(m.context) : '— no context captured —'}</span>
+                  <span class="context">${m.context ? escape(m.context) : escape(t('no_context'))}</span>
                 </div>
               `).join('')}
             </div>
           </div>
         `).join('');
       } catch (e) {
-        target.innerHTML = `<div class="empty">Couldn't load cards: ${escape(String(e))}</div>`;
+        target.innerHTML = `<div class="empty">${escape(t('err_cards'))}${escape(String(e))}</div>`;
       }
     }
 
@@ -109,12 +109,12 @@
         const r = await fetch('/api/clusters');
         const data = await r.json();
         if (!data.length) {
-          target.innerHTML = '<div class="empty">No clusters yet. Keep translating and they\'ll surface on their own.</div>';
+          target.innerHTML = `<div class="empty">${escape(t('clusters_empty'))}</div>`;
           return;
         }
         target.innerHTML = data.map(c => `
           <div class="cluster">
-            <h2>${escape(c.title || `Cluster #${c.id}`)}</h2>
+            <h2>${escape(c.title || (t('cluster_fallback') + c.id))}</h2>
             <div class="members">
               ${c.members.map(m => `
                 <div class="member">
@@ -127,7 +127,7 @@
           </div>
         `).join('');
       } catch (e) {
-        target.innerHTML = `<div class="empty">Couldn't load clusters: ${escape(String(e))}</div>`;
+        target.innerHTML = `<div class="empty">${escape(t('err_clusters'))}${escape(String(e))}</div>`;
       }
     }
 
@@ -137,7 +137,7 @@
         const r = await fetch('/api/clusters/by-language');
         const data = await r.json();
         if (!data.length) {
-          target.innerHTML = '<div class="empty">No learnings yet — once translations repeat, they group by source language here.</div>';
+          target.innerHTML = `<div class="empty">${escape(t('by_language_empty'))}</div>`;
           return;
         }
         target.innerHTML = data.map(g => `
@@ -154,7 +154,7 @@
           </div>
         `).join('');
       } catch (e) {
-        target.innerHTML = `<div class="empty">Couldn't load language groups: ${escape(String(e))}</div>`;
+        target.innerHTML = `<div class="empty">${escape(t('err_languages'))}${escape(String(e))}</div>`;
       }
     }
 
@@ -164,24 +164,25 @@
     // meaning + the moment it came from); "Reveal all" flips to plain
     // browsing. No SRS numbers, no badges — any schedule only decides which
     // memory surfaces, never shown as a task.
-    function themeCard(t) {
-      const n = t.members.length;
-      const rows = t.members.map(m => `
+    function themeCard(theme) {
+      const n = theme.members.length;
+      const rows = theme.members.map(m => `
         <div class="member">
           <span class="translated">${escape(m.translated)}</span>
-          <span class="masked" role="button" tabindex="0" title="tap to reveal">${escape(m.original)}</span>
+          <span class="masked" role="button" tabindex="0" title="${escape(t('tap_reveal'))}">${escape(m.original)}</span>
           ${m.context ? `<span class="context">${escape(m.context)}</span>` : ''}
         </div>
       `).join('');
+      const moments = n === 1 ? t('moment_one') : t('moment_many');
       return `
-        <div class="theme" data-theme-id="${t.id}">
+        <div class="theme" data-theme-id="${theme.id}">
           <div class="theme-cover" role="button" tabindex="0" aria-expanded="false">
-            <h2>${escape(t.title || `A theme (#${t.id})`)}</h2>
-            <span class="theme-meta">${n} moment${n === 1 ? '' : 's'} · tap to recall</span>
+            <h2>${escape(theme.title || (t('theme_fallback') + theme.id))}</h2>
+            <span class="theme-meta">${n} ${escape(moments)} · ${escape(t('tap_recall'))}</span>
           </div>
           <div class="theme-recall" hidden>
             <div class="theme-tools">
-              <button type="button" class="reveal-all">Reveal all</button>
+              <button type="button" class="reveal-all">${escape(t('reveal_all'))}</button>
             </div>
             <div class="members">${rows}</div>
           </div>
@@ -195,12 +196,12 @@
         const r = await fetch('/api/themes');
         const data = await r.json();
         if (!data.length) {
-          target.innerHTML = '<div class="empty">No themes yet — as related words pile up, they quietly gather into a remembered scene you can revisit here.</div>';
+          target.innerHTML = `<div class="empty">${escape(t('themes_empty'))}</div>`;
           return;
         }
         target.innerHTML = data.map(themeCard).join('');
       } catch (e) {
-        target.innerHTML = `<div class="empty">Couldn't load themes: ${escape(String(e))}</div>`;
+        target.innerHTML = `<div class="empty">${escape(t('err_themes'))}${escape(String(e))}</div>`;
       }
     }
 
@@ -213,9 +214,12 @@
         const revealAll = e.target.closest('.reveal-all');
         if (revealAll) {
           const theme = revealAll.closest('.theme');
-          const reveal = revealAll.textContent === 'Reveal all';
-          theme.querySelectorAll('.masked').forEach(s => s.classList.toggle('revealed', reveal));
-          revealAll.textContent = reveal ? 'Mask' : 'Reveal all';
+          const masks = theme.querySelectorAll('.masked');
+          // State comes from the words, not the (localized) button label:
+          // reveal if anything is still hidden, otherwise re-mask.
+          const anyHidden = [...masks].some(s => !s.classList.contains('revealed'));
+          masks.forEach(s => s.classList.toggle('revealed', anyHidden));
+          revealAll.textContent = anyHidden ? t('mask') : t('reveal_all');
           return;
         }
         const mask = e.target.closest('.masked');
@@ -294,36 +298,13 @@
       loadCandidates();
     }
 
-    // First-language picker: persist the choice, then refresh so glosses into a
-    // language you already speak drop away immediately.
-    function setupIdentity() {
-      const sel = document.getElementById('native-lang');
-      if (!sel) return;
-      sel.addEventListener('change', async () => {
-        const lang = sel.value;
-        sel.disabled = true;
-        try {
-          const r = await fetch('/api/identity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ native_lang: lang }),
-          });
-          if (r.ok) {
-            NATIVE_LANG = lang;
-            refreshLearnings();
-          }
-        } catch (e) { /* keep previous selection */ }
-        finally { sel.disabled = false; }
-      });
-    }
-
     async function loadCandidates() {
       const target = document.getElementById('candidates');
       try {
         const r = await fetch('/api/candidates');
         const data = await r.json();
         if (!data.length) {
-          target.innerHTML = '<div class="empty">No candidates yet.</div>';
+          target.innerHTML = `<div class="empty">${escape(t('candidates_empty'))}</div>`;
           return;
         }
         target.innerHTML = data.map(c => `
@@ -334,7 +315,7 @@
           </div>
         `).join('');
       } catch (e) {
-        target.innerHTML = `<div class="empty">Couldn't load candidates: ${escape(String(e))}</div>`;
+        target.innerHTML = `<div class="empty">${escape(t('err_candidates'))}${escape(String(e))}</div>`;
       }
     }
 
@@ -344,22 +325,17 @@
       })[ch]);
     }
 
-    async function init() {
-      try {
-        const r = await fetch('/api/identity');
-        const id = await r.json();
-        if (id && id.native_lang) NATIVE_LANG = id.native_lang;
-      } catch (e) { /* keep default */ }
-      const sel = document.getElementById('native-lang');
-      if (sel) sel.value = NATIVE_LANG;
+    function init() {
       setupClusterToggle();
       setupSink();
       setupThemes();
-      setupIdentity();
-      loadCards();
-      loadClusters();
-      loadThemes();
-      loadCandidates();
+      // The shared header picker loads the language, localizes the chrome, and
+      // re-renders the learnings on load + on every first-language change.
+      setupIdentityPicker((lang) => {
+        NATIVE_LANG = lang;
+        document.title = t('title_learnings');
+        refreshLearnings();
+      });
     }
     init();
   </script>
