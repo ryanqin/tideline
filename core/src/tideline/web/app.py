@@ -27,7 +27,7 @@ from tideline.promotion import (
     sink_card,
 )
 from tideline.runtimes import get_runtime
-from tideline.tagging import tag_source_langs
+from tideline.tagging import tag_native_glosses, tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
 
@@ -137,6 +137,13 @@ def create_app(
         pass
     try:
         tag_source_langs(boot_conn, runtime)
+    except Exception:
+        pass
+    try:
+        tag_native_glosses(
+            boot_conn, runtime,
+            get_setting(boot_conn, "native_lang", DEFAULT_NATIVE_LANG),
+        )
     except Exception:
         pass
     boot_conn.close()

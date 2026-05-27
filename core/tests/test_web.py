@@ -261,7 +261,7 @@ def test_drift_web_app_runs_same_startup_sweep_as_cli():
     web_src = inspect.getsource(web_app)
     for token in (
         "promote_candidates", "auto_promote_cards", "cluster_sweep",
-        "tag_source_langs",
+        "tag_source_langs", "tag_native_glosses",
     ):
         assert token in cli_src, f"cli/__main__.py missing {token}"
         assert token in web_src, f"web/app.py missing {token}"

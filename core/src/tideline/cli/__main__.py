@@ -8,7 +8,8 @@ from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
 from tideline.promotion import auto_promote_cards, promote_candidates
 from tideline.runtimes import get_runtime
-from tideline.tagging import tag_source_langs
+from tideline.tagging import tag_native_glosses, tag_source_langs
+from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
@@ -73,6 +74,13 @@ def main(argv: list[str] | None = None) -> int:
     # non-Latin scripts (free); model fallback for Latin. Fail-soft.
     try:
         tag_source_langs(conn, runtime)
+    except Exception:
+        pass
+
+    # Native-gloss sweep: render each term in the user's first language. Pure
+    # generation, so it always uses the model; on mock it no-ops. Fail-soft.
+    try:
+        tag_native_glosses(conn, runtime, get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG))
     except Exception:
         pass
 

@@ -5,13 +5,21 @@ from __future__ import annotations
 import sqlite3
 
 from tideline.runtime import ModelRuntime
-from tideline.tagging import tag_source_langs
+from tideline.tagging import tag_native_glosses, tag_source_langs
 from tideline.tools import init_all_tables
 
 
 class _AlwaysFrench(ModelRuntime):
     def generate(self, prompt: str) -> str:
         return "French"
+
+
+class _AlwaysGloss(ModelRuntime):
+    def __init__(self, gloss: str = "译") -> None:
+        self._gloss = gloss
+
+    def generate(self, prompt: str) -> str:
+        return self._gloss
 
 
 def _conn() -> sqlite3.Connection:
@@ -91,3 +99,81 @@ def test_tag_idempotent_second_sweep_noop():
     tag_source_langs(conn, runtime=None)
     stats = tag_source_langs(conn, runtime=None)
     assert stats["tagged"] == 0  # nothing left untagged
+
+
+# --- native_gloss backfill -----------------------------------------------
+
+
+def test_gloss_fills_eligible_rows():
+    conn = _conn()
+    _add(conn, "ラーメン", source_lang="Japanese", target="English")
+    stats = tag_native_glosses(conn, _AlwaysGloss("拉面"), "Chinese")
+    assert stats["glossed"] == 1
+    got = conn.execute(
+        "SELECT native_gloss FROM translations WHERE original='ラーメン'"
+    ).fetchone()[0]
+    assert got == "拉面"
+
+
+def test_gloss_skips_when_target_is_native():
+    conn = _conn()
+    _add(conn, "ramen", source_lang="Japanese", target="Chinese")  # target IS native
+    stats = tag_native_glosses(conn, _AlwaysGloss(), "Chinese")
+    assert stats["glossed"] == 0
+
+
+def test_gloss_skips_when_source_is_native():
+    conn = _conn()
+    _add(conn, "合同", source_lang="Chinese", target="English")  # source IS native
+    stats = tag_native_glosses(conn, _AlwaysGloss(), "Chinese")
+    assert stats["glossed"] == 0
+
+
+def test_gloss_one_model_call_per_distinct_term():
+    conn = _conn()
+    for _ in range(4):
+        _add(conn, "ラーメン", source_lang="Japanese", target="English")
+
+    calls = {"n": 0}
+
+    class _Counting(ModelRuntime):
+        def generate(self, prompt: str) -> str:
+            calls["n"] += 1
+            return "拉面"
+
+    stats = tag_native_glosses(conn, _Counting(), "Chinese")
+    assert calls["n"] == 1  # one model call for the distinct term
+    assert stats["glossed"] == 4  # applied to all four rows
+
+
+def test_gloss_respects_budget():
+    conn = _conn()
+    for w in ("ラーメン", "すし", "うどん"):
+        _add(conn, w, source_lang="Japanese", target="English")
+    stats = tag_native_glosses(conn, _AlwaysGloss("译"), "Chinese", budget=2)
+    assert stats["terms"] == 2
+    assert stats["remaining"] == 1
+
+
+def test_gloss_idempotent():
+    conn = _conn()
+    _add(conn, "ラーメン", source_lang="Japanese", target="English")
+    tag_native_glosses(conn, _AlwaysGloss("拉面"), "Chinese")
+    stats = tag_native_glosses(conn, _AlwaysGloss("拉面"), "Chinese")
+    assert stats["glossed"] == 0
+
+
+def test_gloss_mock_echo_writes_nothing():
+    # The real mock is a stub, not a translator: its echo of the gloss prompt
+    # runs well past the headword length cap, so a mock-runtime sweep writes no
+    # junk glosses. (This is why gloss quality genuinely needs a real model.)
+    from tideline.runtimes import get_runtime
+
+    conn = _conn()
+    _add(conn, "ラーメン", source_lang="Japanese", target="English")
+    stats = tag_native_glosses(conn, get_runtime("mock"), "Chinese")
+    assert stats["glossed"] == 0
+    got = conn.execute(
+        "SELECT native_gloss FROM translations WHERE original='ラーメン'"
+    ).fetchone()[0]
+    assert got is None
