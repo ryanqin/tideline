@@ -188,6 +188,64 @@ def test_clusters_shape_includes_members(tmp_path):
     assert all(m["source_lang"] == "Japanese" for m in cluster["members"])
 
 
+# --- /api/themes (album-style thematic recall) --------------------------
+
+
+def test_themes_endpoint_returns_list(client):
+    r = client.get("/api/themes")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+def test_themes_and_concept_clusters_isolated_across_endpoints(tmp_path):
+    """The clusters table holds both relations; /api/clusters must show only
+    concept clusters and /api/themes only theme clusters, no leak either way.
+    Guards the bug a real model would expose: an unscoped SELECT surfacing
+    theme groups in the By-concept view once the theme sweep runs."""
+    from tideline.cluster import init_db, name_clusters, rebuild_clusters, vote_on_pair
+    from tideline.runtime import ModelRuntime
+    from tideline.tools import init_all_tables
+
+    class _Yes(ModelRuntime):
+        def generate(self, prompt: str) -> str:
+            return "yes"
+
+    class _Title(ModelRuntime):
+        def generate(self, prompt: str) -> str:
+            return "a remembered afternoon"
+
+    db = str(tmp_path / "t.db")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    init_db(conn)
+    a = conn.execute(
+        "INSERT INTO translations (original, target_lang, translated) "
+        "VALUES ('ramen','en','ramen')"
+    ).lastrowid
+    b = conn.execute(
+        "INSERT INTO translations (original, target_lang, translated) "
+        "VALUES ('sushi','en','sushi')"
+    ).lastrowid
+    conn.commit()
+    # Same pair voted under both relations (concept a≡b, theme a~b).
+    for _ in range(3):
+        vote_on_pair(conn, _Yes(), a, b, vote_type="concept")
+        vote_on_pair(conn, _Yes(), a, b, vote_type="theme")
+    rebuild_clusters(conn, vote_type="concept")
+    rebuild_clusters(conn, vote_type="theme")
+    name_clusters(conn, _Title(), vote_type="concept")
+    name_clusters(conn, _Title(), vote_type="theme")
+    conn.close()
+
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    concept = c.get("/api/clusters").json()
+    theme = c.get("/api/themes").json()
+    assert len(concept) == 1   # only the concept cluster
+    assert len(theme) == 1     # only the theme cluster
+    assert {m["original"] for m in concept[0]["members"]} == {"ramen", "sushi"}
+    assert {m["original"] for m in theme[0]["members"]} == {"ramen", "sushi"}
+
+
 # --- /api/clusters/by-language (deterministic lens) ----------------------
 
 

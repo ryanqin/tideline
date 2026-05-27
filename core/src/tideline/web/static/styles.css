@@ -332,3 +332,99 @@ output:empty {
 .candidate .langtag { margin: 0 0.6rem; }
 
 .cluster .langtag { display: block; margin: -0.2rem 0 0.7rem; }
+
+/* --- themes (album-style recall) --- */
+
+.theme {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 1.2rem;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.theme-cover {
+  padding: 1.2rem 1.4rem;
+  cursor: pointer;
+}
+
+.theme-cover:hover { background: var(--accent-soft); }
+.theme-cover:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: -2px; }
+
+.theme-cover h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+  color: var(--accent);
+}
+
+.theme-meta { font-size: 0.82rem; color: var(--muted); }
+
+.theme-recall {
+  padding: 0 1.4rem 1.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.theme-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.7rem 0;
+}
+
+.reveal-all {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: none;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.reveal-all:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+.theme .members {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.theme .member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-top: 1px dashed var(--border);
+}
+.theme .member:first-child { border-top: none; }
+
+/* The word to recall, hidden behind its meaning until you ask for it. */
+.masked {
+  justify-self: end;
+  color: transparent;
+  background: var(--accent-soft);
+  border-radius: 5px;
+  padding: 0.1rem 0.6rem;
+  min-width: 2.5rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.masked:hover { background: #d8e3f0; }
+.masked.revealed {
+  color: var(--accent);
+  background: transparent;
+  font-weight: 500;
+  padding-left: 0;
+  cursor: default;
+}
+
+.theme .translated { color: var(--muted); justify-self: start; }
+.theme .context {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}

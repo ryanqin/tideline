@@ -48,6 +48,9 @@
     </div>
     <div id="clusters"></div>
 
+    <h3 class="section-title">Themes — moments that belong together</h3>
+    <div id="themes"></div>
+
     <h3 class="section-title">Candidates — repeated translations</h3>
     <div id="candidates"></div>
   </main>
@@ -163,6 +166,86 @@
       }
     }
 
+    // Album-style thematic recall (DESIGN: themes, not events). Each theme
+    // cluster is a cover you choose to open — passive, never pushed. Opening
+    // it defaults to masked active recall (the foreign word hidden behind its
+    // meaning + the moment it came from); "Reveal all" flips to plain
+    // browsing. No SRS numbers, no badges — any schedule only decides which
+    // memory surfaces, never shown as a task.
+    function themeCard(t) {
+      const n = t.members.length;
+      const rows = t.members.map(m => `
+        <div class="member">
+          <span class="translated">${escape(m.translated)}${m.native_gloss ? ' (' + escape(m.native_gloss) + ')' : ''}</span>
+          <span class="masked" role="button" tabindex="0" title="tap to reveal">${escape(m.original)}</span>
+          ${m.context ? `<span class="context">${escape(m.context)}</span>` : ''}
+        </div>
+      `).join('');
+      return `
+        <div class="theme" data-theme-id="${t.id}">
+          <div class="theme-cover" role="button" tabindex="0" aria-expanded="false">
+            <h2>${escape(t.title || `A theme (#${t.id})`)}</h2>
+            <span class="theme-meta">${n} moment${n === 1 ? '' : 's'} · tap to recall</span>
+          </div>
+          <div class="theme-recall" hidden>
+            <div class="theme-tools">
+              <button type="button" class="reveal-all">Reveal all</button>
+            </div>
+            <div class="members">${rows}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadThemes() {
+      const target = document.getElementById('themes');
+      try {
+        const r = await fetch('/api/themes');
+        const data = await r.json();
+        if (!data.length) {
+          target.innerHTML = '<div class="empty">No themes yet — as related words pile up, they quietly gather into a remembered scene you can revisit here.</div>';
+          return;
+        }
+        target.innerHTML = data.map(themeCard).join('');
+      } catch (e) {
+        target.innerHTML = `<div class="empty">Couldn't load themes: ${escape(String(e))}</div>`;
+      }
+    }
+
+    // One delegated handler for the whole album: open/close a cover, reveal a
+    // single masked word, or flip a theme between recall and plain view.
+    function setupThemes() {
+      const root = document.getElementById('themes');
+      if (!root) return;
+      const onActivate = (e) => {
+        const revealAll = e.target.closest('.reveal-all');
+        if (revealAll) {
+          const theme = revealAll.closest('.theme');
+          const reveal = revealAll.textContent === 'Reveal all';
+          theme.querySelectorAll('.masked').forEach(s => s.classList.toggle('revealed', reveal));
+          revealAll.textContent = reveal ? 'Mask' : 'Reveal all';
+          return;
+        }
+        const mask = e.target.closest('.masked');
+        if (mask) { mask.classList.toggle('revealed'); return; }
+        const cover = e.target.closest('.theme-cover');
+        if (cover) {
+          const recall = cover.parentElement.querySelector('.theme-recall');
+          const opening = recall.hasAttribute('hidden');
+          if (opening) recall.removeAttribute('hidden'); else recall.setAttribute('hidden', '');
+          cover.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        }
+      };
+      root.addEventListener('click', onActivate);
+      // Keyboard parity for the role="button" cover + masked words.
+      root.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.theme-cover, .masked')) {
+          e.preventDefault();
+          onActivate(e);
+        }
+      });
+    }
+
     function setupClusterToggle() {
       const toggle = document.getElementById('cluster-toggle');
       if (!toggle) return;
@@ -215,6 +298,7 @@
       loadCards();
       if (activeClusterView() === 'language') loadClustersByLanguage();
       else loadClusters();
+      loadThemes();
       loadCandidates();
     }
 
@@ -278,9 +362,11 @@
       if (sel) sel.value = NATIVE_LANG;
       setupClusterToggle();
       setupSink();
+      setupThemes();
       setupIdentity();
       loadCards();
       loadClusters();
+      loadThemes();
       loadCandidates();
     }
     init();

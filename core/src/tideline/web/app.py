@@ -134,6 +134,42 @@ def _fetch_candidates(
     ]
 
 
+def _fetch_clusters(
+    conn: sqlite3.Connection, vote_type: str
+) -> list[dict[str, Any]]:
+    """Clusters of one relation, each with its members. Shared by
+    /api/clusters (vote_type='concept' — synonym aggregation) and /api/themes
+    (vote_type='theme' — B7 relatedness). Scoping by vote_type is what keeps
+    the two relations' clusters out of each other's view now that they share
+    the clusters table."""
+    rows = conn.execute(
+        "SELECT id, title FROM clusters WHERE vote_type = ? ORDER BY id",
+        (vote_type,),
+    ).fetchall()
+    result: list[dict[str, Any]] = []
+    for cid, title in rows:
+        members = conn.execute(
+            """
+            SELECT t.original, t.translated, t.context_snippet, t.source_lang, t.native_gloss
+            FROM cluster_members cm
+            JOIN translations t ON t.id = cm.translation_id
+            WHERE cm.cluster_id = ?
+            ORDER BY t.id
+            """,
+            (cid,),
+        ).fetchall()
+        result.append({
+            "id": cid,
+            "title": title,
+            "members": [
+                {"original": o, "translated": tr, "context": ctx or "",
+                 "source_lang": sl, "native_gloss": ng}
+                for o, tr, ctx, sl, ng in members
+            ],
+        })
+    return result
+
+
 def create_app(
     runtime_name: str = "mock",
     db_path: str | None = None,
@@ -214,33 +250,23 @@ def create_app(
 
     @app.get("/api/clusters")
     def clusters() -> list[dict[str, Any]]:
+        """Concept clusters — synonym aggregation (B1). vote_type-scoped so
+        theme clusters never leak into the By-concept view."""
         conn = _connect(db)
         try:
-            rows = conn.execute(
-                "SELECT id, title FROM clusters ORDER BY id"
-            ).fetchall()
-            result: list[dict[str, Any]] = []
-            for cid, title in rows:
-                members = conn.execute(
-                    """
-                    SELECT t.original, t.translated, t.context_snippet, t.source_lang, t.native_gloss
-                    FROM cluster_members cm
-                    JOIN translations t ON t.id = cm.translation_id
-                    WHERE cm.cluster_id = ?
-                    ORDER BY t.id
-                    """,
-                    (cid,),
-                ).fetchall()
-                result.append({
-                    "id": cid,
-                    "title": title,
-                    "members": [
-                        {"original": o, "translated": tr, "context": ctx or "",
-                         "source_lang": sl, "native_gloss": ng}
-                        for o, tr, ctx, sl, ng in members
-                    ],
-                })
-            return result
+            return _fetch_clusters(conn, "concept")
+        finally:
+            conn.close()
+
+    @app.get("/api/themes")
+    def themes() -> list[dict[str, Any]]:
+        """Album-style thematic recall: theme clusters (B7 relatedness) — the
+        "your Tokyo lunches" groupings, distinct from the synonym clusters at
+        /api/clusters. Same shape so the panel can reuse the card. Passive by
+        design: surfaced only when the user opens this view, never pushed."""
+        conn = _connect(db)
+        try:
+            return _fetch_clusters(conn, "theme")
         finally:
             conn.close()
 
