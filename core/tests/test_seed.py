@@ -209,14 +209,3 @@ def test_seed_sets_source_language(conn):
     assert conn.execute(
         "SELECT DISTINCT source_lang FROM translations WHERE original='noodle soup'"
     ).fetchall() == [("English",)]
-
-
-def test_seed_sets_native_gloss(conn):
-    seed_db(conn)
-    # frequent terms carry a Chinese gloss for the learnings view
-    assert conn.execute(
-        "SELECT DISTINCT native_gloss FROM translations WHERE translated='ramen'"
-    ).fetchall() == [("拉面",)]
-    assert conn.execute(
-        "SELECT DISTINCT native_gloss FROM translations WHERE translated='heart'"
-    ).fetchall() == [("心",)]

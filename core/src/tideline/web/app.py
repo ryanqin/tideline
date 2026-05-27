@@ -27,7 +27,7 @@ from tideline.promotion import (
     sink_card,
 )
 from tideline.runtimes import get_runtime
-from tideline.tagging import tag_native_glosses, tag_source_langs
+from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
 
@@ -49,7 +49,8 @@ _TIDELINE_SYSTEM = (
 
 class TranslateRequest(BaseModel):
     text: str
-    target_lang: str = "Chinese"
+    # No target_lang: Tideline always translates into the user's first
+    # language (read from settings), never a per-request A→B target.
 
 
 class TranslateResponse(BaseModel):
@@ -98,21 +99,16 @@ def _light_sweep(conn: sqlite3.Connection) -> None:
     tag_source_langs(conn, runtime=None)  # deterministic only — no model here
 
 
-# Candidates with their source language + native gloss derived live from the
-# translations they came from. The single source of truth for language
-# metadata is `translations`; candidates/cards/clusters never carry a copy,
-# they derive it — so a re-detect on the drawer flows everywhere for free.
+# Candidates with their source language derived live from the translations they
+# came from. The single source of truth for language metadata is `translations`;
+# candidates/cards/clusters never carry a copy, they derive it — so a re-detect
+# on the drawer flows everywhere for free.
 _CANDIDATES_SQL = """
     SELECT id, original, target_lang, translated, occurrence_count,
         (SELECT t.source_lang FROM translations t
          WHERE t.original = candidates.original
            AND t.target_lang = candidates.target_lang
-         ORDER BY t.id DESC LIMIT 1) AS source_lang,
-        (SELECT t.native_gloss FROM translations t
-         WHERE t.original = candidates.original
-           AND t.target_lang = candidates.target_lang
-           AND t.native_gloss IS NOT NULL
-         ORDER BY t.id DESC LIMIT 1) AS native_gloss
+         ORDER BY t.id DESC LIMIT 1) AS source_lang
     FROM candidates ORDER BY occurrence_count DESC, original
 """
 
@@ -129,8 +125,8 @@ def _fetch_candidates(
     rows = conn.execute(sql).fetchall()
     return [
         {"id": cid, "original": o, "source_lang": sl, "target_lang": tl,
-         "translated": tr, "count": cnt, "native_gloss": ng}
-        for cid, o, tl, tr, cnt, sl, ng in rows
+         "translated": tr, "count": cnt}
+        for cid, o, tl, tr, cnt, sl in rows
     ]
 
 
@@ -150,7 +146,7 @@ def _fetch_clusters(
     for cid, title in rows:
         members = conn.execute(
             """
-            SELECT t.original, t.translated, t.context_snippet, t.source_lang, t.native_gloss
+            SELECT t.original, t.translated, t.context_snippet, t.source_lang
             FROM cluster_members cm
             JOIN translations t ON t.id = cm.translation_id
             WHERE cm.cluster_id = ?
@@ -163,8 +159,8 @@ def _fetch_clusters(
             "title": title,
             "members": [
                 {"original": o, "translated": tr, "context": ctx or "",
-                 "source_lang": sl, "native_gloss": ng}
-                for o, tr, ctx, sl, ng in members
+                 "source_lang": sl}
+                for o, tr, ctx, sl in members
             ],
         })
     return result
@@ -203,13 +199,6 @@ def create_app(
         tag_source_langs(boot_conn, runtime)
     except Exception:
         pass
-    try:
-        tag_native_glosses(
-            boot_conn, runtime,
-            get_setting(boot_conn, "native_lang", DEFAULT_NATIVE_LANG),
-        )
-    except Exception:
-        pass
     boot_conn.close()
 
     app = FastAPI(title="Tideline", description="Local-first translation playground")
@@ -236,7 +225,11 @@ def create_app(
                 context={"db": conn, "source": "text"},
                 system_message=_TIDELINE_SYSTEM,
             )
-            prompt = f"translate {req.text} to {req.target_lang}"
+            # Tideline turns every language into *yours*: the target is always
+            # the user's first language (from settings), never a per-request
+            # A→B picker — that's what separates it from a generic translator.
+            native = get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)
+            prompt = f"translate {req.text} to {native}"
             translated = agent.run(prompt)
             # Live backfill so the new word shows up in learnings immediately.
             # Fail-soft: a backfill hiccup must never break the translation.
@@ -321,17 +314,12 @@ def create_app(
                     (SELECT t.source_lang FROM candidate_evidence ce
                      JOIN translations t ON t.id = ce.translation_id
                      WHERE ce.candidate_id = cards.candidate_id
-                     ORDER BY t.id DESC LIMIT 1) AS source_lang,
-                    (SELECT t.native_gloss FROM candidate_evidence ce
-                     JOIN translations t ON t.id = ce.translation_id
-                     WHERE ce.candidate_id = cards.candidate_id
-                       AND t.native_gloss IS NOT NULL
-                     ORDER BY t.id DESC LIMIT 1) AS native_gloss
+                     ORDER BY t.id DESC LIMIT 1) AS source_lang
                 FROM cards WHERE state = 'active' ORDER BY created_at DESC, original
                 """
             ).fetchall()
             result: list[dict[str, Any]] = []
-            for card_id, cand_id, original, target_lang, translated, source_lang, native_gloss in rows:
+            for card_id, cand_id, original, target_lang, translated, source_lang in rows:
                 moments = conn.execute(
                     """
                     SELECT t.translated, t.source, t.context_snippet, t.created_at
@@ -346,7 +334,6 @@ def create_app(
                     "id": card_id,
                     "original": original,
                     "source_lang": source_lang,
-                    "native_gloss": native_gloss,
                     "target_lang": target_lang,
                     "translated": translated,
                     "moments": [

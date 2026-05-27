@@ -62,7 +62,7 @@ def test_learnings_route_serves_panel_html(client):
 
 
 def test_translate_endpoint_returns_translation(client):
-    r = client.post("/api/translate", json={"text": "hello", "target_lang": "Chinese"})
+    r = client.post("/api/translate", json={"text": "hello"})
     assert r.status_code == 200
     body = r.json()
     assert "translated" in body
@@ -71,7 +71,7 @@ def test_translate_endpoint_returns_translation(client):
 
 
 def test_translate_rejects_empty_text(client):
-    r = client.post("/api/translate", json={"text": "  ", "target_lang": "Chinese"})
+    r = client.post("/api/translate", json={"text": "  "})
     assert r.status_code == 400
 
 
@@ -79,7 +79,7 @@ def test_translate_writes_drawer_row(tmp_path):
     db = str(tmp_path / "t.db")
     app = create_app(runtime_name="mock", db_path=db)
     c = TestClient(app)
-    c.post("/api/translate", json={"text": "hello", "target_lang": "Chinese"})
+    c.post("/api/translate", json={"text": "hello"})
 
     conn = sqlite3.connect(db)
     n = conn.execute("SELECT COUNT(*) FROM translations").fetchone()[0]
@@ -92,7 +92,7 @@ def test_translate_tags_source_lang_live_on_first_occurrence(tmp_path):
     deterministically, even before the word is a candidate."""
     db = str(tmp_path / "t.db")
     c = TestClient(create_app(runtime_name="mock", db_path=db))
-    c.post("/api/translate", json={"text": "ラーメン", "target_lang": "English"})
+    c.post("/api/translate", json={"text": "ラーメン"})
 
     conn = sqlite3.connect(db)
     sl = conn.execute(
@@ -108,12 +108,34 @@ def test_translate_promotes_and_cards_live_without_restart(tmp_path):
     db = str(tmp_path / "t.db")
     c = TestClient(create_app(runtime_name="mock", db_path=db))
     for _ in range(3):
-        r = c.post("/api/translate", json={"text": "ラーメン", "target_lang": "English"})
+        r = c.post("/api/translate", json={"text": "ラーメン"})
         assert r.status_code == 200
 
     row = next(d for d in c.get("/api/candidates").json() if d["original"] == "ラーメン")
     assert row["source_lang"] == "Japanese"  # deterministic, immediate
     assert any(x["original"] == "ラーメン" for x in c.get("/api/cards").json())
+
+
+def test_translate_target_is_always_the_first_language(tmp_path):
+    """No A→B picker: the translation target is whatever first language the
+    user has set, not a per-request choice. Setting native_lang=Japanese makes
+    a translation land with target_lang=Japanese."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    c.post("/api/identity", json={"native_lang": "Japanese"})
+    r = c.post("/api/translate", json={"text": "hello"})
+    assert r.status_code == 200
+
+    conn = sqlite3.connect(db)
+    target = conn.execute(
+        "SELECT target_lang FROM translations WHERE original='hello' "
+        "ORDER BY id DESC LIMIT 1"
+    ).fetchone()[0]
+    conn.close()
+    # Followed native_lang (Japanese), not the old default (Chinese). Case-
+    # insensitive: the mock lowercases the parsed target; a real model keeps
+    # the prompt's casing — either way it must be the first language.
+    assert target.lower() == "japanese"
 
 
 # --- /api/clusters and /api/candidates ----------------------------------
@@ -255,26 +277,26 @@ def test_clusters_by_language_endpoint_returns_list(client):
     assert isinstance(r.json(), list)
 
 
-def _seed_candidate(conn, original, target_lang, translated, source_lang, gloss, n):
+def _seed_candidate(conn, original, target_lang, translated, source_lang, n):
     for _ in range(n):
         conn.execute(
             "INSERT INTO translations "
-            "(original, target_lang, translated, source_lang, native_gloss, source) "
-            "VALUES (?, ?, ?, ?, ?, 'text')",
-            (original, target_lang, translated, source_lang, gloss),
+            "(original, target_lang, translated, source_lang, source) "
+            "VALUES (?, ?, ?, ?, 'text')",
+            (original, target_lang, translated, source_lang),
         )
 
 
 def test_clusters_by_language_groups_candidates_by_source_lang(tmp_path):
     """The deterministic lens: candidates bucket by their source language,
-    most-translated language first, gloss and direction carried per member."""
+    most-translated language first, direction carried per member."""
     db = str(tmp_path / "t.db")
     app = create_app(runtime_name="mock", db_path=db)
     c = TestClient(app)
     conn = sqlite3.connect(db)
-    _seed_candidate(conn, "ラーメン", "English", "ramen", "Japanese", "拉面", 4)
-    _seed_candidate(conn, "寿司", "English", "sushi", "Japanese", "寿司", 3)
-    _seed_candidate(conn, "beurre", "English", "butter", "French", "黄油", 5)
+    _seed_candidate(conn, "ラーメン", "English", "ramen", "Japanese", 4)
+    _seed_candidate(conn, "寿司", "English", "sushi", "Japanese", 3)
+    _seed_candidate(conn, "beurre", "English", "butter", "French", 5)
     conn.commit()
     from tideline.promotion import promote_candidates
     promote_candidates(conn)
@@ -289,7 +311,6 @@ def test_clusters_by_language_groups_candidates_by_source_lang(tmp_path):
     assert [m["original"] for m in jp["members"]] == ["ラーメン", "寿司"]
     ramen = jp["members"][0]
     assert ramen["count"] == 4
-    assert ramen["native_gloss"] == "拉面"
     assert ramen["target_lang"] == "English"
 
 
@@ -348,7 +369,7 @@ def test_drift_web_app_runs_same_startup_sweep_as_cli():
     web_src = inspect.getsource(web_app)
     for token in (
         "promote_candidates", "auto_promote_cards", "cluster_sweep",
-        "tag_source_langs", "tag_native_glosses",
+        "tag_source_langs",
     ):
         assert token in cli_src, f"cli/__main__.py missing {token}"
         assert token in web_src, f"web/app.py missing {token}"
@@ -455,8 +476,8 @@ def test_candidates_include_source_lang(tmp_path):
     for _ in range(3):
         conn.execute(
             "INSERT INTO translations "
-            "(original, target_lang, translated, source_lang, native_gloss, source) "
-            "VALUES ('ラーメン', 'English', 'ramen', 'Japanese', '拉面', 'text')"
+            "(original, target_lang, translated, source_lang, source) "
+            "VALUES ('ラーメン', 'English', 'ramen', 'Japanese', 'text')"
         )
     conn.commit()
     from tideline.promotion import promote_candidates
@@ -467,7 +488,6 @@ def test_candidates_include_source_lang(tmp_path):
     row = next(d for d in data if d["original"] == "ラーメン")
     assert row["source_lang"] == "Japanese"
     assert row["target_lang"] == "English"
-    assert row["native_gloss"] == "拉面"
 
 
 def test_identity_endpoint_returns_native_lang(client):

@@ -32,7 +32,6 @@ def init_db(conn: sqlite3.Connection) -> None:
             target_lang TEXT NOT NULL,
             translated TEXT NOT NULL,
             source_lang TEXT,
-            native_gloss TEXT,
             source TEXT,
             context_snippet TEXT,
             session_id TEXT,
@@ -45,13 +44,17 @@ def init_db(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(translations)")}
     for column, ddl in (
         ("source_lang", "ALTER TABLE translations ADD COLUMN source_lang TEXT"),
-        ("native_gloss", "ALTER TABLE translations ADD COLUMN native_gloss TEXT"),
         ("source", "ALTER TABLE translations ADD COLUMN source TEXT"),
         ("context_snippet", "ALTER TABLE translations ADD COLUMN context_snippet TEXT"),
         ("session_id", "ALTER TABLE translations ADD COLUMN session_id TEXT"),
     ):
         if column not in existing:
             conn.execute(ddl)
+    # Drop the deprecated native_gloss column: Tideline now always translates
+    # into the user's first language (target == native), so a gloss into that
+    # language is moot. SQLite >= 3.35 supports DROP COLUMN.
+    if "native_gloss" in existing:
+        conn.execute("ALTER TABLE translations DROP COLUMN native_gloss")
     conn.commit()
 
 

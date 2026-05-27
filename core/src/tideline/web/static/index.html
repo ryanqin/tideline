@@ -21,15 +21,7 @@
       <textarea id="text" rows="4" placeholder="Type text, paste a menu line, drop in a phrase..."></textarea>
 
       <div class="row">
-        <label for="lang">Target language</label>
-        <select id="lang">
-          <option value="Chinese">Chinese</option>
-          <option value="English">English</option>
-          <option value="Japanese">Japanese</option>
-          <option value="French">French</option>
-          <option value="Spanish">Spanish</option>
-          <option value="German">German</option>
-        </select>
+        <span class="target-note">Into your first language<span id="native-name"></span></span>
         <button id="go">Translate</button>
       </div>
 
@@ -45,9 +37,19 @@
 
   <script>
     const textEl = document.getElementById('text');
-    const langEl = document.getElementById('lang');
     const goEl = document.getElementById('go');
     const resultEl = document.getElementById('result');
+    const nativeNameEl = document.getElementById('native-name');
+
+    // Tideline always translates into your first language — show which one,
+    // read from the same setting the learnings page writes.
+    async function loadNative() {
+      try {
+        const r = await fetch('/api/identity');
+        const id = await r.json();
+        if (id && id.native_lang) nativeNameEl.textContent = ' — ' + id.native_lang;
+      } catch (e) { /* leave the generic label */ }
+    }
 
     async function translate() {
       const text = textEl.value.trim();
@@ -58,7 +60,7 @@
         const r = await fetch('/api/translate', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text, target_lang: langEl.value}),
+          body: JSON.stringify({text}),
         });
         if (!r.ok) {
           resultEl.textContent = `error: ${r.status}`;
@@ -77,6 +79,7 @@
     textEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) translate();
     });
+    loadNative();
   </script>
 </body>
 </html>

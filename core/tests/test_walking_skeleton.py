@@ -69,9 +69,6 @@ def test_drift_cli_imports_only_public_surface():
         # on untagged rows (deterministic script + model fallback). Same
         # background-lifecycle rationale as promotion / cluster above.
         "tideline.tagging",
-        # ②b-2: the native-gloss sweep reads the user's first language from the
-        # settings store to know which language to gloss into.
-        "tideline.tools.settings",
     }
     imports: set[str] = set()
     for node in ast.walk(tree):

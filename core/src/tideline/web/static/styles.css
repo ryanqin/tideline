@@ -428,3 +428,11 @@ output:empty {
   font-size: 0.8rem;
   font-style: italic;
 }
+
+/* --- translate page: target is always your first language --- */
+
+.target-note {
+  flex: 1;
+  color: var(--muted);
+  font-size: 0.9rem;
+}

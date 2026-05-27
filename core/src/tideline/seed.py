@@ -178,37 +178,18 @@ _SCENARIO_SOURCE_LANG = {
 }
 
 
-# Native-language (Chinese) gloss for the demo, keyed by the English translation.
-# Lets the learnings view show "(拉面, 日→英)" on the mock runtime without a model
-# call; the real flow fills native_gloss via a background sweep (②b-2). Only the
-# frequent/occasional terms need it — rare 1x terms never surface as candidates.
-_NATIVE_GLOSS = {
-    "ramen": "拉面", "sushi": "寿司", "tempura": "天妇罗",
-    "station": "车站", "subway": "地铁", "metro": "地铁",
-    "butter": "黄油", "egg": "鸡蛋", "flour": "面粉",
-    "cream": "奶油", "spoon": "勺子",
-    "love": "爱", "heart": "心", "night": "夜晚",
-    "pain": "疼痛", "to dance": "跳舞",
-    "contract": "合同", "meeting": "会议", "project": "项目",
-    "proposal": "提案", "budget": "预算",
-    "database": "数据库", "memory / storage": "内存/存储",
-    "server": "服务器", "application": "应用",
-    "noodle soup": "汤面",
-}
-
-
 def generate_entries(
     seed: int = 42,
     now: datetime | None = None,
-) -> list[tuple[str, str, str, str, str | None, str]]:
-    """Generate (original, target_lang, translated, source_lang, native_gloss, created_at_iso) tuples.
+) -> list[tuple[str, str, str, str, str]]:
+    """Generate (original, target_lang, translated, source_lang, created_at_iso) tuples.
 
     Timestamps spread over the past 7 days from `now`. Fully deterministic
     given (seed, now) — pass an explicit `now` in tests for reproducibility.
     Output order is shuffled to mimic real chronological mixing.
     """
     rng = random.Random(seed)
-    out: list[tuple[str, str, str, str, str | None, str]] = []
+    out: list[tuple[str, str, str, str, str]] = []
     if now is None:
         now = datetime.now()
 
@@ -224,12 +205,11 @@ def generate_entries(
             for pair in pairs:
                 original, translated = pair[0], pair[1]
                 source_lang = pair[2] if len(pair) > 2 else default_src
-                native_gloss = _NATIVE_GLOSS.get(translated)
                 count = rng.randint(*repeat_range)
                 for _ in range(count):
                     days_ago = rng.uniform(0, 7)
                     ts = (now - timedelta(days=days_ago)).isoformat()
-                    out.append((original, target_lang, translated, source_lang, native_gloss, ts))
+                    out.append((original, target_lang, translated, source_lang, ts))
 
     rng.shuffle(out)
     return out
@@ -240,8 +220,8 @@ def seed_db(conn: sqlite3.Connection, seed: int = 42) -> int:
     entries = generate_entries(seed=seed)
     conn.executemany(
         "INSERT INTO translations "
-        "(original, target_lang, translated, source_lang, native_gloss, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "(original, target_lang, translated, source_lang, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
         entries,
     )
     conn.commit()

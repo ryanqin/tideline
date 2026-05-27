@@ -65,19 +65,11 @@
     function shortLang(name) {
       return LANG_SHORT[name] || escape(name || '?');
     }
-    // (gloss, src→tgt) — e.g. "(拉面, 日→英)". The native gloss only shows when the
-    // target isn't already your first language (no point repeating it there).
-    function annot(src, tgt, gloss) {
-      const dir = `${shortLang(src)}→${shortLang(tgt)}`;
-      // Gloss only helps when neither side is already your first language.
-      const showGloss = gloss && tgt !== NATIVE_LANG && src !== NATIVE_LANG;
-      return `<span class="langtag">(${showGloss ? escape(gloss) + ', ' : ''}${dir})</span>`;
-    }
-    // Inline gloss for the by-language view (the bucket header already carries
-    // the direction). Same first-language suppression as annot().
-    function glossSuffix(src, tgt, gloss) {
-      const show = gloss && tgt !== NATIVE_LANG && src !== NATIVE_LANG;
-      return show ? ' (' + escape(gloss) + ')' : '';
+    // Direction tag — e.g. "(日→中)". Tideline always translates into your
+    // first language, so the target side is yours; the tag's value is telling
+    // you which language the original came from.
+    function annot(src, tgt) {
+      return `<span class="langtag">(${shortLang(src)}→${shortLang(tgt)})</span>`;
     }
 
     async function loadCards() {
@@ -92,7 +84,7 @@
         target.innerHTML = data.map(c => `
           <div class="cluster card" data-card-id="${c.id}">
             <div class="card-head">
-              <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang, c.native_gloss)}</h2>
+              <h2>${escape(c.original)} → ${escape(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
               <button type="button" class="sink-btn" data-card-id="${c.id}" title="Sink this card back to sediment">Sink</button>
             </div>
             <div class="members">
@@ -127,7 +119,7 @@
               ${c.members.map(m => `
                 <div class="member">
                   <span class="original">${shortLang(m.source_lang)} ${escape(m.original)}</span>
-                  <span class="translated">${escape(m.translated)}${m.native_gloss ? ' (' + escape(m.native_gloss) + ')' : ''}</span>
+                  <span class="translated">${escape(m.translated)}</span>
                   ${m.context ? `<span class="context">${escape(m.context)}</span>` : ''}
                 </div>
               `).join('')}
@@ -154,7 +146,7 @@
             <div class="members">
               ${g.members.map(m => `
                 <div class="member">
-                  <span class="original">${escape(m.original)} → ${escape(m.translated)}${glossSuffix(m.source_lang, m.target_lang, m.native_gloss)}</span>
+                  <span class="original">${escape(m.original)} → ${escape(m.translated)}</span>
                   <span class="count">${m.count}×</span>
                 </div>
               `).join('')}
@@ -176,7 +168,7 @@
       const n = t.members.length;
       const rows = t.members.map(m => `
         <div class="member">
-          <span class="translated">${escape(m.translated)}${m.native_gloss ? ' (' + escape(m.native_gloss) + ')' : ''}</span>
+          <span class="translated">${escape(m.translated)}</span>
           <span class="masked" role="button" tabindex="0" title="tap to reveal">${escape(m.original)}</span>
           ${m.context ? `<span class="context">${escape(m.context)}</span>` : ''}
         </div>
@@ -337,7 +329,7 @@
         target.innerHTML = data.map(c => `
           <div class="candidate">
             <span>${escape(c.original)} → ${escape(c.translated)}</span>
-            ${annot(c.source_lang, c.target_lang, c.native_gloss)}
+            ${annot(c.source_lang, c.target_lang)}
             <span class="count">${c.count}×</span>
           </div>
         `).join('');
