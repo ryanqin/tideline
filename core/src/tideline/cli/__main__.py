@@ -63,10 +63,18 @@ def main(argv: list[str] | None = None) -> int:
     auto_promote_cards(conn)
 
     # Tier B sweep: budgeted background voting + cluster rebuild + naming.
-    # Wrapped fail-soft because it calls the LLM; a runtime / model glitch
-    # must never break the user's primary translation flow.
+    # Two relations over the same tables — concept (synonym aggregation,
+    # feeds the by-language lens) and theme (B7 relatedness, feeds album-
+    # style recall). Each is wrapped fail-soft AND independently, because it
+    # calls the LLM: a glitch on one relation must never break the other or
+    # the user's primary translation flow. Both are "expensive" sweeps and
+    # belong here at startup, never in the per-translation hot path.
     try:
         cluster_sweep(conn, runtime)
+    except Exception:
+        pass
+    try:
+        cluster_sweep(conn, runtime, vote_type="theme")
     except Exception:
         pass
 

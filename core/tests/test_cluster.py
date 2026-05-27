@@ -703,3 +703,200 @@ def test_cli_compare_and_rebuild(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Voted on" in result.stdout
     assert "cluster" in result.stdout.lower()
+
+
+# --- Theme clustering (vote_type partition) -----------------------------
+
+
+def _cluster_member_ids(c: sqlite3.Connection, vote_type: str) -> list[int]:
+    rows = c.execute(
+        "SELECT cm.translation_id FROM cluster_members cm "
+        "JOIN clusters cl ON cl.id = cm.cluster_id "
+        "WHERE cl.vote_type = ? ORDER BY cm.translation_id",
+        (vote_type,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def test_migration_adds_vote_type_to_legacy_schema():
+    """A pre-partition DB (votes/clusters without vote_type) is upgraded in
+    place by init_db, and legacy rows backfill to 'concept' — what they were
+    before theme clustering existed. Also proves ALTER ... ADD COLUMN with a
+    CHECK constraint runs on this SQLite build."""
+    c = sqlite3.connect(":memory:")
+    c.execute(
+        "CREATE TABLE translations (id INTEGER PRIMARY KEY, original TEXT, "
+        "target_lang TEXT, translated TEXT)"
+    )
+    c.execute(
+        """CREATE TABLE pair_similarity_votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            translation_id_a INTEGER NOT NULL,
+            translation_id_b INTEGER NOT NULL,
+            vote TEXT NOT NULL,
+            model TEXT,
+            voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CHECK (translation_id_a < translation_id_b)
+        )"""
+    )
+    c.execute(
+        "CREATE TABLE clusters (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+    )
+    c.execute(
+        "INSERT INTO translations (id, original, target_lang, translated) "
+        "VALUES (1, 'ramen', 'en', 'ramen'), (2, 'udon', 'en', 'udon')"
+    )
+    c.execute(
+        "INSERT INTO pair_similarity_votes "
+        "(translation_id_a, translation_id_b, vote) VALUES (1, 2, 'yes')"
+    )
+    c.execute("INSERT INTO clusters (title) VALUES ('legacy cluster')")
+    c.commit()
+
+    pre = {r[1] for r in c.execute("PRAGMA table_info(pair_similarity_votes)")}
+    assert "vote_type" not in pre   # sanity: legacy schema
+
+    init_db(c)   # triggers _migrate_vote_type
+
+    votes_cols = {r[1] for r in c.execute("PRAGMA table_info(pair_similarity_votes)")}
+    clusters_cols = {r[1] for r in c.execute("PRAGMA table_info(clusters)")}
+    assert "vote_type" in votes_cols
+    assert "vote_type" in clusters_cols
+    assert c.execute(
+        "SELECT vote_type FROM pair_similarity_votes"
+    ).fetchone()[0] == "concept"
+    assert c.execute("SELECT vote_type FROM clusters").fetchone()[0] == "concept"
+    c.close()
+
+
+def test_vote_on_pair_unknown_vote_type_raises(conn):
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    with pytest.raises(ValueError):
+        vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="bogus")
+
+
+def test_vote_on_pair_stores_vote_type(conn):
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "sushi", "en", "sushi")
+    vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="theme")
+    assert conn.execute(
+        "SELECT vote_type FROM pair_similarity_votes"
+    ).fetchone()[0] == "theme"
+
+
+def test_votes_partition_by_type_on_same_pair(conn):
+    """Concept and theme votes on the SAME pair accumulate independently —
+    the partition keeps the relations from contaminating each other. ramen
+    vs sushi: different concepts (no) but the same cuisine theme (yes)."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "sushi", "en", "sushi")
+    vote_on_pair(conn, _AlwaysNo(), a, b, vote_type="concept")
+    vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="theme")
+
+    concept = conn.execute(
+        "SELECT vote FROM pair_similarity_votes WHERE vote_type='concept'"
+    ).fetchall()
+    theme = conn.execute(
+        "SELECT vote FROM pair_similarity_votes WHERE vote_type='theme'"
+    ).fetchall()
+    assert [v[0] for v in concept] == ["no"]
+    assert [v[0] for v in theme] == ["yes"]
+
+
+def test_pending_pairs_independent_per_vote_type(conn):
+    """A pair fully voted for concept is still pending for theme."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "sushi", "en", "sushi")
+    vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")
+
+    assert (a, b) not in _pending_pairs(conn, limit=10, vote_type="concept")
+    assert (a, b) in _pending_pairs(conn, limit=10, vote_type="theme")
+
+
+def test_theme_and_concept_clusters_coexist(conn):
+    """rebuild_clusters scoped by vote_type: concept aggregates synonyms,
+    theme groups a related-but-distinct term, and both clusters live in the
+    table tagged by relation."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles")
+    c = _add_translation(conn, "sushi", "en", "sushi")
+    vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")  # a ≡ b
+    vote_on_pair(conn, _AlwaysYes(), a, c, vote_type="theme")    # a ~ c
+
+    assert rebuild_clusters(conn, min_votes=1, vote_type="concept") == 1
+    assert rebuild_clusters(conn, min_votes=1, vote_type="theme") == 1
+
+    counts = dict(conn.execute(
+        "SELECT vote_type, COUNT(*) FROM clusters GROUP BY vote_type"
+    ).fetchall())
+    assert counts == {"concept": 1, "theme": 1}
+    assert _cluster_member_ids(conn, "concept") == sorted([a, b])
+    assert _cluster_member_ids(conn, "theme") == sorted([a, c])
+
+
+def test_rebuild_one_relation_leaves_other_intact(conn):
+    """The vote_type-scoped DELETE means rebuilding theme must not wipe the
+    concept clusters or their human-edited titles."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles")
+    vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")
+    rebuild_clusters(conn, min_votes=1, vote_type="concept")
+    conn.execute(
+        "UPDATE clusters SET title='your noodle words' WHERE vote_type='concept'"
+    )
+    conn.commit()
+
+    c = _add_translation(conn, "sushi", "en", "sushi")
+    vote_on_pair(conn, _AlwaysYes(), a, c, vote_type="theme")
+    rebuild_clusters(conn, min_votes=1, vote_type="theme")
+
+    concept = conn.execute(
+        "SELECT title FROM clusters WHERE vote_type='concept'"
+    ).fetchall()
+    assert len(concept) == 1
+    assert concept[0][0] == "your noodle words"
+
+
+def test_cluster_sweep_theme_end_to_end(conn):
+    """cluster_sweep(vote_type='theme') votes + rebuilds + names theme
+    clusters, tagged separately from concept. AlwaysYes drives both the
+    yes-votes and a stub title (same single-runtime pattern as the concept
+    sweep test)."""
+    for term in ("ramen", "sushi", "tempura"):
+        _add_translation(conn, term, "en", term)
+
+    stats = cluster_sweep(
+        conn, _AlwaysYes(),
+        max_pairs=10, min_votes_per_pair=1, vote_type="theme",
+    )
+    assert stats["voted"] == 3
+    assert stats["clusters"] == 1
+    assert stats["named"] == 1
+    rows = conn.execute("SELECT vote_type, title FROM clusters").fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "theme"
+    assert rows[0][1] is not None
+
+
+def test_cli_vote_type_theme_smoke(tmp_path):
+    """CLI accepts --vote-type theme and runs the theme relation end to end.
+    Mock voting falls through to echo (no parseable yes/no), so this proves
+    the wiring runs clean — not that clusters form."""
+    import subprocess
+    import sys
+
+    db_path = tmp_path / "test.db"
+    subprocess.run(
+        [sys.executable, "-m", "tideline.seed", "--db", str(db_path)],
+        capture_output=True, text=True, check=True,
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "tideline.cluster",
+         "--db", str(db_path), "--runtime", "mock",
+         "--vote-type", "theme", "--compare", "5", "--rebuild", "--name-clusters"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Voted on" in result.stdout

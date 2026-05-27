@@ -151,8 +151,16 @@ def create_app(
     boot_conn = _connect(db)
     promote_candidates(boot_conn)
     auto_promote_cards(boot_conn)
+    # Tier B sweep — two relations over the same tables, each fail-soft and
+    # independent: concept (synonyms, feeds the by-language lens) and theme
+    # (B7 relatedness, feeds album-style recall). Both are expensive (LLM)
+    # sweeps and run only at startup, never in the per-translation path.
     try:
         cluster_sweep(boot_conn, runtime)
+    except Exception:
+        pass
+    try:
+        cluster_sweep(boot_conn, runtime, vote_type="theme")
     except Exception:
         pass
     try:
