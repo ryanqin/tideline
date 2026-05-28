@@ -182,3 +182,65 @@ If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + c
 | 2026-04-17 | Core/Android fully decoupled (three-layer architecture) | Protects agent-learning time |
 | 2026-04-20 | Design docs committed | First commit |
 | 2026-04-29 | Project formally named **Tideline**, preparing for open source | Decoupling repo identity from the hackathon; positioning as a long-lived agent framework |
+| 2026-05-27 | Learnings surface reimagined as a living tidal **shore** (§10) — translate ⇄ shore as two collapsing states of one world; "the tide is theatre, not pedagogy"; the sea = the sediment layer | Extends §3, does not replace it; web first, Android later. Draft — pending review (see §10.9) |
+
+---
+
+## 10. The shore — a living tidal interface for learning (locked 2026-05-27, web first)
+
+> The learnings surface stops being a top-down list and becomes **a place**: a tidal shore you stand on. Your translations flow into the sea; the tide quietly works while you're away; matured learning washes back up as shells you beachcomb. Warmth and the pull to explore come from the place being *alive* — never from a nudge to visit it.
+
+This **extends, it does not replace**, the two product principles (§3). The translator stays the front door (§3.1); every shell still carries the lived moments it grew from (§3.2). The shore is the visual *home* of the emergence engine, not a new engine.
+
+### 10.1 Why a shore (and why it's safe)
+
+The warmth / exploration goal kept colliding with restraint (§3.1, "an agent that knows when not to talk"). The shore resolves it: **the tide does the surfacing, not a notification.** You are never pinged — you return to the water's edge and find what the tide left. The pull is real, but it is *pull*: you come to it. Same move Ant Forest makes with daily energy, minus the push/FOMO engine we must **not** borrow (no expiring streaks, no "a friend took your…" pressure).
+
+### 10.2 The spatial model — one world, two collapsing states
+
+One continuous vertical world, seen as if standing on the beach: **sky (with the real sun/moon) at the top, the sea across the horizon, wet sand and washed-up shells at your feet.** Two states share that world, and the one you're *not* using collapses to a sliver of itself:
+
+- **Translate — the default front door.** The translator owns the screen. The whole shore collapses to **a single living coastline strip pinned along the bottom** — surf meeting sand, breathing with the tide, maybe a shell glinting. That strip is both the invitation (swipe up to wade in) and the place a finished translation is tossed (down across the surf, into the sea). The translator stays clean and primary; the shore is one gesture away, never standing weight. **The glint is meaningful: when the tide has brought a *new* shell up, the strip catches a faint light** — enough to make you want to look, never a badge or a count. It is an in-app ambient cue only (the shore looks a little more alive), never an OS notification: the pull, not a push (§10.3).
+- **Shore — swipe up.** The shore expands to fill the view (sky, sea, sand, shells). The translator collapses to **a few minimal input affordances tucked into a corner** (a compact way to cast a new word — camera / mic / keyboard, per §5), out of the way but one tap from tossing another word into the sea. You can still translate from the shore; it just steps back.
+
+The pivot is the coastline/horizon sliding: **swipe up to wade into the shore, swipe down (or a handle) to return to the desk at the water's edge.** Both transitions need a non-gesture control and must respect reduced motion; only the *expanded* shore animates (the collapsed strip is cheap — matters for battery / Android).
+
+### 10.3 The core principle — the tide is theatre, not pedagogy
+
+The line that keeps the idea honest:
+
+- **What exists as a shell, and which shell is "up" for review, is decided underneath** — by the emergence engine (cluster maturity) and the hidden review schedule (memory science). *Never* by the height of the water.
+- **The tide owns the theatre and the cadence:** a newly matured cluster rides in on the next tide; a card due for recall is "carried back up to where you can reach it"; one you didn't tend recedes to rest near the water — **not lost, it returns on the next tide.** No streak, no shame, no "due" count (consistent with the album rule: a schedule may decide *which* memory surfaces, but is never shown as a task).
+- So the rhythm is real and **un-clocked** — the ~50-min daily drift means the shore is never the same at the same wall-clock time, so there is no "check in at 9am" alarm to keep — while *what* surfaces stays pedagogically sound.
+
+### 10.4 The sea is the sediment layer
+
+Tie the metaphor to §3.1's substrate: **the sea is the sediment.** Every translation flows into it (every translation is stored; the vast majority stay there forever). A few mature and wash back as shells. So **"throwing something into the sea" has one consistent meaning — *let it rest in the sediment*** — whether it's a fresh translation entering, or a shell you swipe back because you don't need to study it (the sink gesture). The sand is the surfaced / active layer; the sea is the resting layer.
+
+### 10.5 Objects and gestures
+
+- **A shell is a cluster.** Creature *type* encodes relation type, so the lenses become something you can *see*, not a toggle: e.g. a **shell = concept cluster** (synonyms), a **crab = theme** (a "your Tokyo lunches" scene), **sea-glass = a single card**. *(Mapping proposed — to confirm, 10.9.)*
+- **Tap a shell → open it into the existing card / masked-recall flow.** The back is still the stack of lived moments (§3.2). The learning interaction is **not** reinvented; the shore is its doorway.
+- **Swipe a shell back into the sea → sink** (the one curation gesture; it rests in the sediment, may return).
+- **Toss a finished translation down into the surf → it joins the sea / sediment** (the visible form of "every translation writes to sediment").
+
+### 10.6 Time and sky
+
+- **v1 — device local time drives the sky** (dawn / day / golden-hour / night gradients; the golden-hour palette already shipped is simply the *dusk frame* of this cycle) and **the date drives the moon phase.** Zero permissions, ships immediately. The user can also **set time / timezone by hand** (for travel, or just to walk the shore through the day); that manual scrub is also the natural demo + test handle.
+- **v2 (optional) — true sunrise/sunset times and moon position** need the user's latitude: a soft, optional ask, in keeping with local-first / privacy. Accuracy is an opt-in, never a gate.
+
+### 10.7 The museum (full collection + the accessible floor)
+
+The shore shows **only what's ashore right now** — which is what fixes overload: a calm few, not a wall of 23 cards. The **complete collection lives in a shell museum**, reached from the shore (walking back from the water to the shelves on the dunes). There the existing lenses live — **by concept / by language / by theme** — as ordered shelves of shells. The museum also **is the list / reduced-motion / screen-reader fallback**: every shell is a focusable, labelled control, and the museum is a plain, navigable view of the same data. Nothing built so far (cards, by-language, themes) is discarded — it is **re-housed** here.
+
+### 10.8 Build constraints
+
+- **Stylized and calm, not a game.** CSS / SVG / DOM + Pointer Events; no game engine, no physics lib. A quiet shore that's alive, not an arcade.
+- **Accessible and lazy.** Shells are real focusable buttons with labels; a list fallback always exists; the scene animates only when expanded; honor `prefers-reduced-motion`.
+- **Android-portable.** Keep it DOM / SVG so the same model survives the eventual on-device shell (§8); avoid anything that only lives in a heavy web canvas.
+
+### 10.9 Open (to ratify before/while building)
+
+**Locked (2026-05-27):** shore *below* the translator, the two states collapsing into each other (10.2); device-time sky **+ manual time/timezone override** (10.6); tide = theatre (10.3); sea = sediment (10.4); creature-type → relation-type — **shell = concept · crab = theme · sea-glass = single card** (10.5, provisional); the collapsed translator sits in **a corner** in shore state (10.2); the coastline carries a **faint glint only when a new shell has arrived** — in-app ambient, never a push/badge/count (10.2).
+
+**Still to design (implementation, owned by the build):** the exact tide curve — how the (device or hand-set) time + lunar phase map to a water level (semidiurnal ≈ 12h25m + ≈ 50-min daily drift + fortnightly spring/neap from moon phase) and to the cadence on which a newly matured shell rides in.

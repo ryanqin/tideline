@@ -231,6 +231,130 @@ output:empty {
 }
 .shoreline svg { width: 100%; height: 26px; display: block; }
 
+/* The living coastline (DESIGN §10.2): a tide- and time-driven shore band
+   pinned along the foot of the translate page — the desk sits at a real
+   water's edge. Inert in slice 2a; slice 2b makes it the interactive edge that
+   the upward gesture opens into the full shore. */
+/* Minimalist warm tideline (DESIGN §10.2): no box, no hard edge — a transparent
+   wash that melts into the page, with a few warm tide-lines drawn on top. */
+.coastline {
+  position: relative;
+  width: 100%;
+  height: 110px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.coastline svg { display: block; width: 100%; height: 100%; }
+
+/* Rest the living coast along the very bottom without disturbing the normal
+   block flow above it (so the header keeps its centered 720 column): the page
+   is at least viewport-tall and reserves the coast's height; the coast is
+   absolutely pinned to the page's bottom edge. Content short → coast at the
+   viewport bottom; content tall → it flows below. No fixed overlap, no gap. */
+body.has-coastline {
+  min-height: 100vh;
+  position: relative;
+  padding-bottom: 110px;
+}
+body.has-coastline .coastline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+body.has-coastline .shoreline { display: none; }
+
+/* --- wade into the full shore (DESIGN §10.2, slice 2b) --- */
+
+/* The invitation: a soft up-chevron resting on the tideline, bobbing gently. */
+.shore-handle {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 253, 248, 0.72);
+  backdrop-filter: blur(6px);
+  color: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: opacity 0.3s ease, background 0.2s ease;
+}
+.shore-handle svg { width: 20px; height: 20px; }
+.shore-handle:hover { background: var(--accent-soft); }
+@media (prefers-reduced-motion: no-preference) {
+  .shore-handle { animation: handle-bob 2.6s ease-in-out infinite; }
+}
+@keyframes handle-bob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-4px); }
+}
+body.shore-open .shore-handle { opacity: 0; pointer-events: none; }
+
+/* The full shore slides up over the desk; the translator steps back into it. */
+.shore-full {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  opacity: 0;
+  transform: translateY(6%);
+  pointer-events: none;
+  transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+body.shore-open .shore-full { opacity: 1; transform: none; pointer-events: auto; }
+body.shore-open { overflow: hidden; }
+.shore-scene-host { position: absolute; inset: 0; }
+.shore-scene-host svg { display: block; width: 100%; height: 100%; }
+
+/* Step back to the desk. */
+.shore-back {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(22, 24, 40, 0.2);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.shore-back svg { width: 20px; height: 20px; }
+.shore-back:hover { background: rgba(22, 24, 40, 0.32); }
+
+/* The translator, collapsed to a corner (DESIGN §10.2): one tap to cast a word. */
+.shore-compose {
+  position: absolute;
+  right: 22px;
+  bottom: 26px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1.4rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), 0 10px 26px var(--accent-glow);
+  transition: background 0.18s ease, transform 0.12s ease;
+}
+.shore-compose:hover { background: var(--accent-deep); transform: translateY(-1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .shore-full { transition: opacity 0.2s ease; transform: none; }
+  .shore-handle { animation: none; }
+}
+
 /* --- learnings page --- */
 
 .cluster {

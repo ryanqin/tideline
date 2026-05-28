@@ -6,8 +6,9 @@
   <title>Tideline — translate</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/i18n.js"></script>
+  <script src="/static/shore.js"></script>
 </head>
-<body>
+<body class="has-coastline">
   <header>
     <h1>Tideline</h1>
     <nav>
@@ -49,8 +50,22 @@
     </p>
   </main>
 
-  <div class="shoreline" aria-hidden="true">
-    <svg viewBox="0 0 720 26"><path d="M0 14 Q 45 6 90 14 T 180 14 T 270 14 T 360 14 T 450 14 T 540 14 T 630 14 T 720 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  <div class="coastline" id="coastline" aria-hidden="true"></div>
+
+  <!-- Swipe up (or click) to wade from the desk into the full shore (DESIGN §10.2). -->
+  <button class="shore-handle" id="shoreOpen" type="button" aria-label="去海岸"
+          aria-expanded="false" aria-controls="shoreFull">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>
+  </button>
+
+  <!-- The full shore. Hidden until you wade in; in here the translator steps
+       back to a corner (slice 2b). Shells wash up here in slice 3. -->
+  <div class="shore-full" id="shoreFull" aria-hidden="true" role="region" aria-label="海岸">
+    <div class="shore-scene-host" id="shoreScene"></div>
+    <button class="shore-back" id="shoreBack" type="button" aria-label="回到桌前">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <button class="shore-compose" id="shoreCompose" type="button" data-i18n="btn_translate">Translate</button>
   </div>
 
   <script>
@@ -94,6 +109,61 @@
       document.title = t('title_translate');
       nativeNameEl.textContent = ' — ' + t('lang_' + lang);
     });
+
+    // The living coastline at the foot of the desk (DESIGN §10.2): tide + time
+    // driven, repainted on resize and refreshed gently so it stays current
+    // across a long sitting. Slice 2b turns this strip into the swipe-up edge.
+    const coastlineEl = document.getElementById('coastline');
+    function paintCoast() { if (window.Shore && coastlineEl) Shore.renderStrip(coastlineEl); }
+    paintCoast();
+    addEventListener('resize', paintCoast);
+    setInterval(paintCoast, 60000);
+
+    // --- wade in: collapse the desk, open the full shore (DESIGN §10.2) ------
+    const body = document.body;
+    const shoreFull = document.getElementById('shoreFull');
+    const shoreScene = document.getElementById('shoreScene');
+    const shoreOpen = document.getElementById('shoreOpen');
+    const isOpen = () => body.classList.contains('shore-open');
+    function paintShore() { if (window.Shore && shoreScene) Shore.render(shoreScene); }
+    function openShore() {
+      if (isOpen()) return;
+      paintShore();
+      body.classList.add('shore-open');
+      shoreFull.setAttribute('aria-hidden', 'false');
+      shoreOpen.setAttribute('aria-expanded', 'true');
+    }
+    function closeShore() {
+      if (!isOpen()) return;
+      body.classList.remove('shore-open');
+      shoreFull.setAttribute('aria-hidden', 'true');
+      shoreOpen.setAttribute('aria-expanded', 'false');
+    }
+    shoreOpen.addEventListener('click', openShore);
+    document.getElementById('shoreBack').addEventListener('click', closeShore);
+    // The corner translator: step back to the desk, ready to cast another word.
+    document.getElementById('shoreCompose').addEventListener('click', () => {
+      closeShore();
+      textEl.focus();
+    });
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') closeShore(); });
+    addEventListener('resize', () => { if (isOpen()) paintShore(); });
+    setInterval(() => { if (isOpen()) paintShore(); }, 60000);
+
+    // Touch parity: swipe up from the lower edge wades in; swipe down on the
+    // shore steps back. Augments the chevrons (which carry desktop + a11y).
+    let swipeY = null;
+    addEventListener('pointerdown', (e) => { swipeY = e.clientY; });
+    addEventListener('pointerup', (e) => {
+      if (swipeY == null) return;
+      const dy = e.clientY - swipeY;
+      swipeY = null;
+      if (!isOpen() && dy < -60 && e.clientY > innerHeight * 0.6) openShore();
+      else if (isOpen() && dy > 80) closeShore();
+    });
+
+    // ?shore=open — open on load, for demo + screenshots.
+    if (new URLSearchParams(location.search).get('shore') === 'open') openShore();
   </script>
 </body>
 </html>

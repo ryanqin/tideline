@@ -211,6 +211,13 @@ def create_app(
     def learnings_page() -> FileResponse:
         return FileResponse(_STATIC_DIR / "learnings.html")
 
+    @app.get("/shore")
+    def shore_page() -> FileResponse:
+        """Preview of the living tidal shore (DESIGN §10), slice 1: the empty,
+        time-driven coast. Standalone for now; slice 2 fuses this scene into the
+        translate page's two collapsing states."""
+        return FileResponse(_STATIC_DIR / "shore.html")
+
     @app.post("/api/translate", response_model=TranslateResponse)
     def translate(req: TranslateRequest) -> TranslateResponse:
         if not req.text.strip():

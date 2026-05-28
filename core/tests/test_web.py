@@ -58,6 +58,17 @@ def test_learnings_route_serves_panel_html(client):
     assert "clusters" in r.text.lower()
 
 
+def test_shore_preview_route_serves_scene(client):
+    # DESIGN §10 slice 1: the living shore preview + its time/tide engine.
+    r = client.get("/shore")
+    assert r.status_code == 200
+    assert "shore" in r.text.lower()
+    assert "/static/shore.js" in r.text
+    engine = client.get("/static/shore.js")
+    assert engine.status_code == 200
+    assert "Shore" in engine.text
+
+
 # --- /api/translate ------------------------------------------------------
 
 
