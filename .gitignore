@@ -44,8 +44,12 @@ Thumbs.db
 *.onnx
 *.tflite
 *.task
+*.litertlm
 models/
 data/raw/
+
+# Vision smoke-test images (synthetic via --gen-sample, real via hf download)
+scripts/vision_smoke_assets/
 
 # Secrets
 .env

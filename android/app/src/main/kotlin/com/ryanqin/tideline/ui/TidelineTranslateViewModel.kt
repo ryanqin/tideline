@@ -178,10 +178,11 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
    * actually carry a vision tower? Capabilities can't report it (only
    * hasSpeculativeDecodingSupport exists), so a real run is the only oracle.
    *
-   * MVP shortcut (deliberate, to be closed before 5a is "done"): the picked
-   * image itself is NOT persisted — the drawer row stores original="[image …]"
-   * and contextSnippet=null. Real episodic anchoring (keep a path/thumbnail back
-   * to the photographed moment) is a follow-up, tracked against principle #2.
+   * Episodic anchoring (Phase 5a follow-up, now wired): the drawer row stores
+   * original="[image …]" and contextSnippet = the VLM's scene gist (parsed from
+   * the SCENE: line) — the "where/what was this moment" signal that feeds Tier-B
+   * episodic titles. The picked image's bytes/thumbnail are still NOT persisted
+   * (a path back to the photo is a further follow-up, tracked against principle #2).
    */
   fun translateImage(uri: Uri) {
     val state = _ui.value
@@ -211,7 +212,18 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
       // Gemma 3n's multimodal format expects the image BEFORE the text question —
       // image-then-text grounds the instruction on the visual tokens. (First pass
       // had text-then-image and the model collapsed to a single "。".)
-      val prompt = "Read all the text in this image and translate it to $lang."
+      //
+      // Two-line ask in ONE inference (a second image pass would double the ~7s
+      // on-device latency): the translation AND a short scene gist. The gist
+      // becomes the episodic context_snippet — the "where/what was this moment"
+      // signal that was always null before. Engineering stays load-bearing
+      // (session_id / timestamp / modality); this gist is the point-of-light
+      // warmth layer, and being VLM-produced it is honest to store (unlike the
+      // narrated scene prose the product could never actually capture).
+      val prompt =
+        "Look at this image and reply in exactly two lines:\n" +
+          "TRANSLATION: all visible text translated to $lang (write NONE if there is no text)\n" +
+          "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects"
       dispatchInference(
         contents = Contents.of(listOf(Content.ImageBytes(bytes), Content.Text(prompt))),
         originalLabel = "[image ${bytes.size} B]",
@@ -295,8 +307,22 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
           }
 
           override fun onDone() {
-            val translated = acc.toString().trim()
+            val raw = acc.toString().trim()
+            // Image prompt returns "TRANSLATION: ...\nSCENE: ..."; split so the
+            // scene gist becomes context_snippet. Text/audio have no SCENE:
+            // marker, so they pass through unchanged (sceneGist stays null).
+            var translated = raw
+            var sceneGist: String? = null
+            val sceneIdx = raw.indexOf("SCENE:", ignoreCase = true)
+            if (sceneIdx >= 0) {
+              sceneGist = raw.substring(sceneIdx + 6).trim()
+                .lineSequence().firstOrNull()?.trim()?.ifBlank { null }
+              translated = raw.substring(0, sceneIdx)
+                .replace(Regex("(?i)TRANSLATION:\\s*"), "")
+                .trim()
+            }
             _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
+            Log.i(TAG, "BENCH scene_gist=\"$sceneGist\"")
             val tDone = System.currentTimeMillis()
             val total = tDone - tStart
             val genMs = if (firstSeen) tDone - tFirst else 0L
@@ -316,7 +342,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                       targetLang = lang,
                       translated = translated,
                       source = source,
-                      contextSnippet = null,
+                      contextSnippet = sceneGist,
                       sessionId = sessionId,
                     )
                   )
