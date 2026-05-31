@@ -266,7 +266,7 @@ body.has-coastline .shoreline { display: none; }
 
 /* --- wade into the full shore (DESIGN §10.2, slice 2b) --- */
 
-/* The invitation: a soft up-chevron resting on the tideline, bobbing gently. */
+/* The invitation: a soft up-chevron resting quietly on the tideline. */
 .shore-handle {
   position: fixed;
   left: 50%;
@@ -287,25 +287,22 @@ body.has-coastline .shoreline { display: none; }
   transition: opacity 0.3s ease, background 0.2s ease;
 }
 .shore-handle svg { width: 20px; height: 20px; }
-.shore-handle:hover { background: var(--accent-soft); }
-@media (prefers-reduced-motion: no-preference) {
-  .shore-handle { animation: handle-bob 2.6s ease-in-out infinite; }
-}
-@keyframes handle-bob {
-  0%, 100% { transform: translateX(-50%) translateY(0); }
-  50% { transform: translateX(-50%) translateY(-4px); }
-}
+.shore-handle:hover { background: var(--accent-soft); transform: translateX(-50%) translateY(-2px); }
+/* No perpetual bob — the chevron and the visible tideline are invitation
+   enough; a bouncing handle read as a cheap toy against the quiet shore. */
 body.shore-open .shore-handle { opacity: 0; pointer-events: none; }
 
-/* The full shore slides up over the desk; the translator steps back into it. */
+/* The full shore swells up over the desk — a rising tide, not a quick fade.
+   It starts lower and eases up slowly; the warm palettes now share a family,
+   so the seam between desk and shore reads as one surface tilting into view. */
 .shore-full {
   position: fixed;
   inset: 0;
   z-index: 50;
   opacity: 0;
-  transform: translateY(6%);
+  transform: translateY(14%);
   pointer-events: none;
-  transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.3, 1);
+  transition: opacity 0.55s ease, transform 0.7s cubic-bezier(0.22, 0.61, 0.27, 1);
 }
 body.shore-open .shore-full { opacity: 1; transform: none; pointer-events: auto; }
 body.shore-open { overflow: hidden; }
