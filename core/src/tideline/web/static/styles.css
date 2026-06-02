@@ -309,9 +309,64 @@ body.shore-open { overflow: hidden; }
 .shore-scene-host { position: absolute; inset: 0; }
 .shore-scene-host svg { display: block; width: 100%; height: 100%; }
 
+/* What the tide left ashore (DESIGN §10.5): a scattered few warm line-drawn
+   creatures over the sand. The layer itself ignores the pointer so the empty
+   beach passes clicks through; each shell is a real focusable button. */
+.shore-creatures { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.shore-shell {
+  position: absolute;
+  transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
+  /* fully neutralize the base button chrome (bg / pill / glow shadow) — those
+     turned into a pale "sticker" disc behind each shell; the shell IS just the
+     line art on the sand. */
+  padding: 0; margin: 0; border: none; background: none; box-shadow: none;
+  border-radius: 0; -webkit-appearance: none; appearance: none;
+  color: inherit; cursor: pointer; pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  filter: drop-shadow(0 2px 3px rgba(60, 36, 20, 0.3));
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.27, 1), filter 0.3s ease;
+}
+.shore-shell svg { display: block; width: 100%; height: auto; overflow: visible; }
+.shore-shell:hover, .shore-shell:focus-visible {
+  background: none;
+  transform: translate(-50%, -58%) rotate(var(--rot, 0deg)) scale(1.08);
+  filter: drop-shadow(0 7px 11px rgba(60, 36, 20, 0.26));
+}
+.shore-shell:focus-visible { outline: none; }
+.shore-shell:focus-visible svg { filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
+.shore-shell:focus-visible::after {
+  content: ""; position: absolute; inset: -8%;
+  border-radius: 999px; border: 2px solid rgba(255, 244, 226, 0.85);
+}
+/* the name, upright (counter-rotated). The word is the content, so it rests
+   visible by default — bare warm text with a light halo to read on the sand —
+   and firms into a cream pill on hover / keyboard focus. */
+.shell-cap {
+  position: absolute; left: 50%; top: 104%;
+  transform: translateX(-50%) rotate(calc(-1 * var(--rot, 0deg)));
+  white-space: nowrap; font-size: 0.7rem; line-height: 1;
+  color: #4a2d1a; background: transparent;
+  padding: 3px 8px; border-radius: 999px; box-shadow: none;
+  text-shadow: 0 1px 3px rgba(255, 246, 232, 0.92), 0 0 2px rgba(255, 246, 232, 0.85);
+  opacity: 0.9;
+  transition: opacity 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, text-shadow 0.2s ease;
+  pointer-events: none;
+}
+.shore-shell:hover .shell-cap, .shore-shell:focus-visible .shell-cap {
+  opacity: 1; background: rgba(255, 247, 235, 0.92);
+  box-shadow: 0 2px 8px rgba(60, 36, 20, 0.16); text-shadow: none;
+}
+/* a freshly-arrived shell catches a faint, slow glint — ambient, never a badge */
+.shore-shell.is-new { animation: shell-glint 4.6s ease-in-out infinite; }
+@keyframes shell-glint {
+  0%, 100% { filter: drop-shadow(0 2px 3px rgba(60, 36, 20, 0.16)); }
+  50% { filter: drop-shadow(0 2px 3px rgba(60, 36, 20, 0.16)) drop-shadow(0 0 9px rgba(255, 206, 150, 0.7)); }
+}
+
 /* Step back to the desk. */
 .shore-back {
   position: absolute;
+  z-index: 4;
   top: 22px;
   left: 50%;
   transform: translateX(-50%);
@@ -333,6 +388,7 @@ body.shore-open { overflow: hidden; }
 /* The translator, collapsed to a corner (DESIGN §10.2): one tap to cast a word. */
 .shore-compose {
   position: absolute;
+  z-index: 4;
   right: 22px;
   bottom: 26px;
   border-radius: 999px;
@@ -350,6 +406,7 @@ body.shore-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .shore-full { transition: opacity 0.2s ease; transform: none; }
   .shore-handle { animation: none; }
+  .shore-shell, .shore-shell.is-new { transition: none; animation: none; }
 }
 
 /* --- learnings page --- */

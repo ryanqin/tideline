@@ -62,6 +62,7 @@
        back to a corner (slice 2b). Shells wash up here in slice 3. -->
   <div class="shore-full" id="shoreFull" aria-hidden="true" role="region" aria-label="海岸">
     <div class="shore-scene-host" id="shoreScene"></div>
+    <div class="shore-creatures" id="shoreCreatures"></div>
     <button class="shore-back" id="shoreBack" type="button" aria-label="回到桌前">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
     </button>
@@ -123,9 +124,31 @@
     const body = document.body;
     const shoreFull = document.getElementById('shoreFull');
     const shoreScene = document.getElementById('shoreScene');
+    const shoreCreatures = document.getElementById('shoreCreatures');
     const shoreOpen = document.getElementById('shoreOpen');
     const isOpen = () => body.classList.contains('shore-open');
-    function paintShore() { if (window.Shore && shoreScene) Shore.render(shoreScene); }
+
+    // Slice 3a — a hand-set sample so the creature look can be judged before
+    // wiring real data (/api/clusters concepts → shells, /api/themes → crabs,
+    // /api/cards → sea-glass). The tide brings only a calm few.
+    //
+    // Labels are in the user's FIRST language, never the source — that is the
+    // Tideline rule (translate into your language only). When this is wired in
+    // slice 3b: a card → its `translated`; a concept/theme cluster → its
+    // `title` — which must itself be generated in the first language (today
+    // episodic_title is English-cued, so that needs fixing before 3b).
+    const SAMPLE_CREATURES = [
+      { id: 'c1', kind: 'shell', label: '谢谢', fresh: true },
+      { id: 'c2', kind: 'glass', label: '营业时间' },
+      { id: 'c3', kind: 'crab',  label: '东京的午饭' },
+      { id: 'c4', kind: 'shell', label: '好吃' },
+      { id: 'c5', kind: 'glass', label: '担担面' },
+    ];
+    function paintShore() {
+      if (!window.Shore) return;
+      if (shoreScene) Shore.render(shoreScene);
+      if (shoreCreatures) Shore.renderCreatures(shoreCreatures, SAMPLE_CREATURES);
+    }
     function openShore() {
       if (isOpen()) return;
       paintShore();

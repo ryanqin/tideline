@@ -301,6 +301,103 @@
     return { date, tide: tideAt(date), phase: moonPhase(date), w, h };
   }
 
+  // --- creatures: what the tide has left ashore (DESIGN §10.5) -------------
+  // Relation type is something you can SEE rather than a toggle: a shell = a
+  // concept cluster (synonyms), a crab = a theme (a remembered scene),
+  // sea-glass = a single card. Drawn in the SAME language as the shore — warm,
+  // rounded LINES, never colour blocks (§10.2) — small and calm, a scattered
+  // few (never a wall; that restraint is what fixes overload). Each is a real
+  // focusable button (§10.8), laid in its own overlay layer so the breathing
+  // repaint of the scene never wipes it.
+
+  // Each glyph is line art in a 0..48 box; `stroke="currentColor"` so the warm
+  // ink is set once on the button, and a faint same-colour fill lifts it off
+  // the contour field without ever becoming a block. Rounded joins = soft, a
+  // little cute, hand-drawn rather than iconographic.
+  const GLYPHS = {
+    // a scallop: a little fan, ribs radiating from the hinge
+    shell:
+      '<path d="M24 41C12 38 7 24 8.5 15.5 24 8 39.5 15.5 39.5 15.5 41 24 36 38 24 41Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M24 41 13 18M24 41 19 13.5M24 41 24 12M24 41 29 13.5M24 41 35 18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.7" stroke-linecap="round"/>',
+    // a round little crab: a domed shell, two dot eyes, raised claws, legs
+    crab:
+      '<path d="M11 30c0-7.5 6-12 13-12s13 4.5 13 12c-2 3-24 3-26 0Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M20 18.5v-3M28 18.5v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<circle cx="20" cy="13.5" r="1.7" fill="currentColor"/><circle cx="28" cy="13.5" r="1.7" fill="currentColor"/>' +
+      '<path d="M11.5 25c-4-1.5-6.5 0.5-6 4M36.5 25c4-1.5 6.5 0.5 6 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<path d="M13 31l-5 4.5M15.5 33l-4 5.5M35 31l5 4.5M32.5 33l4 5.5" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.8" stroke-linecap="round"/>',
+    // sea-glass: a soft frosted pebble with one inner gleam
+    glass:
+      '<path d="M17 14Q31 10 37 20 41 32 28 36 14 38 12 26 11 17 17 14Z" fill="currentColor" fill-opacity="0.22" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M18 20.5Q23 17.5 27 20.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.65" stroke-linecap="round"/>',
+  };
+  const CREATURE_NOUN = { shell: "贝壳", crab: "螃蟹", glass: "海玻璃" };
+
+  // A tiny deterministic hash → a fraction in [0,1). Same id+salt always gives
+  // the same number, so a repaint/resize never makes the scatter jump.
+  function hashFrac(str, salt) {
+    let h = (2166136261 ^ (salt || 0)) >>> 0;
+    for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0;
+    return (h % 100000) / 100000;
+  }
+
+  // Lay the ashore creatures over the scene as focusable buttons (§10.8). They
+  // settle in the near sand — the open beach below the surf, where it's pale —
+  // spread into even columns with per-item jitter (deterministic by id), each
+  // softly rotated. A freshly-arrived one carries a faint glint (§10.2): an
+  // in-app ambient cue, never a badge or count.
+  function renderCreatures(host, creatures, opts) {
+    opts = opts || {};
+    creatures = creatures || [];
+    const date = opts.date || resolveDate(opts);
+    const rect = host.getBoundingClientRect ? host.getBoundingClientRect() : null;
+    const w = Math.max(1, Math.round((rect && rect.width) || host.clientWidth || 1000));
+    const h = Math.max(1, Math.round((rect && rect.height) || host.clientHeight || 1000));
+    const g = sceneGeom(date, w, h);
+    // the near-sand band: a little below the surf, down toward your feet
+    const top = clamp(g.surfY / h + 0.06, 0.52, 0.72);
+    const bottom = 0.88;
+    const minSide = Math.min(w, h);
+    // warm ink that reads against the pale near-sand: a deep warm brown,
+    // lifted a touch so the line art stays calm but never invisible (§10.5); a
+    // fresh arrival is the SAME readable darkness, just warmer/golden — the
+    // freshness rides on the pulsing glint (shell-glint), never on a pale fill
+    // that would leave the shape hard to make out.
+    const ink = css(lerpRGB(g.s.hor, [78, 48, 34], 0.72));
+    const inkNew = css(lerpRGB(g.s.hor, [124, 68, 34], 0.7));
+    const n = Math.max(1, creatures.length);
+    // keep the scatter inset from the frame so a shell — and the name under it —
+    // never crowds or clips an edge; the clamp + corner dodge below also steer
+    // clear of the bottom-right, where the compose button rests.
+    const mx = 0.12;
+    let html = "";
+    creatures.forEach((c, i) => {
+      const id = c.id || String(i);
+      const depth = hashFrac(id, 2);                       // 0 = far (up), 1 = near (down)
+      const px = Math.round((0.07 + depth * 0.05) * minSide);  // nearer reads larger
+      let x = (mx + ((i + 0.5) / n) * (1 - 2 * mx)) * 100  // even columns, inset
+            + (hashFrac(id, 1) - 0.5) * (0.5 / n) * 100;   // gentle per-item jitter
+      let y = (top + depth * (bottom - top)) * 100;
+      const rot = (hashFrac(id, 3) - 0.5) * 26;            // ±13°
+      // keep the whole glyph (and its name) on screen, then lift any that would
+      // land in the compose button's corner.
+      const half = (px / 2 / w) * 100;
+      x = clamp(x, half + 1.5, 100 - half - 1.5);
+      if (x > 70 && y > 80) y = 80;
+      const kind = GLYPHS[c.kind] ? c.kind : "glass";
+      const label = (CREATURE_NOUN[kind] || "") + (c.label ? " · " + c.label : "");
+      html +=
+        `<button type="button" class="shore-shell kind-${kind}${c.fresh ? " is-new" : ""}"` +
+        ` style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${px}px;--rot:${rot.toFixed(1)}deg;color:${c.fresh ? inkNew : ink}"` +
+        ` data-id="${id}" data-kind="${kind}" aria-label="${label}">` +
+        `<svg viewBox="0 0 48 48" aria-hidden="true">${GLYPHS[kind]}</svg>` +
+        `<span class="shell-cap">${c.label || CREATURE_NOUN[kind] || ""}</span>` +
+        `</button>`;
+    });
+    host.innerHTML = html;
+    return creatures.length;
+  }
+
   // Render just the coastline band (DESIGN §10.2) into a short container.
   function renderStrip(container, opts) {
     const date = resolveDate(opts);
@@ -311,5 +408,5 @@
     return { date, tide: tideAt(date) };
   }
 
-  global.Shore = { render, renderStrip, skyAt, tideAt, moonPhase, bodyAt, resolveDate, labelTime };
+  global.Shore = { render, renderStrip, renderCreatures, skyAt, tideAt, moonPhase, bodyAt, resolveDate, labelTime };
 })(typeof window !== "undefined" ? window : globalThis);
