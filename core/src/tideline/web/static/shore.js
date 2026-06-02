@@ -359,17 +359,19 @@
     const bottom = 0.88;
     const minSide = Math.min(w, h);
     // warm ink that reads against the pale near-sand: a deep warm brown,
-    // lifted a touch so the line art stays calm but never invisible (§10.5); a
-    // fresh arrival is the SAME readable darkness, just warmer/golden — the
-    // freshness rides on the pulsing glint (shell-glint), never on a pale fill
-    // that would leave the shape hard to make out.
+    // lifted a touch so the line art stays calm but never invisible (§10.5).
+    // EVERY creature shares this ink — a fresh arrival is NOT a paler/glowing
+    // shape (that washed the color out); its freshness is a small Zelda-style
+    // sparkle that twinkles at one point on it (added below), nothing more.
     const ink = css(lerpRGB(g.s.hor, [78, 48, 34], 0.72));
-    const inkNew = css(lerpRGB(g.s.hor, [124, 68, 34], 0.7));
     const n = Math.max(1, creatures.length);
     // keep the scatter inset from the frame so a shell — and the name under it —
     // never crowds or clips an edge; the clamp + corner dodge below also steer
     // clear of the bottom-right, where the compose button rests.
     const mx = 0.12;
+    // a name never spills past its own column — at rest it ellipsizes to fit
+    // (brief is fine), opening to the full title on hover / keyboard focus.
+    const capMax = Math.max(56, Math.round(0.9 * (1 - 2 * mx) * w / n));
     let html = "";
     creatures.forEach((c, i) => {
       const id = c.id || String(i);
@@ -388,9 +390,14 @@
       const label = (CREATURE_NOUN[kind] || "") + (c.label ? " · " + c.label : "");
       html +=
         `<button type="button" class="shore-shell kind-${kind}${c.fresh ? " is-new" : ""}"` +
-        ` style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${px}px;--rot:${rot.toFixed(1)}deg;color:${c.fresh ? inkNew : ink}"` +
+        ` style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${px}px;--rot:${rot.toFixed(1)}deg;--cap-max:${capMax}px;color:${ink}"` +
         ` data-id="${id}" data-kind="${kind}" aria-label="${label}">` +
         `<svg viewBox="0 0 48 48" aria-hidden="true">${GLYPHS[kind]}</svg>` +
+        (c.fresh
+          ? '<span class="shell-spark" aria-hidden="true"><svg viewBox="0 0 24 24">' +
+            '<path d="M12 0 Q13 11 24 12 Q13 13 12 24 Q11 13 0 12 Q11 11 12 0 Z"/>' +
+            '</svg></span>'
+          : "") +
         `<span class="shell-cap">${c.label || CREATURE_NOUN[kind] || ""}</span>` +
         `</button>`;
     });

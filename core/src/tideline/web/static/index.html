@@ -63,6 +63,20 @@
   <div class="shore-full" id="shoreFull" aria-hidden="true" role="region" aria-label="海岸">
     <div class="shore-scene-host" id="shoreScene"></div>
     <div class="shore-creatures" id="shoreCreatures"></div>
+
+    <!-- Tap a creature to open what washed ashore (slice 3c): a card's lived
+         moments, a concept's synonyms, or a theme's masked recall. A warm sheet
+         rises; the scrim or the grip sends it back down. -->
+    <div class="creature-sheet" id="creatureSheet" aria-hidden="true">
+      <div class="sheet-scrim" id="sheetScrim"></div>
+      <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="海岸拾物">
+        <button class="sheet-close" id="sheetClose" type="button" aria-label="收起">
+          <span class="sheet-grip" aria-hidden="true"></span>
+        </button>
+        <div class="sheet-content" id="sheetContent"></div>
+      </div>
+    </div>
+
     <button class="shore-back" id="shoreBack" type="button" aria-label="回到桌前">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
     </button>
@@ -128,36 +142,67 @@
     const shoreOpen = document.getElementById('shoreOpen');
     const isOpen = () => body.classList.contains('shore-open');
 
-    // Slice 3a — a hand-set sample so the creature look can be judged before
-    // wiring real data (/api/clusters concepts → shells, /api/themes → crabs,
-    // /api/cards → sea-glass). The tide brings only a calm few.
-    //
-    // Labels are in the user's FIRST language, never the source — that is the
-    // Tideline rule (translate into your language only). When this is wired in
-    // slice 3b: a card → its `translated`; a concept/theme cluster → its
-    // `title` — which must itself be generated in the first language (today
-    // episodic_title is English-cued, so that needs fixing before 3b).
-    const SAMPLE_CREATURES = [
-      { id: 'c1', kind: 'shell', label: '谢谢', fresh: true },
-      { id: 'c2', kind: 'glass', label: '营业时间' },
-      { id: 'c3', kind: 'crab',  label: '东京的午饭' },
-      { id: 'c4', kind: 'shell', label: '好吃' },
-      { id: 'c5', kind: 'glass', label: '担担面' },
-    ];
+    // Slice 3b — the tide brings real learnings ashore. Three relations, one
+    // visual language (DESIGN §10.5): a concept cluster → a shell, a theme →
+    // a crab, a single card → sea-glass. Every label is the FIRST-language
+    // form, never the source (the Tideline rule): a card shows its `translated`,
+    // a cluster shows its `title` (named in the first language by
+    // episodic_title). shore.js only draws; this page owns the data — the
+    // load-bearing split stays in engineering.
+    let CREATURES = [];                  // what the tide last left ashore
+
+    async function gatherCreatures() {
+      const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+      const [cards, concepts, themes] = await Promise.all([
+        get('/api/cards'), get('/api/clusters'), get('/api/themes'),
+      ]);
+      const named = (rows) => rows.filter((r) => r.title && r.title.trim());
+      const shells = named(concepts).map((c) => ({ id: 'concept-' + c.id, kind: 'shell', label: c.title, data: c }));
+      const crabs  = named(themes).map((t) => ({ id: 'theme-' + t.id, kind: 'crab', label: t.title, data: t }));
+      // /api/cards is newest-first; the label is the translation into your
+      // language. Drop any without one — nothing to read on that glass.
+      const glass = cards
+        .filter((c) => c.translated && c.translated.trim())
+        .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.translated, data: c }));
+      // Only a calm few wash up — never a wall; that restraint is what fixes the
+      // deck overload (DESIGN §10.5). The matured shells/crabs come first, then
+      // the freshest cards fill up to the cap. (slice-3b: "freshest" = newest
+      // arrivals; the real maturation rhythm lands later.)
+      // Fewer ashore on a narrow phone — wider columns give each name room to
+      // breathe (the calm-few rule, tuned to the screen).
+      const CALM = (window.innerWidth || 1024) < 480 ? 3 : 5;
+      const matured = [...crabs, ...shells].slice(0, CALM);
+      const fill = glass.slice(0, Math.max(0, CALM - matured.length));
+      if (fill[0]) fill[0].fresh = true;  // the newest arrival catches the glint
+      return [...matured, ...fill];
+    }
+
     function paintShore() {
       if (!window.Shore) return;
       if (shoreScene) Shore.render(shoreScene);
-      if (shoreCreatures) Shore.renderCreatures(shoreCreatures, SAMPLE_CREATURES);
+      if (shoreCreatures) Shore.renderCreatures(shoreCreatures, CREATURES);
     }
+
+    // Re-read the tide, then repaint. Fail-soft: a fetch hiccup keeps whatever
+    // was last ashore rather than emptying the beach.
+    async function tideRefresh() {
+      try { CREATURES = await gatherCreatures(); } catch (e) { /* keep last ashore */ }
+      if (isOpen()) paintShore();
+    }
+    // Warm the tide on load so the first wade-in isn't an empty beach.
+    tideRefresh();
+
     function openShore() {
       if (isOpen()) return;
-      paintShore();
+      paintShore();         // show whatever the tide already holds — no empty flash
+      tideRefresh();        // then re-read, in case it changed since last time
       body.classList.add('shore-open');
       shoreFull.setAttribute('aria-hidden', 'false');
       shoreOpen.setAttribute('aria-expanded', 'true');
     }
     function closeShore() {
       if (!isOpen()) return;
+      closeSheet();   // a creature sheet never outlives the shore it sits in
       body.classList.remove('shore-open');
       shoreFull.setAttribute('aria-hidden', 'true');
       shoreOpen.setAttribute('aria-expanded', 'false');
@@ -169,7 +214,13 @@
       closeShore();
       textEl.focus();
     });
-    addEventListener('keydown', (e) => { if (e.key === 'Escape') closeShore(); });
+    // Escape backs out one layer at a time: an open creature sheet first,
+    // then the shore itself.
+    addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (creatureSheet.classList.contains('is-open')) closeSheet();
+      else closeShore();
+    });
     addEventListener('resize', () => { if (isOpen()) paintShore(); });
     setInterval(() => { if (isOpen()) paintShore(); }, 60000);
 
@@ -181,8 +232,147 @@
       if (swipeY == null) return;
       const dy = e.clientY - swipeY;
       swipeY = null;
+      if (creatureSheet.classList.contains('is-open')) return;  // the sheet owns the gesture
       if (!isOpen() && dy < -60 && e.clientY > innerHeight * 0.6) openShore();
       else if (isOpen() && dy > 80) closeShore();
+    });
+
+    // --- a creature, opened (slice 3c) -------------------------------------
+    // Tap a shell / crab / glass to see what it holds. The inner shapes reuse
+    // the learnings album's classes (.cluster / .theme / .member / .masked) so
+    // the desk-side shore and the album stay one visual language; only the
+    // sheet chrome is new. Data rides on each creature (gathered with it), so
+    // opening one needs no refetch.
+    const creatureSheet = document.getElementById('creatureSheet');
+    const sheetContent = document.getElementById('sheetContent');
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+    const LANG_SHORT = { Japanese: '日', English: '英', Chinese: '中', French: '法',
+      Spanish: '西', German: '德', Italian: '意', Korean: '韩' };
+    const shortLang = (n) => LANG_SHORT[n] || esc(n || '?');
+    // Tideline always translates into your language, so the tag tells you which
+    // language the original came from.
+    const annot = (src, tgt) => `<span class="langtag">(${shortLang(src)}→${shortLang(tgt)})</span>`;
+    const SRC_GLYPH = {
+      image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>',
+      audio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 6v12M12 8.5v7M16 4v16M20 10v4"/></svg>',
+      text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    };
+    const srcGlyph = (s) => SRC_GLYPH[s] || SRC_GLYPH.text;
+    const srcLabel = (s) => { const k = { image: 'src_image', audio: 'src_audio', text: 'src_text' }[s]; return k ? t(k) : ''; };
+
+    function momentRow(m) {
+      const meta = [humanTime(m.at), srcLabel(m.source)].filter(Boolean).map(esc).join('<span class="dot">·</span>');
+      if (!m.context) {
+        return `<div class="moment moment--compact"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-meta">${meta || esc(t('no_context'))}</span></div>`;
+      }
+      return `<div class="moment"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-body"><span class="moment-context">${esc(m.context)}</span>${meta ? `<span class="moment-meta">${meta}</span>` : ''}</span></div>`;
+    }
+
+    // glass → a card: the word, the direction, and the stack of lived moments it
+    // grew from; sink returns it to the sea.
+    function cardSheet(c) {
+      return `<div class="cluster card">
+          <div class="card-head">
+            <h2>${esc(c.original)} → ${esc(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
+            <button type="button" class="sink-btn" data-card-id="${c.id}" title="${esc(t('sink_title'))}">${esc(t('sink'))}</button>
+          </div>
+          <div class="moments">${(c.moments || []).map(momentRow).join('')}</div>
+        </div>`;
+    }
+    // shell → a concept cluster: the synonyms that gathered under one meaning.
+    function conceptSheet(c) {
+      return `<div class="cluster">
+          <h2>${esc(c.title || '')}</h2>
+          <div class="members">${(c.members || []).map((m) => `
+            <div class="member">
+              <span class="original">${shortLang(m.source_lang)} ${esc(m.original)}</span>
+              <span class="translated">${esc(m.translated)}</span>
+              ${m.context ? `<span class="context">${esc(m.context)}</span>` : ''}
+            </div>`).join('')}</div>
+        </div>`;
+    }
+    // crab → a theme: masked recall — you see the meaning, recall the word
+    // (tap to reveal); "reveal all" flips to plain browsing.
+    function themeSheet(c) {
+      const rows = (c.members || []).map((m) => `
+        <div class="member">
+          <span class="translated">${esc(m.translated)}</span>
+          <span class="masked" role="button" tabindex="0" title="${esc(t('tap_reveal'))}">${esc(m.original)}</span>
+          ${m.context ? `<span class="context">${esc(m.context)}</span>` : ''}
+        </div>`).join('');
+      return `<div class="theme">
+          <h2>${esc(c.title || '')}</h2>
+          <div class="theme-tools"><button type="button" class="reveal-all">${esc(t('reveal_all'))}</button></div>
+          <div class="members">${rows}</div>
+        </div>`;
+    }
+
+    function openSheet(creature) {
+      const d = creature.data || {};
+      sheetContent.innerHTML = creature.kind === 'glass' ? cardSheet(d)
+        : creature.kind === 'crab' ? themeSheet(d) : conceptSheet(d);
+      sheetContent.dataset.creatureId = creature.id;
+      sheetContent.scrollTop = 0;
+      creatureSheet.classList.add('is-open');
+      creatureSheet.setAttribute('aria-hidden', 'false');
+    }
+    function closeSheet() {
+      if (!creatureSheet.classList.contains('is-open')) return;
+      creatureSheet.classList.remove('is-open');
+      creatureSheet.setAttribute('aria-hidden', 'true');
+      sheetContent.dataset.creatureId = '';
+    }
+
+    // tap a creature → open its sheet (delegated, so it survives every repaint)
+    shoreCreatures.addEventListener('click', (e) => {
+      const btn = e.target.closest('.shore-shell');
+      if (!btn) return;
+      const cr = CREATURES.find((c) => c.id === btn.dataset.id);
+      if (cr) openSheet(cr);
+    });
+
+    document.getElementById('sheetScrim').addEventListener('click', closeSheet);
+    document.getElementById('sheetClose').addEventListener('click', closeSheet);
+
+    // one delegated handler inside the sheet: sink a card, reveal a masked word,
+    // or flip the whole theme between recall and plain view.
+    sheetContent.addEventListener('click', async (e) => {
+      const sinkBtn = e.target.closest('.sink-btn');
+      if (sinkBtn) {
+        sinkBtn.disabled = true;
+        try {
+          const r = await fetch('/api/cards/sink', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_id: Number(sinkBtn.dataset.cardId) }),
+          });
+          if (!r.ok) { sinkBtn.disabled = false; return; }
+          const id = sheetContent.dataset.creatureId;
+          CREATURES = CREATURES.filter((c) => c.id !== id);  // it slips back under
+          closeSheet();
+          paintShore();
+        } catch (err) { sinkBtn.disabled = false; }
+        return;
+      }
+      const revealAll = e.target.closest('.reveal-all');
+      if (revealAll) {
+        const masks = sheetContent.querySelectorAll('.masked');
+        const anyHidden = [...masks].some((s) => !s.classList.contains('revealed'));
+        masks.forEach((s) => s.classList.toggle('revealed', anyHidden));
+        revealAll.textContent = anyHidden ? t('mask') : t('reveal_all');
+        return;
+      }
+      const mask = e.target.closest('.masked');
+      if (mask) mask.classList.toggle('revealed');
+    });
+    sheetContent.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.masked')) {
+        e.preventDefault();
+        e.target.closest('.masked').classList.toggle('revealed');
+      }
     });
 
     // ?shore=open — open on load, for demo + screenshots.

@@ -58,8 +58,9 @@ def test_frequent_terms_appear_4_to_6_times():
     entries = generate_entries(seed=42)
     counts = Counter(e[0] for e in entries)
 
-    # Sample frequent terms across scenarios
-    for term in ("ラーメン", "beurre", "amor", "合同", "Datenbank"):
+    # Sample frequent terms across scenarios (all originals — the foreign
+    # source a Chinese-first user meets; work-English uses "contract")
+    for term in ("ラーメン", "beurre", "amor", "contract", "Datenbank"):
         assert 4 <= counts[term] <= 6, (
             f"Frequent term {term!r} should appear 4-6 times, got {counts[term]}"
         )
@@ -69,7 +70,7 @@ def test_occasional_terms_appear_2_to_3_times():
     entries = generate_entries(seed=42)
     counts = Counter(e[0] for e in entries)
 
-    for term in ("駅", "crème", "dolor", "提案", "Server"):
+    for term in ("駅", "crème", "dolor", "proposal", "Server"):
         assert 2 <= counts[term] <= 3, (
             f"Occasional term {term!r} should appear 2-3 times, got {counts[term]}"
         )
@@ -79,7 +80,7 @@ def test_rare_terms_appear_exactly_once():
     entries = generate_entries(seed=42)
     counts = Counter(e[0] for e in entries)
 
-    for term in ("お会計", "préchauffer", "siempre", "签字", "Versionskontrolle"):
+    for term in ("お会計", "préchauffer", "siempre", "sign", "Versionskontrolle"):
         assert counts[term] == 1, (
             f"Rare term {term!r} should appear once, got {counts[term]}"
         )
@@ -115,25 +116,31 @@ def test_seed_db_count_matches_generate(conn):
 
 
 def test_seed_data_spans_multiple_source_languages(conn):
-    """We expect Japanese, French, Spanish, Chinese, German originals — five
-    distinct script families to make the demo visually convincing."""
+    """A first-language-Chinese user meets several foreign source languages —
+    Japanese, French, Spanish, German, English — each translated INTO Chinese.
+    (No Chinese *source*: you don't translate your own language.) Multiple
+    script families keep the demo visually convincing."""
     seed_db(conn)
 
     originals = conn.execute("SELECT DISTINCT original FROM translations").fetchall()
-    text = " ".join(r[0] for r in originals)
 
-    # crude script presence checks
-    has_japanese = any("ラ" in r[0] or "寿" in r[0] for r in originals)
-    has_chinese = any("会议" in r[0] or "合同" in r[0] for r in originals)
-    has_french = any("beurre" == r[0] or "œuf" == r[0] for r in originals)
-    has_spanish = any("amor" == r[0] for r in originals)
-    has_german = any("Datenbank" == r[0] for r in originals)
+    # crude source-language presence checks (on the originals)
+    has_japanese = any("ラ" in r[0] or "刺" in r[0] for r in originals)
+    has_french = any(r[0] in ("beurre", "œuf") for r in originals)
+    has_spanish = any(r[0] == "amor" for r in originals)
+    has_german = any(r[0] == "Datenbank" for r in originals)
+    has_english = any(r[0] in ("contract", "subway") for r in originals)
 
     assert has_japanese, "Missing Japanese-script source terms"
-    assert has_chinese, "Missing Chinese-script source terms"
     assert has_french, "Missing French source terms"
     assert has_spanish, "Missing Spanish source terms"
     assert has_german, "Missing German source terms"
+    assert has_english, "Missing English source terms"
+
+    # Everything is translated INTO the user's first language (Chinese).
+    assert conn.execute(
+        "SELECT DISTINCT target_lang FROM translations"
+    ).fetchall() == [("Chinese",)]
 
 
 # --- CLI ------------------------------------------------------------------
@@ -202,10 +209,11 @@ def test_seed_sets_source_language(conn):
     assert conn.execute(
         "SELECT DISTINCT source_lang FROM translations WHERE original='ラーメン'"
     ).fetchall() == [("Japanese",)]
-    # polyglot scenario → per-pair source language override
+    # polyglot scenario → per-pair source language override (scenario default
+    # is English; ヌードル overrides to Japanese, noodle soup stays English)
     assert conn.execute(
-        "SELECT DISTINCT source_lang FROM translations WHERE original='拉面'"
-    ).fetchall() == [("Chinese",)]
+        "SELECT DISTINCT source_lang FROM translations WHERE original='ヌードル'"
+    ).fetchall() == [("Japanese",)]
     assert conn.execute(
         "SELECT DISTINCT source_lang FROM translations WHERE original='noodle soup'"
     ).fetchall() == [("English",)]

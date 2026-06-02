@@ -32,6 +32,7 @@ from tideline.format import make_turn
 from tideline.intelligence import concept_match, episodic_title, relatedness
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
+from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting
 
 
 _DEFAULT_VOTE_THRESHOLD = 0.66
@@ -521,12 +522,16 @@ def name_clusters(
     Returns {'named': N, 'skipped': N, 'unparseable': N}.
     """
     named = skipped = bad = 0
+    # Titles surface in the UI (shells/crabs on the shore), so they must be in
+    # the reader's first language — never the source. The B6 prompt takes the
+    # language explicitly; the model is only the garnish on top of that rule.
+    native = get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)
     for cluster_id in _unnamed_clusters(conn, vote_type):
         items = _cluster_items(conn, cluster_id)
         if not items:
             skipped += 1
             continue
-        prompt = episodic_title.build_prompt(items)
+        prompt = episodic_title.build_prompt(items, native)
         response = _direct_generate(runtime, episodic_title.SYSTEM_PROMPT, prompt)
         title = episodic_title.parse_response(response)
         if not title:

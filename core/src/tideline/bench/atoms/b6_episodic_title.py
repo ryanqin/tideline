@@ -109,7 +109,11 @@ CASES = [
 
 
 def build_prompt(case: dict) -> str:
-    return episodic_title.build_prompt(case["items"])
+    # These cases expect English episodic titles → an English-first reader.
+    # Passing the native language keeps the bench measuring the exact
+    # production prompt (which now writes the title in the reader's first
+    # language) without changing what a correct answer looks like.
+    return episodic_title.build_prompt(case["items"], case.get("native_lang", "English"))
 
 
 def evaluate(case: dict, response: str) -> bool:

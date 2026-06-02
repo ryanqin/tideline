@@ -5,9 +5,10 @@ is the substrate emergence detection (Step 6b) will scan. Frequent terms
 appear 4-6 times, occasional 2-3 times, rare 1 time — this gives
 candidate promotion something real to find.
 
-Scenarios are everyday contexts: Tokyo trip menu hunting, French recipes,
-Latin music lyrics, Beijing business meetings, German tech docs. Each
-contributes ~25 entries; ~120 total by default.
+Scenarios are everyday contexts a first-language-Chinese user runs into:
+Tokyo trip menu hunting, French recipes, Latin music lyrics, work English
+(contracts & meetings), German tech docs — each foreign text translated
+INTO Chinese. Each contributes ~25 entries; ~120 total by default.
 
 **Episodic honesty (2026-05-28):** the demo's "scene feel" must only use
 signals the real capture pipeline can actually produce — never narrated
@@ -66,7 +67,7 @@ SCENARIOS: list[dict[str, Any]] = [
     {
         "name": "Tokyo trip — menu hunting",
         "slug": "tokyo-menu",
-        "target_lang": "English",
+        "target_lang": "Chinese",
         "sessions": [
             {"suffix": "ramen-yokocho", "source": "image", "day": 6,
              "gist": "A glowing ticket machine outside a narrow late-night ramen shop"},
@@ -80,20 +81,20 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "Small plates circling a conveyor-belt sushi counter"},
         ],
         "frequent": [
-            ("ラーメン", "ramen"),
-            ("寿司", "sushi"),
-            ("天ぷら", "tempura"),
+            ("ラーメン", "拉面"),
+            ("刺身", "生鱼片"),
+            ("天ぷら", "天妇罗"),
         ],
         "occasional": [
-            ("駅", "station"),
-            ("地下鉄", "subway"),
+            ("駅", "车站"),
+            ("地下鉄", "地铁"),
         ],
         "rare": [
-            ("お会計", "the bill, please"),
-            ("いらっしゃいませ", "welcome (greeting)"),
-            ("ご注文は", "what would you like to order"),
-            ("つけ麺", "tsukemen (dipping noodles)"),
-            ("醤油", "soy sauce"),
+            ("お会計", "买单"),
+            ("いらっしゃいませ", "欢迎光临"),
+            ("ご注文は", "您要点什么"),
+            ("つけ麺", "蘸面"),
+            ("醤油", "酱油"),
         ],
         # Which capture sessions each term could honestly appear in — its
         # OCR/transcript context must fit the term (a station word belongs
@@ -101,7 +102,7 @@ SCENARIOS: list[dict[str, Any]] = [
         # within this whitelist.
         "term_sessions": {
             "ラーメン": ["ramen-yokocho", "counter-audio"],
-            "寿司": ["sushi-counter", "izakaya-menu"],
+            "刺身": ["sushi-counter", "izakaya-menu"],
             "天ぷら": ["izakaya-menu", "sushi-counter"],
             "駅": ["station-signs"],
             "地下鉄": ["station-signs"],
@@ -115,7 +116,7 @@ SCENARIOS: list[dict[str, Any]] = [
     {
         "name": "French cooking — recipe reading",
         "slug": "french-recipe",
-        "target_lang": "English",
+        "target_lang": "Chinese",
         "sessions": [
             {"suffix": "madeleine-blog", "source": "image", "day": 6,
              "gist": "A recipe open on a phone propped against a mixing bowl"},
@@ -129,20 +130,20 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "A baking recipe on a tablet beside a lemon tart"},
         ],
         "frequent": [
-            ("beurre", "butter"),
-            ("œuf", "egg"),
-            ("farine", "flour"),
+            ("beurre", "黄油"),
+            ("œuf", "鸡蛋"),
+            ("farine", "面粉"),
         ],
         "occasional": [
-            ("crème", "cream"),
-            ("cuillère", "spoon"),
+            ("crème", "奶油"),
+            ("cuillère", "勺子"),
         ],
         "rare": [
-            ("jaune d'œuf", "egg yolk"),
-            ("blanc en neige", "stiff egg whites"),
-            ("rouleau à pâtisserie", "rolling pin"),
-            ("four", "oven"),
-            ("préchauffer", "preheat"),
+            ("jaune d'œuf", "蛋黄"),
+            ("blanc en neige", "打发的蛋白"),
+            ("rouleau à pâtisserie", "擀面杖"),
+            ("four", "烤箱"),
+            ("préchauffer", "预热"),
         ],
         "term_sessions": {
             "beurre": ["madeleine-blog", "grandmere-livre"],
@@ -160,7 +161,7 @@ SCENARIOS: list[dict[str, Any]] = [
     {
         "name": "Latin music — lyric translation",
         "slug": "latin-lyrics",
-        "target_lang": "English",
+        "target_lang": "Chinese",
         "sessions": [
             {"suffix": "spotify-lyrics", "source": "text", "day": 6,
              "gist": None},
@@ -172,20 +173,20 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "A Spanish album cover with the song title in flowing script"},
         ],
         "frequent": [
-            ("amor", "love"),
-            ("corazón", "heart"),
-            ("noche", "night"),
+            ("amor", "爱"),
+            ("corazón", "心"),
+            ("noche", "夜晚"),
         ],
         "occasional": [
-            ("dolor", "pain"),
-            ("bailar", "to dance"),
+            ("dolor", "痛苦"),
+            ("bailar", "跳舞"),
         ],
         "rare": [
-            ("madrugada", "dawn"),
-            ("recordar", "to remember"),
-            ("sin ti", "without you"),
-            ("siempre", "always"),
-            ("nunca", "never"),
+            ("madrugada", "黎明"),
+            ("recordar", "记得"),
+            ("sin ti", "没有你"),
+            ("siempre", "永远"),
+            ("nunca", "从不"),
         ],
         "term_sessions": {
             "amor": ["spotify-lyrics", "bolero-radio"],
@@ -201,9 +202,9 @@ SCENARIOS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "Beijing meetings — business Mandarin",
-        "slug": "beijing-meetings",
-        "target_lang": "English",
+        "name": "Work English — contracts & meetings",
+        "slug": "work-english",
+        "target_lang": "Chinese",
         "sessions": [
             {"suffix": "contract-doc", "source": "image", "day": 6,
              "gist": "A printed contract open to the signature page"},
@@ -215,38 +216,38 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": None},
         ],
         "frequent": [
-            ("合同", "contract"),
-            ("会议", "meeting"),
-            ("项目", "project"),
+            ("contract", "合同"),
+            ("meeting", "会议"),
+            ("project", "项目"),
         ],
         "occasional": [
-            ("提案", "proposal"),
-            ("预算", "budget"),
+            ("proposal", "提案"),
+            ("budget", "预算"),
         ],
         "rare": [
-            ("准时", "on time / punctual"),
-            ("汇报", "report"),
-            ("决策", "decision"),
-            ("合作", "cooperation"),
-            ("签字", "to sign"),
+            ("punctual", "准时"),
+            ("report", "汇报"),
+            ("decision", "决策"),
+            ("cooperation", "合作"),
+            ("sign", "签字"),
         ],
         "term_sessions": {
-            "合同": ["contract-doc", "meeting-notes"],
-            "会议": ["meeting-notes", "voice-memo"],
-            "项目": ["whiteboard", "meeting-notes"],
-            "提案": ["whiteboard"],
-            "预算": ["whiteboard"],
-            "准时": ["voice-memo"],
-            "汇报": ["voice-memo"],
-            "决策": ["meeting-notes"],
-            "合作": ["voice-memo"],
-            "签字": ["contract-doc"],
+            "contract": ["contract-doc", "meeting-notes"],
+            "meeting": ["meeting-notes", "voice-memo"],
+            "project": ["whiteboard", "meeting-notes"],
+            "proposal": ["whiteboard"],
+            "budget": ["whiteboard"],
+            "punctual": ["voice-memo"],
+            "report": ["voice-memo"],
+            "decision": ["meeting-notes"],
+            "cooperation": ["voice-memo"],
+            "sign": ["contract-doc"],
         },
     },
     {
         "name": "German tech docs — software reading",
         "slug": "german-docs",
-        "target_lang": "English",
+        "target_lang": "Chinese",
         "sessions": [
             {"suffix": "api-docs", "source": "image", "day": 6,
              "gist": "A code documentation page about databases on a laptop screen"},
@@ -256,19 +257,19 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": None},
         ],
         "frequent": [
-            ("Datenbank", "database"),
-            ("Speicher", "memory / storage"),
+            ("Datenbank", "数据库"),
+            ("Speicher", "内存"),
         ],
         "occasional": [
-            ("Server", "server"),
-            ("Anwendung", "application"),
+            ("Server", "服务器"),
+            ("Anwendung", "应用程序"),
         ],
         "rare": [
-            ("Fehlermeldung", "error message"),
-            ("Schnittstelle", "interface"),
-            ("Schlüssel", "key"),
-            ("Versionskontrolle", "version control"),
-            ("Verbindung", "connection"),
+            ("Fehlermeldung", "错误信息"),
+            ("Schnittstelle", "接口"),
+            ("Schlüssel", "密钥"),
+            ("Versionskontrolle", "版本控制"),
+            ("Verbindung", "连接"),
         ],
         "term_sessions": {
             "Datenbank": ["api-docs"],
@@ -284,14 +285,14 @@ SCENARIOS: list[dict[str, Any]] = [
     },
     # Phase B4 substrate: cross-original same-concept drawers. Models a
     # polyglot user encountering the same concept across different
-    # source languages / phrasings over time. Same target_lang (English)
+    # source languages / phrasings over time. Same target_lang (Chinese)
     # means _pending_pairs will pair them; B1 should call them concept-
     # equivalent across these originals, producing the first real
     # cross-original Tier B clusters.
     {
         "name": "Polyglot crossings — same concept, different originals",
         "slug": "polyglot",
-        "target_lang": "English",
+        "target_lang": "Chinese",
         "sessions": [
             {"suffix": "travel-notes", "source": "text", "day": 6,
              "gist": None},
@@ -301,28 +302,28 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": None},
         ],
         "frequent": [
-            # noodle concept across Chinese / English descriptive
-            ("拉面", "ramen", "Chinese"),
-            ("noodle soup", "noodle soup", "English"),
-            # subway concept across Chinese / English
-            ("地铁", "subway", "Chinese"),
-            ("metro", "metro", "English"),
+            # subway concept across English / French — both translate to 地铁
+            ("subway", "地铁", "English"),
+            ("métro", "地铁", "French"),
+            # noodle concept across English / Japanese — both translate to 面条
+            ("noodle soup", "面条", "English"),
+            ("ヌードル", "面条", "Japanese"),
         ],
         "occasional": [
-            # love concept across French / Chinese
-            ("l'amour", "love", "French"),
-            ("爱", "love", "Chinese"),
+            # love concept across French / Italian — both translate to 爱
+            ("l'amour", "爱", "French"),
+            ("amore", "爱", "Italian"),
         ],
         "rare": [
-            ("evening train", "evening train", "English"),
+            ("evening train", "晚班列车", "English"),
         ],
         "term_sessions": {
-            "拉面": ["travel-notes"],
+            "subway": ["travel-notes", "transit-signs"],
+            "métro": ["transit-signs"],
             "noodle soup": ["travel-notes"],
-            "地铁": ["transit-signs"],
-            "metro": ["transit-signs"],
+            "ヌードル": ["travel-notes"],
             "l'amour": ["song-and-card"],
-            "爱": ["song-and-card"],
+            "amore": ["song-and-card"],
             "evening train": ["transit-signs"],
         },
     },
@@ -346,7 +347,7 @@ _SCENARIO_SOURCE_LANG = {
     "Tokyo trip — menu hunting": "Japanese",
     "French cooking — recipe reading": "French",
     "Latin music — lyric translation": "Spanish",
-    "Beijing meetings — business Mandarin": "Chinese",
+    "Work English — contracts & meetings": "English",
     "German tech docs — software reading": "German",
     "Polyglot crossings — same concept, different originals": "English",
 }

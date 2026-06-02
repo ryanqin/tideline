@@ -34,15 +34,20 @@ _PREFIX_RE = re.compile(
 _MAX_TITLE_WORDS = 12
 
 
-def build_prompt(items: list[dict]) -> str:
+def build_prompt(items: list[dict], native_lang: str) -> str:
     """Render a group of translations into a B6 prompt.
 
     `items` is a list of dicts with keys `term` and `context` (context
-    may be empty). The bench cases and the production caller both pass
-    this same shape so the prompt construction is identical.
+    may be empty). `native_lang` is the reader's first language: the title
+    must be written in it, even though the terms are in other languages —
+    Tideline surfaces everything in your language, never the source. The
+    bench cases and the production caller both pass this same shape so the
+    prompt construction is identical.
     """
     if not items:
         raise ValueError("build_prompt requires at least one item")
+    if not native_lang or not native_lang.strip():
+        raise ValueError("build_prompt requires a native_lang")
     lines = []
     for item in items:
         term = item["term"]
@@ -55,7 +60,9 @@ def build_prompt(items: list[dict]) -> str:
     return (
         "These translations were encountered together. Generate a 3-7 word "
         "title that captures their shared episodic moment (place, time, "
-        f"activity):\n{items_text}"
+        f"activity). Write the title in {native_lang} — the reader's first "
+        "language — even though the terms below are in other languages:"
+        f"\n{items_text}"
     )
 
 
