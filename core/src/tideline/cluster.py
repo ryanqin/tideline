@@ -43,19 +43,26 @@ _DEFAULT_MIN_VOTES = 3
 
 # Two translations are the same *concept* by construction — no model vote
 # needed — when they share a source word (the same word seen twice), or
-# when they resolve to the same first-language form (駅 and station both
-# render as 车站). The second case is exactly the cross-language concept
-# merge, and it is deterministic: if two words translate to the same word
-# in your language, they mean the same thing. These edges are added
-# directly in rebuild_clusters; voting on them would only spend the sweep
-# budget on a foregone conclusion. On a single-first-language corpus the
-# same-word pairs alone are numerous enough to eat a whole small budget
-# before any genuinely ambiguous pair is reached (the "budget pit"), so
-# excluding them is what lets a modest budget reach real synonyms.
+# when two words *of the same source language* resolve to the same
+# first-language form (Japanese 駅 and 停車場 both → 车站). These edges are
+# added directly in rebuild_clusters; voting on them would only spend the
+# sweep budget on a foregone conclusion (the same-word pairs alone can eat
+# a whole small budget before any genuinely ambiguous pair is reached —
+# the "budget pit"), so excluding them lets a modest budget reach real
+# synonyms.
+#
+# Concept clusters are scoped per language-pair (§3.3): a cluster never
+# mixes two source languages. So the same-rendering branch requires the
+# SAME source_lang — 駅 (Japanese) and station (English) both render to
+# 车站, but they are two language-pairs and must stay two clusters. The
+# user meeting one concept in two different languages is a rare case we
+# deliberately don't chase. (COALESCE so untagged rows match each other,
+# and so the all-NULL state in unit tests behaves as one language.)
 # Empty translated guarded so unfilled rows don't all collapse together.
 _DETERMINISTIC_CONCEPT_PREDICATE = (
     "(t1.original = t2.original "
-    "OR (t1.translated = t2.translated AND t1.translated <> ''))"
+    "OR (t1.translated = t2.translated AND t1.translated <> '' "
+    "AND COALESCE(t1.source_lang, '') = COALESCE(t2.source_lang, '')))"
 )
 
 
@@ -153,9 +160,11 @@ class _Voter:
 _VOTERS: dict[str, _Voter] = {
     "concept": _Voter(
         system_prompt=concept_match.SYSTEM_PROMPT,
-        # Render each term with its SOURCE language so the model can recognise
-        # cross-language synonyms (ラーメン[Japanese] vs ramen[English] → same
-        # concept). _fetch_translation now returns source_lang in slot 1.
+        # Render each term with its SOURCE language so the model judges the
+        # words in the language they were met in (concept voting is scoped to
+        # one source language, §3.3, so both terms share it — e.g. Japanese
+        # 駅 vs 停車場). _fetch_translation returns source_lang in slot 1;
+        # passing the target language here would mislabel both as Chinese.
         build=lambda ra, rb: concept_match.build_prompt(
             ra[0], ra[1] or "unknown", rb[0], rb[1] or "unknown"
         ),
@@ -190,9 +199,9 @@ def _canonical_pair(a: int, b: int) -> tuple[int, int]:
 def _fetch_translation(conn: sqlite3.Connection, tid: int) -> tuple[str, str, str] | None:
     # The middle field is the term's SOURCE language — the language it was met
     # in (ラーメン→Japanese, ramen→English). The concept voter renders it next
-    # to the term so the model can see they're cross-language synonyms; passing
+    # to the term so the model judges the word in its real language; passing
     # the *target* language here (always the user's Chinese) mislabelled both
-    # terms as Chinese and made the model vote "no" on real twins.
+    # terms as Chinese and broke voting on same-language synonyms.
     row = conn.execute(
         "SELECT original, source_lang, translated FROM translations WHERE id = ?",
         (tid,),
@@ -259,14 +268,16 @@ def _pending_pairs(
     A pair is "pending" while its accumulated vote count is strictly
     less than `min_votes_per_pair`.
 
-    For `vote_type='concept'`, deterministic same-concept pairs (same
-    source word, or same first-language rendering — see
+    For `vote_type='concept'`, voting is restricted to pairs within the
+    same source language (clusters are scoped per language-pair, §3.3), and
+    deterministic same-concept pairs (same source word, or same
+    first-language rendering within one language — see
     `_DETERMINISTIC_CONCEPT_PREDICATE`) are excluded entirely: they don't
     need a model vote (they're settled by construction and added as edges
     in rebuild_clusters), and excluding them keeps a modest budget from
     being eaten by same-word pairs before it reaches genuinely ambiguous
     synonyms. Theme voting is unaffected — relatedness has no such
-    deterministic shortcut.
+    deterministic shortcut and is not language-scoped here.
 
     Priority order (Phase B4):
       1. Pairs already partially voted come first — finishing accumulation
@@ -288,10 +299,13 @@ def _pending_pairs(
     in the same target_lang, so theme grouping is unaffected;
     cross-target_lang theme grouping (polyglot) is a known MVP gap.
     """
-    # Concept voting skips deterministic same-concept pairs (added as
-    # edges in rebuild_clusters); theme voting has no such shortcut.
-    concept_exclusion = (
-        f"AND NOT {_DETERMINISTIC_CONCEPT_PREDICATE}\n          "
+    # Concept voting stays inside one source language (clusters are scoped
+    # per language-pair, §3.3) and skips deterministic same-concept pairs
+    # (those are added as edges in rebuild_clusters). Theme voting has no
+    # such shortcut and is not language-scoped here.
+    concept_clause = (
+        "AND COALESCE(t1.source_lang, '') = COALESCE(t2.source_lang, '')\n"
+        f"          AND NOT {_DETERMINISTIC_CONCEPT_PREDICATE}\n          "
         if vote_type == "concept" else ""
     )
     rows = conn.execute(
@@ -306,7 +320,7 @@ def _pending_pairs(
         FROM translations t1
         JOIN translations t2 ON t2.id > t1.id
         WHERE t1.target_lang = t2.target_lang
-          {concept_exclusion}AND (SELECT COUNT(*) FROM pair_similarity_votes v
+          {concept_clause}AND (SELECT COUNT(*) FROM pair_similarity_votes v
                WHERE v.translation_id_a = t1.id
                  AND v.translation_id_b = t2.id
                  AND v.vote_type = ?) < ?
@@ -415,10 +429,10 @@ def _deterministic_concept_edges(
 ) -> list[tuple[int, int]]:
     """Within-target_lang translation pairs that are the same concept by
     construction (see `_DETERMINISTIC_CONCEPT_PREDICATE`): same source word,
-    or same first-language rendering. These need no model vote, so they're
-    excluded from voting (`_pending_pairs`) and added straight to the
-    Union-Find here — that's what makes cross-language concept clusters
-    form deterministically, on any budget.
+    or same first-language rendering within one source language. These need
+    no model vote, so they're excluded from voting (`_pending_pairs`) and
+    added straight to the Union-Find here — that's what lets a concept
+    cluster form deterministically, on any budget.
     """
     return conn.execute(
         f"""
@@ -449,9 +463,9 @@ def rebuild_clusters(
     Algorithm:
       1. SELECT pairs of this vote_type with vote_count >= min_votes
          AND yes_ratio >= threshold
-      2. Union-Find over the resulting edge set; for 'concept', also union
-         the deterministic same-concept edges (same source word / same
-         first-language rendering — see `_deterministic_concept_edges`)
+      2. Union-Find over the resulting edge set (concept edges kept within
+         one source language); for 'concept', also union the deterministic
+         same-concept edges (see `_deterministic_concept_edges`)
       3. DELETE this vote_type's clusters / their members
       4. For each connected component with >= 2 members, INSERT a cluster
          (tagged vote_type) and its members
@@ -461,16 +475,27 @@ def rebuild_clusters(
     if min_votes < 1:
         raise ValueError(f"min_votes must be >= 1, got {min_votes}")
 
+    # Concept edges stay inside one source language (clusters are scoped per
+    # language-pair, §3.3). Voting already avoids cross-language pairs, but
+    # filter here too so a cluster can never span languages even if a stale
+    # cross-language vote survives. Theme edges are not language-scoped.
+    lang_filter = (
+        "AND COALESCE(t1.source_lang, '') = COALESCE(t2.source_lang, '')"
+        if vote_type == "concept" else ""
+    )
     edges = conn.execute(
-        """
+        f"""
         SELECT
-            translation_id_a,
-            translation_id_b,
-            SUM(CASE WHEN vote = 'yes' THEN 1 ELSE 0 END) AS yes_votes,
+            v.translation_id_a,
+            v.translation_id_b,
+            SUM(CASE WHEN v.vote = 'yes' THEN 1 ELSE 0 END) AS yes_votes,
             COUNT(*) AS total_votes
-        FROM pair_similarity_votes
-        WHERE vote_type = ?
-        GROUP BY translation_id_a, translation_id_b
+        FROM pair_similarity_votes v
+        JOIN translations t1 ON t1.id = v.translation_id_a
+        JOIN translations t2 ON t2.id = v.translation_id_b
+        WHERE v.vote_type = ?
+          {lang_filter}
+        GROUP BY v.translation_id_a, v.translation_id_b
         HAVING total_votes >= ? AND (yes_votes * 1.0 / total_votes) >= ?
         """,
         (vote_type, min_votes, vote_threshold),
@@ -480,11 +505,10 @@ def rebuild_clusters(
     for a, b, _, _ in edges:
         uf.union(a, b)
 
-    # Concept clusters also take deterministic edges — same source word or
-    # same first-language rendering means same concept, no vote required.
-    # This is where cross-language concept merging actually happens (駅 and
-    # station both → 车站), and it works on a zero-vote budget. Theme
-    # relatedness has no deterministic shortcut, so it's vote-only.
+    # Concept clusters also take deterministic edges — same source word, or
+    # same first-language rendering within one source language, means same
+    # concept with no vote required (and is what lets a cluster form on a
+    # zero-vote budget). Theme relatedness has no deterministic shortcut.
     if vote_type == "concept":
         for a, b in _deterministic_concept_edges(conn):
             uf.union(a, b)

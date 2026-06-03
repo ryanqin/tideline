@@ -11,9 +11,11 @@ read mostly off Japanese menus and signs, with the odd bilingual tourist board
 Chinese. It is shaped to exercise the whole pipeline end to end:
 
   - repeated terms promote to candidates → cards (frequency);
-  - the same concept met in two languages (ラーメン / "ramen" → 拉面,
-    駅 / "station" → 车站, 地下鉄 / "subway" → 地铁) gives cross-language
-    **concept** clusters (B1);
+  - same-meaning terms within one source language gather into **concept**
+    clusters (B1), one cluster per language-pair (§3.3). The bilingual twins
+    (ラーメン / "ramen" → 拉面, 駅 / "station" → 车站, 地下鉄 / "subway" → 地铁)
+    therefore stay as *separate* Japanese and English clusters — the
+    by-language lens is what shows they land on the same first-language word;
   - dishes that share a scene / cuisine gather into **theme** clusters (B7) —
     "your night in the ramen alley", "the izakaya table".
 

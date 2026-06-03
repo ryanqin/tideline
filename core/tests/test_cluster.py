@@ -77,12 +77,16 @@ def conn():
 
 
 def _add_translation(
-    c: sqlite3.Connection, original: str, target_lang: str, translated: str
+    c: sqlite3.Connection,
+    original: str,
+    target_lang: str,
+    translated: str,
+    source_lang: str | None = None,
 ) -> int:
     cursor = c.execute(
-        "INSERT INTO translations (original, target_lang, translated) "
-        "VALUES (?, ?, ?)",
-        (original, target_lang, translated),
+        "INSERT INTO translations (original, target_lang, translated, source_lang) "
+        "VALUES (?, ?, ?, ?)",
+        (original, target_lang, translated, source_lang),
     )
     c.commit()
     return cursor.lastrowid
@@ -389,43 +393,49 @@ def test_rebuild_rejects_bad_parameters(conn):
         rebuild_clusters(conn, min_votes=0)
 
 
-# --- Deterministic concept edges (cross-language merge, no votes) --------
+# --- Deterministic concept edges, scoped per language-pair (no votes) ----
 
 
-def test_same_translated_form_merges_cross_language_with_zero_votes(conn):
-    """Two source words that render to the SAME first-language form are the
-    same concept by construction — 駅 and station both → 车站. The concept
-    cluster must form with no model vote at all (this is what makes
-    'all languages become mine' work on the real app's tiny boot budget,
-    instead of starving behind same-word pairs — the budget pit)."""
-    a = _add_translation(conn, "駅", "Chinese", "车站")
-    b = _add_translation(conn, "station", "Chinese", "车站")
-
-    n = rebuild_clusters(conn, vote_type="concept")  # no votes cast
-
-    assert n == 1
-    members = {
-        r[0] for r in conn.execute(
-            "SELECT t.original FROM cluster_members cm "
-            "JOIN translations t ON t.id = cm.translation_id"
-        )
-    }
-    assert members == {"駅", "station"}
-
-
-def test_same_original_merges_with_zero_votes(conn):
-    """The same source word seen twice is trivially one concept — also a
-    deterministic edge, no vote needed."""
-    _add_translation(conn, "ラーメン", "Chinese", "拉面")
-    _add_translation(conn, "ラーメン", "Chinese", "拉面")
+def test_same_word_merges_with_zero_votes(conn):
+    """The same source word seen twice is trivially one concept — a
+    deterministic edge, no vote needed (and on any budget)."""
+    _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
     assert rebuild_clusters(conn, vote_type="concept") == 1
+
+
+def test_same_rendering_merges_within_one_language_with_zero_votes(conn):
+    """Two DIFFERENT words of the SAME source language that render to the
+    same first-language form are the same concept — Japanese 駅 and 停車場
+    both → 车站. Merges deterministically, no vote."""
+    a = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
+    b = _add_translation(conn, "停車場", "Chinese", "车站", source_lang="Japanese")
+    assert (a, b) in _deterministic_concept_edges(conn)
+    assert rebuild_clusters(conn, vote_type="concept") == 1
+
+
+def test_same_rendering_does_NOT_merge_across_languages(conn):
+    """A concept cluster never holds two language-pairs (§3.3). 駅 (Japanese)
+    and station (English) both render to 车站, but they are two different
+    language directions — they must stay two separate clusters, never fused.
+    The user meeting one concept in two languages is a rare case we don't
+    chase."""
+    a = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
+    b = _add_translation(conn, "station", "Chinese", "车站", source_lang="English")
+
+    assert _deterministic_concept_edges(conn) == []   # different language pair
+    assert (a, b) not in _pending_pairs(conn, limit=10, vote_type="concept")
+    # Even three forced cross-language yes votes must not fuse them.
+    for _ in range(3):
+        vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")
+    assert rebuild_clusters(conn, vote_type="concept") == 0
 
 
 def test_deterministic_edges_exclude_distinct_unrelated_concepts(conn):
     """Different words with different first-language forms are NOT a
     deterministic edge — they still need a model vote to cluster."""
-    a = _add_translation(conn, "ramen", "Chinese", "拉面")
-    b = _add_translation(conn, "sushi", "Chinese", "寿司")
+    a = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    b = _add_translation(conn, "寿司", "Chinese", "寿司", source_lang="Japanese")
     assert _deterministic_concept_edges(conn) == []
     assert rebuild_clusters(conn, vote_type="concept") == 0  # no edge, no cluster
     assert (a, b) in _pending_pairs(conn, limit=10, vote_type="concept")
@@ -434,21 +444,22 @@ def test_deterministic_edges_exclude_distinct_unrelated_concepts(conn):
 def test_concept_voting_skips_deterministic_pairs(conn):
     """`_pending_pairs` for concept must not hand deterministic pairs to the
     model — voting on a foregone conclusion is what eats the sweep budget."""
-    same_orig_a = _add_translation(conn, "駅", "Chinese", "车站")
-    same_orig_b = _add_translation(conn, "駅", "Chinese", "车站")
-    same_trans_a = _add_translation(conn, "subway", "Chinese", "地铁")
-    same_trans_b = _add_translation(conn, "地下鉄", "Chinese", "地铁")
+    same_orig_a = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
+    same_orig_b = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
+    same_rend_a = _add_translation(conn, "地下鉄", "Chinese", "地铁", source_lang="Japanese")
+    same_rend_b = _add_translation(conn, "メトロ", "Chinese", "地铁", source_lang="Japanese")
 
     pending = _pending_pairs(conn, limit=50, vote_type="concept")
     assert (same_orig_a, same_orig_b) not in pending
-    assert (same_trans_a, same_trans_b) not in pending
+    assert (same_rend_a, same_rend_b) not in pending
 
 
 def test_theme_voting_still_sees_all_pairs(conn):
-    """Theme relatedness has no deterministic shortcut — even same-original
-    pairs stay votable (theme keeps its own, separate budget story)."""
-    a = _add_translation(conn, "駅", "Chinese", "车站")
-    b = _add_translation(conn, "駅", "Chinese", "车站")
+    """Theme relatedness has no deterministic shortcut and is not
+    language-scoped — even same-original pairs stay votable (theme keeps its
+    own, separate budget story)."""
+    a = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
+    b = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
     assert (a, b) in _pending_pairs(conn, limit=10, vote_type="theme")
     # And theme gets NO deterministic edges — no votes, no theme cluster.
     assert rebuild_clusters(conn, vote_type="theme") == 0

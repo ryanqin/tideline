@@ -210,6 +210,13 @@ def create_app(
     boot_conn = _connect(db)
     promote_candidates(boot_conn)
     auto_promote_cards(boot_conn)
+    # Tag source languages BEFORE clustering — concept clusters are scoped
+    # per language-pair (a cluster never mixes two source languages, §3.3),
+    # so source_lang must be populated before the concept sweep reads it.
+    try:
+        tag_source_langs(boot_conn, runtime)
+    except Exception:
+        pass
     # Tier B sweep — two relations over the same tables, each fail-soft and
     # independent: concept (synonyms, feeds the by-language lens) and theme
     # (B7 relatedness, feeds album-style recall). Both are expensive (LLM)
@@ -220,10 +227,6 @@ def create_app(
         pass
     try:
         cluster_sweep(boot_conn, runtime, vote_type="theme")
-    except Exception:
-        pass
-    try:
-        tag_source_langs(boot_conn, runtime)
     except Exception:
         pass
     boot_conn.close()

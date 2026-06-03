@@ -61,6 +61,15 @@ def main(argv: list[str] | None = None) -> int:
     # later sink. Idempotent, deterministic — never resurrects a sunk card.
     auto_promote_cards(conn)
 
+    # Tag sweep FIRST: backfill source_lang on untagged rows. Deterministic
+    # for non-Latin scripts (free); model fallback for Latin. Fail-soft.
+    # Concept clusters are scoped per language-pair (§3.3), so source_lang
+    # must be populated before the concept sweep reads it.
+    try:
+        tag_source_langs(conn, runtime)
+    except Exception:
+        pass
+
     # Tier B sweep: budgeted background voting + cluster rebuild + naming.
     # Two relations over the same tables — concept (synonym aggregation,
     # feeds the by-language lens) and theme (B7 relatedness, feeds album-
@@ -74,13 +83,6 @@ def main(argv: list[str] | None = None) -> int:
         pass
     try:
         cluster_sweep(conn, runtime, vote_type="theme")
-    except Exception:
-        pass
-
-    # Tag sweep: backfill source_lang on untagged rows. Deterministic for
-    # non-Latin scripts (free); model fallback for Latin. Fail-soft.
-    try:
-        tag_source_langs(conn, runtime)
     except Exception:
         pass
 

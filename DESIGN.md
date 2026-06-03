@@ -64,17 +64,18 @@ Three principles, equally weighted. Every feature decision must align with all t
 - **The UI never shows a candidate as "ramen × 6."** It shows the stack of six moments. The number is incidental; the moments are the point.
 - **Tier B intelligence (semantic clustering, cluster naming, summarization) must preserve provenance.** A cluster titled "your Tokyo lunches" links back to every constituent translation row; the cluster is a *view* over evidence, not a replacement for it.
 
-### 3.3 The target is always your first language — every language becomes yours (locked 2026-05-27)
+### 3.3 The target is always your first language; learning is scoped per language-pair (locked 2026-05-27)
 
-> **Tideline is not a generic A→B translator. It always translates into your first language — and over time, every language you meet becomes *yours*: the same thing met in Japanese, English, or French collapses into one concept you own, named in your own tongue.**
+> **Tideline is not a generic A→B translator. It always translates into your first language — everything you meet comes to you in your own tongue, and what recurs settles into a vocabulary that is *yours*. You set your language once; there is no per-translation target to pick.**
 
-**Why this matters:** the product isn't "pick two languages and convert." It's "let the whole world speak to you in your language, and let what you meet accumulate into one growing vocabulary that is *yours*." There is no source/target pairing to manage — there is only *your* language, set once, and everything flows toward it.
+**Why this matters:** the product isn't "pick two languages and convert." It's "let the world speak to you in your language." The lived scenario is a *trip or a meeting* — you're translating from **one** non-first-language, across similar scenes, and the things that recur and overlap are what deserve to fuse. A user meeting the *same* concept in two *different* source languages does happen, but it's a rare case we deliberately **don't** chase.
 
 **How to apply:**
 
+- **Two tags on every translation:** (1) **the concept** — what is being translated; and (2) **the direction** — which source language → your language. Both are first-class: the *by-concept* lens surfaces the first, the *by-language* lens the second.
 - **No target-language picker.** Translation always renders into the first language (one global setting); the UI offers no per-translation target choice. (The native-language gloss layer was removed for the same reason — the translation *is* the first-language form; a second gloss column was redundant.)
-- **Concept clusters are language-blind coming in, first-language going out.** 駅 (Japanese) and station (English) both render to 车站 — so they are the *same concept*, merged into one shell and titled in the first language. This is "all languages become mine" made concrete in the emergence engine.
-- **Same-concept is settled by construction, not by a vote.** When two entries share a surface word, or render to the same first-language word, they are the same concept *deterministically* — the model is never asked to confirm what translation already decided. (This is also what lets cross-language merges surface on a near-zero clustering budget; the model is reserved for the genuinely ambiguous residue — same concept, different rendering.)
+- **Clusters are scoped per language-pair.** A concept cluster fuses same-meaning translations **from one source language**; **one cluster never holds two language-pairs.** 駅 (Japanese) and station (English) both render to 车站, but they are two directions — two clusters, never fused. (Both still live under the same first-language form in the by-language lens; they are just not *one* concept.)
+- **Same-concept is settled by construction *within a language*, not by a vote.** The same source word, or two words of the same source language that render to the same first-language form, are the same concept deterministically — no model call, and it forms on a near-zero clustering budget (closing the "budget pit"). The model is reserved for the genuinely ambiguous residue: same-language synonyms that render differently.
 
 ### Demo narrative line
 
@@ -194,10 +195,10 @@ If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + c
 | 2026-04-17 | Core/Android fully decoupled (three-layer architecture) | Protects agent-learning time |
 | 2026-04-20 | Design docs committed | First commit |
 | 2026-04-29 | Project formally named **Tideline**, preparing for open source | Decoupling repo identity from the hackathon; positioning as a long-lived agent framework |
-| 2026-05-27 | Product principle **three**: the target is always the first language — "every language becomes yours" | §3.3; no target picker, native gloss removed, cross-language concept merge |
+| 2026-05-27 | Product principle **three**: the target is always the first language; learning is scoped per language-pair | §3.3; no target picker, native gloss removed, two tags (concept + direction) |
 | 2026-05-27 | Learnings surface reimagined as a living tidal **shore** (§10) — translate ⇄ shore as two collapsing states of one world; "the tide is theatre, not pedagogy"; the sea = the sediment layer | Extends §3, does not replace it; web first, Android later. Locked + built out (see §10.9) |
 | 2026-06-03 | Shore built out: one-world navigation, glint = unopened, varied card shells, drag-to-sink, frosted sand | §10.9 "Built since" |
-| 2026-06-03 | Concept clustering made **deterministic** — same surface word or same first-language rendering = same concept, no model vote; cross-language merges form on a near-zero budget (closes the "budget pit") | §3.3; `core/.../cluster.py` |
+| 2026-06-03 | Concept clustering made **deterministic** and **scoped per language-pair** — same source word, or same first-language rendering within one source language, = same concept with no model vote; a cluster never spans two languages; forms on a near-zero budget (closes the "budget pit") | §3.3; `core/.../cluster.py` |
 
 ---
 
@@ -234,7 +235,7 @@ Tie the metaphor to §3.1's substrate: **the sea is the sediment.** Every transl
 
 ### 10.5 Objects and gestures
 
-- **A shell is a cluster.** Creature *type* encodes relation type, so the lenses become something you can *see*, not a toggle: a **scallop = concept cluster** (synonyms / the same thing across languages), a **crab = theme** (a "your Tokyo lunches" scene), and **a single card = a shell drawn from a small varied pool** by a stable hash of its id (so the beach reads varied, not a wall of identical pebbles). *(Ratified 2026-06-03 — see §10.9.)*
+- **A shell is a cluster.** Creature *type* encodes relation type, so the lenses become something you can *see*, not a toggle: a **scallop = concept cluster** (same-meaning translations within one source language), a **crab = theme** (a "your Tokyo lunches" scene), and **a single card = a shell drawn from a small varied pool** by a stable hash of its id (so the beach reads varied, not a wall of identical pebbles). *(Ratified 2026-06-03 — see §10.9.)*
 - **Tap a shell → open it into the existing card / masked-recall flow.** The back is still the stack of lived moments (§3.2). The learning interaction is **not** reinvented; the shore is its doorway.
 - **Swipe a shell back into the sea → sink** (the one curation gesture; it rests in the sediment, may return).
 - **Toss a finished translation down into the surf → it joins the sea / sediment** (the visible form of "every translation writes to sediment").
