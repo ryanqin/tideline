@@ -243,4 +243,11 @@ The shore shows **only what's ashore right now** — which is what fixes overloa
 
 **Locked (2026-05-27):** shore *below* the translator, the two states collapsing into each other (10.2); device-time sky **+ manual time/timezone override** (10.6); tide = theatre (10.3); sea = sediment (10.4); creature-type → relation-type — **shell = concept · crab = theme · sea-glass = single card** (10.5, provisional); the collapsed translator sits in **a corner** in shore state (10.2); the coastline carries a **faint glint only when a new shell has arrived** — in-app ambient, never a push/badge/count (10.2).
 
+**Built since (2026-06-03) — shipped, refines the above:**
+- **One world, not two tabs (§10.7).** Translate ⇄ shore ⇄ museum is one continuous place reached spatially: the desk is the front door, the shore is one swipe up, and the museum is reached *from* the shore (a doorway up the beach to the shelves); the museum's only way out is back to the open shore. The flat Translate/Museum nav is gone.
+- **The glint marks the unopened, not just the new (revises §10.2).** Every shell you haven't opened yet catches the faint light; opening it (tapping) puts its glint out. Session-scoped — still no stored unread count, no badge, no number; the "pull, not push" rule holds.
+- **A card is a *varied* shell, not only sea-glass (revises §10.5).** Concept = scallop and theme = crab stay single anchors, but a single card is drawn from a small pool of shell shapes by a stable hash of its id — so the beach of cards reads varied, never a wall of identical pebbles.
+- **Sink is also a drag (realizes §10.4/§10.5).** The open water above the surf is the drop target: drag a shell up past the surf and let go and it sinks back into the sediment (a ripple, then it's gone). The sheet's "sink" button stays as the keyboard / screen-reader path.
+- **The sand has a frosted grain** — a fine static noise on the near sand, under the shells, for a matte texture (never a blur over a shell).
+
 **Still to design (implementation, owned by the build):** the exact tide curve — how the (device or hand-set) time + lunar phase map to a water level (semidiurnal ≈ 12h25m + ≈ 50-min daily drift + fortnightly spring/neap from moon phase) and to the cadence on which a newly matured shell rides in.
