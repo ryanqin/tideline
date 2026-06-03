@@ -154,6 +154,10 @@
     // episodic_title). shore.js only draws; this page owns the data — the
     // load-bearing split stays in engineering.
     let CREATURES = [];                  // what the tide last left ashore
+    // Every shell you haven't opened yet glows; opening one puts its glint out.
+    // Session-scoped (resets when you next walk down to the water) — a gentle
+    // "you haven't looked at these" cue, never a stored unread count.
+    const OPENED = new Set();             // creature ids you've already opened
 
     async function gatherCreatures() {
       const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => []);
@@ -177,13 +181,16 @@
       const CALM = (window.innerWidth || 1024) < 480 ? 3 : 5;
       const matured = [...crabs, ...shells].slice(0, CALM);
       const fill = glass.slice(0, Math.max(0, CALM - matured.length));
-      if (fill[0]) fill[0].fresh = true;  // the newest arrival catches the glint
       return [...matured, ...fill];
     }
 
     function paintShore() {
       if (!window.Shore) return;
       if (shoreScene) Shore.render(shoreScene);
+      // Glow marks the unopened: every shell you haven't tapped yet catches the
+      // glint; the ones you've opened rest quiet. Recomputed each paint, so an
+      // open (which adds to OPENED + repaints) puts that shell's glint out.
+      CREATURES.forEach((c) => { c.glow = !OPENED.has(c.id); });
       if (shoreCreatures) Shore.renderCreatures(shoreCreatures, CREATURES);
     }
 
@@ -256,6 +263,10 @@
       if (!btn) return;
       const cr = CREATURES.find((c) => c.id === btn.dataset.id);
       if (!cr) return;
+      // You've now looked at this one — put its glint out (repaint so the shell
+      // behind the sheet is already quiet when you close it).
+      OPENED.add(cr.id);
+      paintShore();
       Sheet.open(cr.kind, cr.data, {
         // a sunk card slips back under the sea — drop it from the tide + repaint.
         onSink: (card) => {

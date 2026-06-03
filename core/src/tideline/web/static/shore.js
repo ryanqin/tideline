@@ -410,9 +410,11 @@
     const minSide = Math.min(w, h);
     // warm ink that reads against the pale near-sand: a deep warm brown,
     // lifted a touch so the line art stays calm but never invisible (§10.5).
-    // EVERY creature shares this ink — a fresh arrival is NOT a paler/glowing
-    // shape (that washed the color out); its freshness is a small Zelda-style
-    // sparkle that twinkles at one point on it (added below), nothing more.
+    // EVERY creature shares this ink — an unopened shell is NOT a paler/glowing
+    // shape (that washed the color out); its "you haven't opened me yet" cue is
+    // a small Zelda-style sparkle that twinkles at one point on it (added
+    // below, when `c.glow`), and it goes dark the moment you open it. Nothing
+    // more — never a paler fill, a badge, or a count.
     const ink = css(lerpRGB(g.s.hor, [78, 48, 34], 0.72));
     const n = Math.max(1, creatures.length);
     // keep the scatter inset from the frame so a shell — and the name under it —
@@ -441,11 +443,11 @@
       const kind = GLYPHS[c.kind] ? c.kind : "glass";
       const label = (CREATURE_NOUN[kind] || "") + (c.label ? " · " + c.label : "");
       html +=
-        `<button type="button" class="shore-shell kind-${kind}${c.fresh ? " is-new" : ""}"` +
+        `<button type="button" class="shore-shell kind-${kind}${c.glow ? " is-new" : ""}"` +
         ` style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${px}px;--rot:${rot.toFixed(1)}deg;--cap-max:${capMax}px;color:${ink}"` +
         ` data-id="${id}" data-kind="${kind}" aria-label="${label}">` +
         glyph(kind, id) +
-        (c.fresh
+        (c.glow
           ? '<span class="shell-spark" aria-hidden="true"><svg viewBox="0 0 24 24">' +
             '<path d="M12 0 Q13 11 24 12 Q13 13 12 24 Q11 13 0 12 Q11 11 12 0 Z"/>' +
             '</svg></span>'
