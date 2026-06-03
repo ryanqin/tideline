@@ -31,7 +31,7 @@ Why this hits:
 
 ## 3. Product principles
 
-Two principles, equally weighted. Every feature decision must align with both.
+Three principles, equally weighted. Every feature decision must align with all three.
 
 ### 3.1 Translator first, learning is byproduct (locked 2026-04-17)
 
@@ -63,6 +63,18 @@ Two principles, equally weighted. Every feature decision must align with both.
 - **Candidates point back to their drawer evidence.** A `candidate_evidence` join table preserves the full list of contributing drawer entries, not just a count.
 - **The UI never shows a candidate as "ramen × 6."** It shows the stack of six moments. The number is incidental; the moments are the point.
 - **Tier B intelligence (semantic clustering, cluster naming, summarization) must preserve provenance.** A cluster titled "your Tokyo lunches" links back to every constituent translation row; the cluster is a *view* over evidence, not a replacement for it.
+
+### 3.3 The target is always your first language — every language becomes yours (locked 2026-05-27)
+
+> **Tideline is not a generic A→B translator. It always translates into your first language — and over time, every language you meet becomes *yours*: the same thing met in Japanese, English, or French collapses into one concept you own, named in your own tongue.**
+
+**Why this matters:** the product isn't "pick two languages and convert." It's "let the whole world speak to you in your language, and let what you meet accumulate into one growing vocabulary that is *yours*." There is no source/target pairing to manage — there is only *your* language, set once, and everything flows toward it.
+
+**How to apply:**
+
+- **No target-language picker.** Translation always renders into the first language (one global setting); the UI offers no per-translation target choice. (The native-language gloss layer was removed for the same reason — the translation *is* the first-language form; a second gloss column was redundant.)
+- **Concept clusters are language-blind coming in, first-language going out.** 駅 (Japanese) and station (English) both render to 车站 — so they are the *same concept*, merged into one shell and titled in the first language. This is "all languages become mine" made concrete in the emergence engine.
+- **Same-concept is settled by construction, not by a vote.** When two entries share a surface word, or render to the same first-language word, they are the same concept *deterministically* — the model is never asked to confirm what translation already decided. (This is also what lets cross-language merges surface on a near-zero clustering budget; the model is reserved for the genuinely ambiguous residue — same concept, different rendering.)
 
 ### Demo narrative line
 
@@ -182,7 +194,10 @@ If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + c
 | 2026-04-17 | Core/Android fully decoupled (three-layer architecture) | Protects agent-learning time |
 | 2026-04-20 | Design docs committed | First commit |
 | 2026-04-29 | Project formally named **Tideline**, preparing for open source | Decoupling repo identity from the hackathon; positioning as a long-lived agent framework |
-| 2026-05-27 | Learnings surface reimagined as a living tidal **shore** (§10) — translate ⇄ shore as two collapsing states of one world; "the tide is theatre, not pedagogy"; the sea = the sediment layer | Extends §3, does not replace it; web first, Android later. Draft — pending review (see §10.9) |
+| 2026-05-27 | Product principle **three**: the target is always the first language — "every language becomes yours" | §3.3; no target picker, native gloss removed, cross-language concept merge |
+| 2026-05-27 | Learnings surface reimagined as a living tidal **shore** (§10) — translate ⇄ shore as two collapsing states of one world; "the tide is theatre, not pedagogy"; the sea = the sediment layer | Extends §3, does not replace it; web first, Android later. Locked + built out (see §10.9) |
+| 2026-06-03 | Shore built out: one-world navigation, glint = unopened, varied card shells, drag-to-sink, frosted sand | §10.9 "Built since" |
+| 2026-06-03 | Concept clustering made **deterministic** — same surface word or same first-language rendering = same concept, no model vote; cross-language merges form on a near-zero budget (closes the "budget pit") | §3.3; `core/.../cluster.py` |
 
 ---
 
@@ -190,7 +205,7 @@ If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + c
 
 > The learnings surface stops being a top-down list and becomes **a place**: a tidal shore you stand on. Your translations flow into the sea; the tide quietly works while you're away; matured learning washes back up as shells you beachcomb. Warmth and the pull to explore come from the place being *alive* — never from a nudge to visit it.
 
-This **extends, it does not replace**, the two product principles (§3). The translator stays the front door (§3.1); every shell still carries the lived moments it grew from (§3.2). The shore is the visual *home* of the emergence engine, not a new engine.
+This **extends, it does not replace**, the three product principles (§3). The translator stays the front door (§3.1); every shell still carries the lived moments it grew from (§3.2); every shell is named in your own language (§3.3). The shore is the visual *home* of the emergence engine, not a new engine.
 
 ### 10.1 Why a shore (and why it's safe)
 
@@ -219,7 +234,7 @@ Tie the metaphor to §3.1's substrate: **the sea is the sediment.** Every transl
 
 ### 10.5 Objects and gestures
 
-- **A shell is a cluster.** Creature *type* encodes relation type, so the lenses become something you can *see*, not a toggle: e.g. a **shell = concept cluster** (synonyms), a **crab = theme** (a "your Tokyo lunches" scene), **sea-glass = a single card**. *(Mapping proposed — to confirm, 10.9.)*
+- **A shell is a cluster.** Creature *type* encodes relation type, so the lenses become something you can *see*, not a toggle: a **scallop = concept cluster** (synonyms / the same thing across languages), a **crab = theme** (a "your Tokyo lunches" scene), and **a single card = a shell drawn from a small varied pool** by a stable hash of its id (so the beach reads varied, not a wall of identical pebbles). *(Ratified 2026-06-03 — see §10.9.)*
 - **Tap a shell → open it into the existing card / masked-recall flow.** The back is still the stack of lived moments (§3.2). The learning interaction is **not** reinvented; the shore is its doorway.
 - **Swipe a shell back into the sea → sink** (the one curation gesture; it rests in the sediment, may return).
 - **Toss a finished translation down into the surf → it joins the sea / sediment** (the visible form of "every translation writes to sediment").
@@ -241,7 +256,7 @@ The shore shows **only what's ashore right now** — which is what fixes overloa
 
 ### 10.9 Open (to ratify before/while building)
 
-**Locked (2026-05-27):** shore *below* the translator, the two states collapsing into each other (10.2); device-time sky **+ manual time/timezone override** (10.6); tide = theatre (10.3); sea = sediment (10.4); creature-type → relation-type — **shell = concept · crab = theme · sea-glass = single card** (10.5, provisional); the collapsed translator sits in **a corner** in shore state (10.2); the coastline carries a **faint glint only when a new shell has arrived** — in-app ambient, never a push/badge/count (10.2).
+**Locked (2026-05-27):** shore *below* the translator, the two states collapsing into each other (10.2); device-time sky **+ manual time/timezone override** (10.6); tide = theatre (10.3); sea = sediment (10.4); creature-type → relation-type — **scallop = concept · crab = theme · single card = a varied shell from a pool** (10.5, ratified 2026-06-03); the collapsed translator sits in **a corner** in shore state (10.2); the coastline carries a **faint glint** — in-app ambient, never a push/badge/count (10.2; *now* marks every unopened shell, see Built since).
 
 **Built since (2026-06-03) — shipped, refines the above:**
 - **One world, not two tabs (§10.7).** Translate ⇄ shore ⇄ museum is one continuous place reached spatially: the desk is the front door, the shore is one swipe up, and the museum is reached *from* the shore (a doorway up the beach to the shelves); the museum's only way out is back to the open shore. The flat Translate/Museum nav is gone.
