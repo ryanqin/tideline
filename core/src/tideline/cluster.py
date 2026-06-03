@@ -36,11 +36,27 @@ from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting
 
 
 _DEFAULT_VOTE_THRESHOLD = 0.66
-# Phase B4: multi-vote accumulation is the default. Same-original pairs
-# still converge in 3 cheap yes-votes; cross-original pairs (the real
-# Tier B value) need 3 votes with ≥2 yes to form an edge — that's the
-# guard against single-false-positive cluster pollution.
+# Phase B4: multi-vote accumulation is the default. Cross-original pairs
+# (the real Tier B value) need 3 votes with ≥2 yes to form an edge —
+# that's the guard against single-false-positive cluster pollution.
 _DEFAULT_MIN_VOTES = 3
+
+# Two translations are the same *concept* by construction — no model vote
+# needed — when they share a source word (the same word seen twice), or
+# when they resolve to the same first-language form (駅 and station both
+# render as 车站). The second case is exactly the cross-language concept
+# merge, and it is deterministic: if two words translate to the same word
+# in your language, they mean the same thing. These edges are added
+# directly in rebuild_clusters; voting on them would only spend the sweep
+# budget on a foregone conclusion. On a single-first-language corpus the
+# same-word pairs alone are numerous enough to eat a whole small budget
+# before any genuinely ambiguous pair is reached (the "budget pit"), so
+# excluding them is what lets a modest budget reach real synonyms.
+# Empty translated guarded so unfilled rows don't all collapse together.
+_DETERMINISTIC_CONCEPT_PREDICATE = (
+    "(t1.original = t2.original "
+    "OR (t1.translated = t2.translated AND t1.translated <> ''))"
+)
 
 
 def init_db(conn: sqlite3.Connection) -> None:
@@ -243,12 +259,20 @@ def _pending_pairs(
     A pair is "pending" while its accumulated vote count is strictly
     less than `min_votes_per_pair`.
 
+    For `vote_type='concept'`, deterministic same-concept pairs (same
+    source word, or same first-language rendering — see
+    `_DETERMINISTIC_CONCEPT_PREDICATE`) are excluded entirely: they don't
+    need a model vote (they're settled by construction and added as edges
+    in rebuild_clusters), and excluding them keeps a modest budget from
+    being eaten by same-word pairs before it reaches genuinely ambiguous
+    synonyms. Theme voting is unaffected — relatedness has no such
+    deterministic shortcut.
+
     Priority order (Phase B4):
-      1. Same-original pairs (cheapest signal — always converges to yes)
-      2. Within each tier, pairs already partially voted come first —
-         finishing accumulation on an in-progress pair is cheaper than
-         starting a new one, and converges to clusters faster
-      3. RANDOM tiebreaker
+      1. Pairs already partially voted come first — finishing accumulation
+         on an in-progress pair is cheaper than starting a new one, and
+         converges to clusters faster
+      2. RANDOM tiebreaker
 
     With `min_votes_per_pair=1` (single-vote semantics for tests that
     exercise Phase B1 behavior), a pair leaves the pending set after
@@ -264,8 +288,14 @@ def _pending_pairs(
     in the same target_lang, so theme grouping is unaffected;
     cross-target_lang theme grouping (polyglot) is a known MVP gap.
     """
+    # Concept voting skips deterministic same-concept pairs (added as
+    # edges in rebuild_clusters); theme voting has no such shortcut.
+    concept_exclusion = (
+        f"AND NOT {_DETERMINISTIC_CONCEPT_PREDICATE}\n          "
+        if vote_type == "concept" else ""
+    )
     rows = conn.execute(
-        """
+        f"""
         SELECT
             t1.id,
             t2.id,
@@ -276,12 +306,11 @@ def _pending_pairs(
         FROM translations t1
         JOIN translations t2 ON t2.id > t1.id
         WHERE t1.target_lang = t2.target_lang
-          AND (SELECT COUNT(*) FROM pair_similarity_votes v
+          {concept_exclusion}AND (SELECT COUNT(*) FROM pair_similarity_votes v
                WHERE v.translation_id_a = t1.id
                  AND v.translation_id_b = t2.id
                  AND v.vote_type = ?) < ?
         ORDER BY
-            CASE WHEN t1.original = t2.original THEN 0 ELSE 1 END,
             votes_so_far DESC,
             RANDOM()
         LIMIT ?
@@ -381,6 +410,27 @@ class _UnionFind:
             self._parent[ra] = rb
 
 
+def _deterministic_concept_edges(
+    conn: sqlite3.Connection,
+) -> list[tuple[int, int]]:
+    """Within-target_lang translation pairs that are the same concept by
+    construction (see `_DETERMINISTIC_CONCEPT_PREDICATE`): same source word,
+    or same first-language rendering. These need no model vote, so they're
+    excluded from voting (`_pending_pairs`) and added straight to the
+    Union-Find here — that's what makes cross-language concept clusters
+    form deterministically, on any budget.
+    """
+    return conn.execute(
+        f"""
+        SELECT t1.id, t2.id
+        FROM translations t1
+        JOIN translations t2 ON t2.id > t1.id
+        WHERE t1.target_lang = t2.target_lang
+          AND {_DETERMINISTIC_CONCEPT_PREDICATE}
+        """
+    ).fetchall()
+
+
 def rebuild_clusters(
     conn: sqlite3.Connection,
     vote_threshold: float = _DEFAULT_VOTE_THRESHOLD,
@@ -399,7 +449,9 @@ def rebuild_clusters(
     Algorithm:
       1. SELECT pairs of this vote_type with vote_count >= min_votes
          AND yes_ratio >= threshold
-      2. Union-Find over the resulting edge set
+      2. Union-Find over the resulting edge set; for 'concept', also union
+         the deterministic same-concept edges (same source word / same
+         first-language rendering — see `_deterministic_concept_edges`)
       3. DELETE this vote_type's clusters / their members
       4. For each connected component with >= 2 members, INSERT a cluster
          (tagged vote_type) and its members
@@ -427,6 +479,15 @@ def rebuild_clusters(
     uf = _UnionFind()
     for a, b, _, _ in edges:
         uf.union(a, b)
+
+    # Concept clusters also take deterministic edges — same source word or
+    # same first-language rendering means same concept, no vote required.
+    # This is where cross-language concept merging actually happens (駅 and
+    # station both → 车站), and it works on a zero-vote budget. Theme
+    # relatedness has no deterministic shortcut, so it's vote-only.
+    if vote_type == "concept":
+        for a, b in _deterministic_concept_edges(conn):
+            uf.union(a, b)
 
     # Group nodes by their representative
     groups: dict[int, list[int]] = defaultdict(list)

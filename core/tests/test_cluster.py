@@ -26,6 +26,7 @@ import pytest
 from tideline.cluster import (
     _UnionFind,
     _canonical_pair,
+    _deterministic_concept_edges,
     _pending_pairs,
     cluster_sweep,
     compare_pairs,
@@ -386,6 +387,71 @@ def test_rebuild_rejects_bad_parameters(conn):
         rebuild_clusters(conn, vote_threshold=-0.1)
     with pytest.raises(ValueError):
         rebuild_clusters(conn, min_votes=0)
+
+
+# --- Deterministic concept edges (cross-language merge, no votes) --------
+
+
+def test_same_translated_form_merges_cross_language_with_zero_votes(conn):
+    """Two source words that render to the SAME first-language form are the
+    same concept by construction — 駅 and station both → 车站. The concept
+    cluster must form with no model vote at all (this is what makes
+    'all languages become mine' work on the real app's tiny boot budget,
+    instead of starving behind same-word pairs — the budget pit)."""
+    a = _add_translation(conn, "駅", "Chinese", "车站")
+    b = _add_translation(conn, "station", "Chinese", "车站")
+
+    n = rebuild_clusters(conn, vote_type="concept")  # no votes cast
+
+    assert n == 1
+    members = {
+        r[0] for r in conn.execute(
+            "SELECT t.original FROM cluster_members cm "
+            "JOIN translations t ON t.id = cm.translation_id"
+        )
+    }
+    assert members == {"駅", "station"}
+
+
+def test_same_original_merges_with_zero_votes(conn):
+    """The same source word seen twice is trivially one concept — also a
+    deterministic edge, no vote needed."""
+    _add_translation(conn, "ラーメン", "Chinese", "拉面")
+    _add_translation(conn, "ラーメン", "Chinese", "拉面")
+    assert rebuild_clusters(conn, vote_type="concept") == 1
+
+
+def test_deterministic_edges_exclude_distinct_unrelated_concepts(conn):
+    """Different words with different first-language forms are NOT a
+    deterministic edge — they still need a model vote to cluster."""
+    a = _add_translation(conn, "ramen", "Chinese", "拉面")
+    b = _add_translation(conn, "sushi", "Chinese", "寿司")
+    assert _deterministic_concept_edges(conn) == []
+    assert rebuild_clusters(conn, vote_type="concept") == 0  # no edge, no cluster
+    assert (a, b) in _pending_pairs(conn, limit=10, vote_type="concept")
+
+
+def test_concept_voting_skips_deterministic_pairs(conn):
+    """`_pending_pairs` for concept must not hand deterministic pairs to the
+    model — voting on a foregone conclusion is what eats the sweep budget."""
+    same_orig_a = _add_translation(conn, "駅", "Chinese", "车站")
+    same_orig_b = _add_translation(conn, "駅", "Chinese", "车站")
+    same_trans_a = _add_translation(conn, "subway", "Chinese", "地铁")
+    same_trans_b = _add_translation(conn, "地下鉄", "Chinese", "地铁")
+
+    pending = _pending_pairs(conn, limit=50, vote_type="concept")
+    assert (same_orig_a, same_orig_b) not in pending
+    assert (same_trans_a, same_trans_b) not in pending
+
+
+def test_theme_voting_still_sees_all_pairs(conn):
+    """Theme relatedness has no deterministic shortcut — even same-original
+    pairs stay votable (theme keeps its own, separate budget story)."""
+    a = _add_translation(conn, "駅", "Chinese", "车站")
+    b = _add_translation(conn, "駅", "Chinese", "车站")
+    assert (a, b) in _pending_pairs(conn, limit=10, vote_type="theme")
+    # And theme gets NO deterministic edges — no votes, no theme cluster.
+    assert rebuild_clusters(conn, vote_type="theme") == 0
 
 
 # --- UnionFind ----------------------------------------------------------
