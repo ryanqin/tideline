@@ -414,6 +414,33 @@ body.shore-open { overflow: hidden; }
   100% { opacity: 0;   transform: scale(0.3) rotate(0deg); }
 }
 
+/* A shell being dragged up to the sea (DESIGN §10.4/§10.5): lifted off the
+   sand while held, and — once it's up over the water — dimming to say the tide
+   is ready to take it back into the sediment. */
+.shore-shell.held {
+  cursor: grabbing;
+  filter: drop-shadow(0 11px 15px rgba(60, 36, 20, 0.32));
+}
+.shore-shell.over-sea { opacity: 0.6; }
+
+/* The ring that spreads where a sunk shell meets the water — an ellipse, since
+   the surface is seen at a low angle. Warm line, fades as it widens. */
+.sea-ripple {
+  position: absolute;
+  width: 46px; height: 46px;
+  margin: 0; padding: 0;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 246, 230, 0.7);
+  pointer-events: none;
+  z-index: 3;
+  transform: translate(-50%, -50%) scale(0.2, 0.12);
+  animation: sea-ripple 0.7s ease-out forwards;
+}
+@keyframes sea-ripple {
+  0%   { opacity: 0.85; transform: translate(-50%, -50%) scale(0.2, 0.12); }
+  100% { opacity: 0;    transform: translate(-50%, -50%) scale(2.6, 1.0); }
+}
+
 /* Step back to the desk. */
 .shore-back {
   position: absolute;
@@ -527,6 +554,8 @@ body.shore-open { overflow: hidden; }
   .shore-shell, .shore-shell.is-new { transition: none; animation: none; }
   /* keep the sparkle, just hold it still and visible instead of twinkling */
   .shell-spark { animation: none; opacity: 0.95; transform: scale(0.9); }
+  /* no spreading ring — the sink (handled in js) just removes the shell */
+  .sea-ripple { animation: none; opacity: 0; }
 }
 
 /* --- learnings page --- */

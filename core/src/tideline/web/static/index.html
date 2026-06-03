@@ -241,9 +241,11 @@
 
     // Touch parity: swipe up from the lower edge wades in; swipe down on the
     // shore steps back. Augments the chevrons (which carry desktop + a11y).
-    let swipeY = null;
+    // Suppressed mid shell-drag so flinging a shell never reads as a wade.
+    let swipeY = null, suppressSwipe = false;
     addEventListener('pointerdown', (e) => { swipeY = e.clientY; });
     addEventListener('pointerup', (e) => {
+      if (suppressSwipe) { suppressSwipe = false; swipeY = null; return; }
       if (swipeY == null) return;
       const dy = e.clientY - swipeY;
       swipeY = null;
@@ -252,13 +254,99 @@
       else if (isOpen() && dy > 80) closeShore();
     });
 
-    // --- a creature, opened -------------------------------------------------
-    // Tap a shell / crab / glass and the shared warm sheet (sheet.js) rises with
-    // what it holds — a card's moments, a concept's synonyms, a theme's masked
-    // recall. The same sheet serves the museum, so the two surfaces stay one
-    // visual language. Data rides on each creature (gathered with it), so
-    // opening one needs no refetch.
+    // --- a creature: tap to open, or drag up into the sea to sink it ---------
+    // Tap a shell / crab / glass → the shared warm sheet (sheet.js) rises with
+    // what it holds. DRAG one up over the surf, into the open water, and let go
+    // → it sinks back into the sediment (DESIGN §10.4/§10.5: the sea above is
+    // the resting layer; flinging a card up there lets it rest). Only cards
+    // sink; a concept/theme eases back — the water won't take a cluster. The
+    // sheet's "沉底" button stays as the keyboard / screen-reader path.
+    const SEA_LINE = () => innerHeight * 0.5;   // above this you're over the water
+    const isSinkable = (cr) => !!cr && cr.kind === 'glass' && cr.data
+      && cr.data.id != null && !cr.data.readonly;
+    const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let drag = null, suppressClick = false;
+
+    shoreCreatures.addEventListener('pointerdown', (e) => {
+      const btn = e.target.closest('.shore-shell');
+      if (!btn) return;
+      const cr = CREATURES.find((c) => c.id === btn.dataset.id);
+      if (!cr) return;
+      suppressClick = false;
+      drag = { btn, cr, x0: e.clientX, y0: e.clientY, pid: e.pointerId, moved: false };
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    shoreCreatures.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+      if (!drag.moved && Math.hypot(dx, dy) > 8) {
+        drag.moved = true;
+        drag.btn.style.zIndex = '5';     // lift above its neighbours while held
+        drag.btn.classList.add('held');
+      }
+      if (!drag.moved) return;
+      drag.btn.style.transition = 'none';
+      drag.btn.style.transform =
+        `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(var(--rot,0deg))`;
+      // hint the water is ready to take it once it's up over the surf
+      drag.btn.classList.toggle('over-sea', e.clientY < SEA_LINE() && isSinkable(drag.cr));
+    });
+
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.pid) return;
+      const d = drag; drag = null;
+      try { d.btn.releasePointerCapture(d.pid); } catch (_) {}
+      d.btn.classList.remove('over-sea');
+      if (!d.moved) return;            // a tap — let the click handler open it
+      suppressClick = true;            // a real drag — don't also open the sheet
+      suppressSwipe = true;            // ...and don't read it as a wade gesture
+      if (e.clientY < SEA_LINE() && isSinkable(d.cr)) sinkToSea(d.cr, d.btn, e.clientX, e.clientY);
+      else easeHome(d.btn);            // the water didn't take it — float back
+    }
+    shoreCreatures.addEventListener('pointerup', endDrag);
+    shoreCreatures.addEventListener('pointercancel', endDrag);
+
+    function easeHome(btn) {
+      btn.classList.remove('held');
+      btn.style.transition = '';
+      btn.style.transform = '';
+      btn.style.zIndex = '';
+    }
+
+    // Sink it: a ripple where it meets the water, the shell settles under, then
+    // it leaves the tide for good (POST /api/cards/sink) and the beach repaints.
+    function sinkToSea(cr, btn, x, y) {
+      const finish = () => {
+        CREATURES = CREATURES.filter((c) => c !== cr);
+        fetch('/api/cards/sink', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ card_id: cr.data.id }),
+        }).catch(() => {});
+        paintShore();
+      };
+      if (reduceMotion()) { finish(); return; }
+      spawnRipple(x, y);
+      btn.classList.remove('held');
+      btn.style.transition = 'transform 0.5s ease-in, opacity 0.45s ease-in';
+      btn.style.transform = 'translate(-50%, calc(-50% + 34px)) rotate(var(--rot,0deg)) scale(0.62)';
+      btn.style.opacity = '0';
+      setTimeout(finish, 460);
+    }
+
+    // a soft ring spreading on the water surface — an ellipse, seen at an angle
+    function spawnRipple(x, y) {
+      const r = document.createElement('div');
+      r.className = 'sea-ripple';
+      r.style.left = x + 'px';
+      r.style.top = y + 'px';
+      shoreCreatures.appendChild(r);
+      setTimeout(() => r.remove(), 750);
+    }
+
     shoreCreatures.addEventListener('click', (e) => {
+      if (suppressClick) { suppressClick = false; return; }  // that was a drag
       const btn = e.target.closest('.shore-shell');
       if (!btn) return;
       const cr = CREATURES.find((c) => c.id === btn.dataset.id);
