@@ -1,39 +1,46 @@
 """Seed data generator for the translations drawer.
 
-Populates SQLite with realistic translation pairs whose repetition pattern
-is the substrate emergence detection (Step 6b) will scan. Frequent terms
-appear 4-6 times, occasional 2-3 times, rare 1 time — this gives
-candidate promotion something real to find.
+Populates SQLite with one realistic story whose repetition pattern is the
+substrate emergence detection (Step 6b) will scan. Frequent terms appear 4-6
+times, occasional 2-3 times, rare 1 time — this gives candidate promotion
+something real to find.
 
-Scenarios are everyday contexts a first-language-Chinese user runs into:
-Tokyo trip menu hunting, French recipes, Latin music lyrics, work English
-(contracts & meetings), German tech docs — each foreign text translated
-INTO Chinese. Each contributes ~25 entries; ~120 total by default.
+The story is **a week in Tokyo** for a first-language-Chinese traveller: it's
+read mostly off Japanese menus and signs, with the odd bilingual tourist board
+(so a few English terms cross in). Every foreign text is translated INTO
+Chinese. It is shaped to exercise the whole pipeline end to end:
+
+  - repeated terms promote to candidates → cards (frequency);
+  - the same concept met in two languages (ラーメン / "ramen" → 拉面,
+    駅 / "station" → 车站, 地下鉄 / "subway" → 地铁) gives cross-language
+    **concept** clusters (B1);
+  - dishes that share a scene / cuisine gather into **theme** clusters (B7) —
+    "your night in the ramen alley", "the izakaya table".
 
 **Episodic honesty (2026-05-28):** the demo's "scene feel" must only use
-signals the real capture pipeline can actually produce — never narrated
-prose the product can't generate. Mirrors what the on-device Android
-pipeline was verified to emit (TidelineTranslateViewModel.translateImage):
-each scenario is split into *capture sessions* (a menu photo, a sign, a
-voice memo). Every row carries:
+signals the real capture pipeline can actually produce — never narrated prose
+the product can't generate. Mirrors what the on-device Android pipeline was
+verified to emit (TidelineTranslateViewModel.translateImage): the trip is
+split into *capture sessions* (a menu photo, a sign, a voice memo). Every row
+carries:
 
   - `source`     — the input modality (image / audio / text), exactly what
                    the client injects by default (image pipeline → "image").
   - `context_snippet` — the VLM's short *scene gist* for an image capture
-                   (e.g. "A wooden tray with a bowl of noodles and a cup of
-                   broth") — a real model-produced description of where/what
-                   the moment was, which is why storing it is honest. ONLY
-                   image captures carry it; text/audio rows leave it None,
-                   because their prompts ask for no SCENE line (matches the
-                   live app exactly). The episodic title (B6,
-                   `episodic_title.build_prompt`) turns these gists into the
-                   "your Tokyo ramen night" feeling at naming time.
-  - `session_id` — groups everything captured in one moment, so a single
-                   menu photo's items cluster as one remembered event.
+                   (e.g. "回转寿司传送带上一小碟一小碟转过来的握寿司") — a real
+                   model-produced description of where/what the moment was,
+                   written in the user's first language (Chinese), which is why
+                   storing it is honest. ONLY image captures carry it; text /
+                   audio rows leave it None, because their prompts ask for no
+                   SCENE line (matches the live app exactly). The episodic title
+                   (B6, `episodic_title.build_prompt`) turns these gists into
+                   the "你在拉面横丁的那一夜" feeling at naming time.
+  - `session_id` — groups everything captured in one moment, so a single menu
+                   photo's items cluster as one remembered event.
 
-A term repeats because it shows up across *several* sessions (seen on the
-menu, then a sign, then heard at the counter) — the honest shape of a word
-you keep running into.
+A term repeats because it shows up across *several* sessions (seen on the menu,
+then a sign, then heard at the counter) — the honest shape of a word you keep
+running into.
 
 Usage:
   Programmatic:
@@ -57,274 +64,89 @@ from pathlib import Path
 from typing import Any
 
 
-# Each scenario carries its word pairs (in three frequency tiers) plus a
-# list of `sessions`: the discrete capture moments of the trip/activity.
-# A session's `gist` is the short scene description a VLM would emit for an
-# image capture (the recorded context_snippet) — or None for text/audio
+# One trip, told as its capture moments — a week in Tokyo. Each scenario carries
+# its word pairs (in three frequency tiers) plus a list of `sessions`: the
+# discrete capture moments of the trip. A session's `gist` is the short scene
+# description a VLM would emit for an image capture (the recorded
+# context_snippet), in the user's first language — or None for text/audio
 # captures, whose prompts produce no SCENE line in the real app. `day` is
 # days-ago from `now`, giving each session its own timestamp cluster.
 SCENARIOS: list[dict[str, Any]] = [
     {
-        "name": "Tokyo trip — menu hunting",
-        "slug": "tokyo-menu",
+        "name": "Tokyo trip — a week of meals and trains",
+        "slug": "tokyo",
         "target_lang": "Chinese",
         "sessions": [
             {"suffix": "ramen-yokocho", "source": "image", "day": 6,
-             "gist": "A glowing ticket machine outside a narrow late-night ramen shop"},
-            {"suffix": "izakaya-menu", "source": "image", "day": 5,
-             "gist": "An open paper menu on a low wooden izakaya table"},
-            {"suffix": "station-signs", "source": "image", "day": 4,
-             "gist": "Blue exit signs above the gates of a busy train station"},
+             "gist": "深夜拉面横丁里那台发着暖光的购票机"},
+            {"suffix": "izakaya", "source": "image", "day": 5,
+             "gist": "居酒屋矮桌上摊开的一张手写纸菜单"},
+            {"suffix": "station", "source": "image", "day": 4,
+             "gist": "车站检票口上方那块蓝色的出口指示牌"},
+            {"suffix": "bilingual-signs", "source": "image", "day": 4,
+             "gist": "车站走廊里一块中英日三语的旅游指示牌"},
             {"suffix": "counter-audio", "source": "audio", "day": 5,
              "gist": None},
-            {"suffix": "sushi-counter", "source": "image", "day": 3,
-             "gist": "Small plates circling a conveyor-belt sushi counter"},
+            {"suffix": "sushi", "source": "image", "day": 3,
+             "gist": "回转寿司传送带上一小碟一小碟转过来的握寿司"},
+            {"suffix": "market", "source": "image", "day": 2,
+             "gist": "清晨筑地市场摊位上铺在碎冰上的海鲜"},
         ],
         "frequent": [
+            # the recurring words of the trip — and the three concepts met in
+            # BOTH languages (Japanese menu/sign + the bilingual tourist board),
+            # kept frequent so both twins promote and cluster across languages:
+            #   ラーメン ↔ ramen   → 拉面
+            #   駅      ↔ station → 车站
+            #   地下鉄   ↔ subway  → 地铁
             ("ラーメン", "拉面"),
+            ("ramen", "拉面", "English"),
+            ("駅", "车站"),
+            ("station", "车站", "English"),
+            ("地下鉄", "地铁"),
+            ("subway", "地铁", "English"),
             ("刺身", "生鱼片"),
             ("天ぷら", "天妇罗"),
-        ],
-        "occasional": [
-            ("駅", "车站"),
-            ("地下鉄", "地铁"),
-        ],
-        "rare": [
-            ("お会計", "买单"),
-            ("いらっしゃいませ", "欢迎光临"),
-            ("ご注文は", "您要点什么"),
-            ("つけ麺", "蘸面"),
+            ("餃子", "煎饺"),
             ("醤油", "酱油"),
         ],
+        "occasional": [
+            ("焼き鳥", "烤鸡肉串"),
+            ("枝豆", "毛豆"),
+            ("わさび", "芥末"),
+            ("海鮮丼", "海鲜盖饭"),
+        ],
+        "rare": [
+            ("いらっしゃいませ", "欢迎光临"),
+            ("お会計", "买单"),
+            ("つけ麺", "蘸面"),
+            ("生ビール", "扎啤"),
+            ("切符", "车票"),
+        ],
         # Which capture sessions each term could honestly appear in — its
-        # OCR/transcript context must fit the term (a station word belongs
-        # on a station sign, not a ramen menu). Copies round-robin only
-        # within this whitelist.
+        # OCR / transcript context must fit the term (a station word belongs on
+        # a station sign, not a ramen menu). Copies round-robin only within this
+        # whitelist.
         "term_sessions": {
             "ラーメン": ["ramen-yokocho", "counter-audio"],
-            "刺身": ["sushi-counter", "izakaya-menu"],
-            "天ぷら": ["izakaya-menu", "sushi-counter"],
-            "駅": ["station-signs"],
-            "地下鉄": ["station-signs"],
-            "お会計": ["counter-audio"],
+            "ramen": ["bilingual-signs", "ramen-yokocho"],
+            "駅": ["station", "bilingual-signs"],
+            "station": ["bilingual-signs", "station"],
+            "地下鉄": ["station"],
+            "subway": ["bilingual-signs", "station"],
+            "刺身": ["sushi", "izakaya"],
+            "天ぷら": ["izakaya", "market"],
+            "餃子": ["ramen-yokocho"],
+            "醤油": ["sushi", "izakaya"],
+            "焼き鳥": ["izakaya"],
+            "枝豆": ["izakaya"],
+            "わさび": ["sushi"],
+            "海鮮丼": ["market", "sushi"],
             "いらっしゃいませ": ["counter-audio"],
-            "ご注文は": ["counter-audio"],
+            "お会計": ["counter-audio"],
             "つけ麺": ["ramen-yokocho"],
-            "醤油": ["ramen-yokocho", "sushi-counter"],
-        },
-    },
-    {
-        "name": "French cooking — recipe reading",
-        "slug": "french-recipe",
-        "target_lang": "Chinese",
-        "sessions": [
-            {"suffix": "madeleine-blog", "source": "image", "day": 6,
-             "gist": "A recipe open on a phone propped against a mixing bowl"},
-            {"suffix": "grandmere-livre", "source": "image", "day": 5,
-             "gist": "A flour-dusted page of an old handwritten cookbook"},
-            {"suffix": "youtube-gateau", "source": "audio", "day": 4,
-             "gist": None},
-            {"suffix": "frigo-pot", "source": "image", "day": 3,
-             "gist": "A tub of crème fraîche held in front of an open fridge"},
-            {"suffix": "tarte-ipad", "source": "image", "day": 2,
-             "gist": "A baking recipe on a tablet beside a lemon tart"},
-        ],
-        "frequent": [
-            ("beurre", "黄油"),
-            ("œuf", "鸡蛋"),
-            ("farine", "面粉"),
-        ],
-        "occasional": [
-            ("crème", "奶油"),
-            ("cuillère", "勺子"),
-        ],
-        "rare": [
-            ("jaune d'œuf", "蛋黄"),
-            ("blanc en neige", "打发的蛋白"),
-            ("rouleau à pâtisserie", "擀面杖"),
-            ("four", "烤箱"),
-            ("préchauffer", "预热"),
-        ],
-        "term_sessions": {
-            "beurre": ["madeleine-blog", "grandmere-livre"],
-            "œuf": ["grandmere-livre", "tarte-ipad"],
-            "farine": ["madeleine-blog", "youtube-gateau"],
-            "crème": ["frigo-pot"],
-            "cuillère": ["youtube-gateau", "grandmere-livre"],
-            "jaune d'œuf": ["tarte-ipad"],
-            "blanc en neige": ["tarte-ipad"],
-            "rouleau à pâtisserie": ["madeleine-blog"],
-            "four": ["youtube-gateau"],
-            "préchauffer": ["madeleine-blog"],
-        },
-    },
-    {
-        "name": "Latin music — lyric translation",
-        "slug": "latin-lyrics",
-        "target_lang": "Chinese",
-        "sessions": [
-            {"suffix": "spotify-lyrics", "source": "text", "day": 6,
-             "gist": None},
-            {"suffix": "fiesta-coro", "source": "audio", "day": 5,
-             "gist": None},
-            {"suffix": "bolero-radio", "source": "audio", "day": 4,
-             "gist": None},
-            {"suffix": "album-cover", "source": "image", "day": 3,
-             "gist": "A Spanish album cover with the song title in flowing script"},
-        ],
-        "frequent": [
-            ("amor", "爱"),
-            ("corazón", "心"),
-            ("noche", "夜晚"),
-        ],
-        "occasional": [
-            ("dolor", "痛苦"),
-            ("bailar", "跳舞"),
-        ],
-        "rare": [
-            ("madrugada", "黎明"),
-            ("recordar", "记得"),
-            ("sin ti", "没有你"),
-            ("siempre", "永远"),
-            ("nunca", "从不"),
-        ],
-        "term_sessions": {
-            "amor": ["spotify-lyrics", "bolero-radio"],
-            "corazón": ["spotify-lyrics", "fiesta-coro"],
-            "noche": ["bolero-radio", "fiesta-coro"],
-            "dolor": ["bolero-radio"],
-            "bailar": ["fiesta-coro"],
-            "madrugada": ["bolero-radio"],
-            "recordar": ["spotify-lyrics"],
-            "sin ti": ["spotify-lyrics"],
-            "siempre": ["album-cover"],
-            "nunca": ["bolero-radio"],
-        },
-    },
-    {
-        "name": "Work English — contracts & meetings",
-        "slug": "work-english",
-        "target_lang": "Chinese",
-        "sessions": [
-            {"suffix": "contract-doc", "source": "image", "day": 6,
-             "gist": "A printed contract open to the signature page"},
-            {"suffix": "meeting-notes", "source": "text", "day": 5,
-             "gist": None},
-            {"suffix": "whiteboard", "source": "image", "day": 4,
-             "gist": "A whiteboard covered with a project schedule and budget figures"},
-            {"suffix": "voice-memo", "source": "audio", "day": 3,
-             "gist": None},
-        ],
-        "frequent": [
-            ("contract", "合同"),
-            ("meeting", "会议"),
-            ("project", "项目"),
-        ],
-        "occasional": [
-            ("proposal", "提案"),
-            ("budget", "预算"),
-        ],
-        "rare": [
-            ("punctual", "准时"),
-            ("report", "汇报"),
-            ("decision", "决策"),
-            ("cooperation", "合作"),
-            ("sign", "签字"),
-        ],
-        "term_sessions": {
-            "contract": ["contract-doc", "meeting-notes"],
-            "meeting": ["meeting-notes", "voice-memo"],
-            "project": ["whiteboard", "meeting-notes"],
-            "proposal": ["whiteboard"],
-            "budget": ["whiteboard"],
-            "punctual": ["voice-memo"],
-            "report": ["voice-memo"],
-            "decision": ["meeting-notes"],
-            "cooperation": ["voice-memo"],
-            "sign": ["contract-doc"],
-        },
-    },
-    {
-        "name": "German tech docs — software reading",
-        "slug": "german-docs",
-        "target_lang": "Chinese",
-        "sessions": [
-            {"suffix": "api-docs", "source": "image", "day": 6,
-             "gist": "A code documentation page about databases on a laptop screen"},
-            {"suffix": "error-screen", "source": "image", "day": 4,
-             "gist": "A screenshot of a red server error message and stack trace"},
-            {"suffix": "git-readme", "source": "text", "day": 2,
-             "gist": None},
-        ],
-        "frequent": [
-            ("Datenbank", "数据库"),
-            ("Speicher", "内存"),
-        ],
-        "occasional": [
-            ("Server", "服务器"),
-            ("Anwendung", "应用程序"),
-        ],
-        "rare": [
-            ("Fehlermeldung", "错误信息"),
-            ("Schnittstelle", "接口"),
-            ("Schlüssel", "密钥"),
-            ("Versionskontrolle", "版本控制"),
-            ("Verbindung", "连接"),
-        ],
-        "term_sessions": {
-            "Datenbank": ["api-docs"],
-            "Speicher": ["api-docs"],
-            "Server": ["error-screen"],
-            "Anwendung": ["error-screen"],
-            "Fehlermeldung": ["error-screen"],
-            "Schnittstelle": ["git-readme"],
-            "Schlüssel": ["git-readme"],
-            "Versionskontrolle": ["git-readme"],
-            "Verbindung": ["error-screen"],
-        },
-    },
-    # Phase B4 substrate: cross-original same-concept drawers. Models a
-    # polyglot user encountering the same concept across different
-    # source languages / phrasings over time. Same target_lang (Chinese)
-    # means _pending_pairs will pair them; B1 should call them concept-
-    # equivalent across these originals, producing the first real
-    # cross-original Tier B clusters.
-    {
-        "name": "Polyglot crossings — same concept, different originals",
-        "slug": "polyglot",
-        "target_lang": "Chinese",
-        "sessions": [
-            {"suffix": "travel-notes", "source": "text", "day": 6,
-             "gist": None},
-            {"suffix": "transit-signs", "source": "image", "day": 5,
-             "gist": "A subway direction sign photographed on a city platform"},
-            {"suffix": "song-and-card", "source": "audio", "day": 4,
-             "gist": None},
-        ],
-        "frequent": [
-            # subway concept across English / French — both translate to 地铁
-            ("subway", "地铁", "English"),
-            ("métro", "地铁", "French"),
-            # noodle concept across English / Japanese — both translate to 面条
-            ("noodle soup", "面条", "English"),
-            ("ヌードル", "面条", "Japanese"),
-        ],
-        "occasional": [
-            # love concept across French / Italian — both translate to 爱
-            ("l'amour", "爱", "French"),
-            ("amore", "爱", "Italian"),
-        ],
-        "rare": [
-            ("evening train", "晚班列车", "English"),
-        ],
-        "term_sessions": {
-            "subway": ["travel-notes", "transit-signs"],
-            "métro": ["transit-signs"],
-            "noodle soup": ["travel-notes"],
-            "ヌードル": ["travel-notes"],
-            "l'amour": ["song-and-card"],
-            "amore": ["song-and-card"],
-            "evening train": ["transit-signs"],
+            "生ビール": ["izakaya"],
+            "切符": ["station"],
         },
     },
 ]
@@ -341,15 +163,10 @@ _SESSION_SPREAD_MINUTES = 90
 
 
 # Source language per scenario (the language the user encountered / typed).
-# Most scenarios are single-language; pairs in the polyglot scenario carry
-# their own source language via a 3-tuple override.
+# The Tokyo trip is Japanese by default; the bilingual-board English terms
+# carry their own source language via a 3-tuple override.
 _SCENARIO_SOURCE_LANG = {
-    "Tokyo trip — menu hunting": "Japanese",
-    "French cooking — recipe reading": "French",
-    "Latin music — lyric translation": "Spanish",
-    "Work English — contracts & meetings": "English",
-    "German tech docs — software reading": "German",
-    "Polyglot crossings — same concept, different originals": "English",
+    "Tokyo trip — a week of meals and trains": "Japanese",
 }
 
 

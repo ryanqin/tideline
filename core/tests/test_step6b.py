@@ -266,8 +266,8 @@ def test_agent_surfaces_candidates_when_user_asks(conn):
 
     result = agent.run("what have I been seeing lately?")
 
-    # Should contain a few of the frequent-tier terms from the seed
-    candidate_terms = ["ラーメン", "beurre", "amor", "合同", "Datenbank"]
+    # Should contain a few of the frequent-tier terms from the Tokyo trip seed
+    candidate_terms = ["ラーメン", "駅", "刺身", "天ぷら", "餃子"]
     hits = [t for t in candidate_terms if t in result]
     assert len(hits) >= 2, (
         f"expected frequent-tier terms in candidates output, got: {result}"
