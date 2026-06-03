@@ -5,17 +5,19 @@ substrate emergence detection (Step 6b) will scan. Frequent terms appear 4-6
 times, occasional 2-3 times, rare 1 time — this gives candidate promotion
 something real to find.
 
-The story is **a week in Tokyo** for a first-language-Chinese traveller: it's
-read mostly off Japanese menus and signs, with the odd bilingual tourist board
-(so a few English terms cross in). Every foreign text is translated INTO
-Chinese. It is shaped to exercise the whole pipeline end to end:
+The story is **a week in Tokyo** for a first-language-Chinese traveller: one
+trip, **one foreign language** (Japanese), read off menus, signs and the
+counter. This is the lived scenario behind §3.3 — you translate from a single
+non-first-language across similar scenes, and what recurs there is what fuses.
+Every foreign text is translated INTO Chinese. It is shaped to exercise the
+whole pipeline end to end:
 
   - repeated terms promote to candidates → cards (frequency);
-  - same-meaning terms within one source language gather into **concept**
-    clusters (B1), one cluster per language-pair (§3.3). The bilingual twins
-    (ラーメン / "ramen" → 拉面, 駅 / "station" → 车站, 地下鉄 / "subway" → 地铁)
-    therefore stay as *separate* Japanese and English clusters — the
-    by-language lens is what shows they land on the same first-language word;
+  - **same-language synonyms** gather into one **concept** cluster (B1):
+    different Japanese words that land on the same first-language word fuse
+    deterministically, no vote (中華そば and ラーメン both → 拉面; メトロ and
+    地下鉄 both → 地铁). Clusters are scoped per language-pair (§3.3) — there
+    is only one source language here, so every cluster is cleanly Japanese;
   - dishes that share a scene / cuisine gather into **theme** clusters (B7) —
     "your night in the ramen alley", "the izakaya table".
 
@@ -85,8 +87,6 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "居酒屋矮桌上摊开的一张手写纸菜单"},
             {"suffix": "station", "source": "image", "day": 4,
              "gist": "车站检票口上方那块蓝色的出口指示牌"},
-            {"suffix": "bilingual-signs", "source": "image", "day": 4,
-             "gist": "车站走廊里一块中英日三语的旅游指示牌"},
             {"suffix": "counter-audio", "source": "audio", "day": 5,
              "gist": None},
             {"suffix": "sushi", "source": "image", "day": 3,
@@ -95,22 +95,26 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "清晨筑地市场摊位上铺在碎冰上的海鲜"},
         ],
         "frequent": [
-            # the recurring words of the trip — and the three concepts met in
-            # BOTH languages (Japanese menu/sign + the bilingual tourist board),
-            # kept frequent so both twins promote and cluster across languages:
-            #   ラーメン ↔ ramen   → 拉面
-            #   駅      ↔ station → 车站
-            #   地下鉄   ↔ subway  → 地铁
+            # The recurring words of the trip — one language (Japanese), met
+            # again and again across menus, signs and the counter. Two are
+            # *same-language synonyms* of another frequent term: different
+            # Japanese words that land on the same first-language word, so they
+            # fuse into ONE concept cluster (within Japanese, no model vote
+            # needed; §3.3) — and both are frequent so the merged concept is
+            # substantial:
+            #   中華そば → 拉面  (fuses with ラーメン)
+            #   メトロ   → 地铁  (fuses with 地下鉄)
             ("ラーメン", "拉面"),
-            ("ramen", "拉面", "English"),
+            ("中華そば", "拉面"),
             ("駅", "车站"),
-            ("station", "车站", "English"),
             ("地下鉄", "地铁"),
-            ("subway", "地铁", "English"),
+            ("メトロ", "地铁"),
             ("刺身", "生鱼片"),
             ("天ぷら", "天妇罗"),
             ("餃子", "煎饺"),
             ("醤油", "酱油"),
+            ("寿司", "寿司"),
+            ("お茶", "茶"),
         ],
         "occasional": [
             ("焼き鳥", "烤鸡肉串"),
@@ -131,15 +135,16 @@ SCENARIOS: list[dict[str, Any]] = [
         # whitelist.
         "term_sessions": {
             "ラーメン": ["ramen-yokocho", "counter-audio"],
-            "ramen": ["bilingual-signs", "ramen-yokocho"],
-            "駅": ["station", "bilingual-signs"],
-            "station": ["bilingual-signs", "station"],
+            "中華そば": ["ramen-yokocho"],
+            "駅": ["station"],
             "地下鉄": ["station"],
-            "subway": ["bilingual-signs", "station"],
+            "メトロ": ["station"],
             "刺身": ["sushi", "izakaya"],
             "天ぷら": ["izakaya", "market"],
             "餃子": ["ramen-yokocho"],
             "醤油": ["sushi", "izakaya"],
+            "寿司": ["sushi", "market"],
+            "お茶": ["sushi", "izakaya"],
             "焼き鳥": ["izakaya"],
             "枝豆": ["izakaya"],
             "わさび": ["sushi"],
@@ -165,8 +170,9 @@ _SESSION_SPREAD_MINUTES = 90
 
 
 # Source language per scenario (the language the user encountered / typed).
-# The Tokyo trip is Japanese by default; the bilingual-board English terms
-# carry their own source language via a 3-tuple override.
+# The Tokyo trip is Japanese throughout — one trip, one foreign language. A
+# word pair may still override its source language with an optional 3rd
+# element, but the single-language trip doesn't use it.
 _SCENARIO_SOURCE_LANG = {
     "Tokyo trip — a week of meals and trains": "Japanese",
 }

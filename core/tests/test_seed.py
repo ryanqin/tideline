@@ -115,21 +115,18 @@ def test_seed_db_count_matches_generate(conn):
     assert inserted > 30  # one focused trip, ~40 captures
 
 
-def test_seed_data_spans_multiple_source_languages(conn):
-    """Even one trip meets more than one foreign source language — Japanese on
-    the menus and signs, English on the bilingual tourist boards — each
-    translated INTO Chinese. (No Chinese *source*: you don't translate your own
-    language.) The two scripts are what make the same concept met twice cluster
-    across languages (ラーメン / ramen → 拉面)."""
+def test_seed_is_one_foreign_language_into_chinese(conn):
+    """The trip is a single source language (Japanese) translated INTO the
+    user's first language (Chinese) — the lived §3.3 scenario. No Chinese
+    *source* (you don't translate your own language), and no second foreign
+    language: meeting one concept in two languages is the rare case we don't
+    seed."""
     seed_db(conn)
 
-    originals = conn.execute("SELECT DISTINCT original FROM translations").fetchall()
-
-    has_japanese = any("ラ" in r[0] or "刺" in r[0] or "駅" in r[0] for r in originals)
-    has_english = any(r[0] in ("ramen", "station", "subway") for r in originals)
-
-    assert has_japanese, "Missing Japanese-script source terms"
-    assert has_english, "Missing English source terms (bilingual boards)"
+    source_langs = conn.execute(
+        "SELECT DISTINCT source_lang FROM translations"
+    ).fetchall()
+    assert source_langs == [("Japanese",)], source_langs
 
     # Everything is translated INTO the user's first language (Chinese).
     assert conn.execute(
@@ -203,8 +200,17 @@ def test_seed_sets_source_language(conn):
     assert conn.execute(
         "SELECT DISTINCT source_lang FROM translations WHERE original='ラーメン'"
     ).fetchall() == [("Japanese",)]
-    # per-pair override → the bilingual-board English crossing stays English
-    # (it's what lets ramen↔ラーメン cluster across languages into 拉面)
-    assert conn.execute(
-        "SELECT DISTINCT source_lang FROM translations WHERE original='ramen'"
-    ).fetchall() == [("English",)]
+
+
+def test_seed_has_same_language_synonyms_for_concept_fusion(conn):
+    """Two different Japanese words that land on the same first-language word
+    are seeded so the within-language concept fusion (§3.3) has something to
+    cluster: 中華そば and ラーメン both → 拉面, both Japanese."""
+    seed_db(conn)
+    rows = conn.execute(
+        "SELECT DISTINCT original, source_lang FROM translations "
+        "WHERE translated = '拉面' ORDER BY original"
+    ).fetchall()
+    originals = {r[0] for r in rows}
+    assert {"ラーメン", "中華そば"} <= originals, originals
+    assert {r[1] for r in rows} == {"Japanese"}  # one language-pair
