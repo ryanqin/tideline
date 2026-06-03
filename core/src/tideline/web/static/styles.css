@@ -462,7 +462,10 @@ body.shore-open { overflow: hidden; }
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
 }
 .shore-back svg { width: 20px; height: 20px; }
-.shore-back:hover { background: rgba(22, 24, 40, 0.32); }
+/* keep the centering transform on hover — the base button:hover sets
+   translateY(-1px), which would drop the translateX(-50%) and shove the
+   button right by half its width. */
+.shore-back:hover { background: rgba(22, 24, 40, 0.32); transform: translateX(-50%); }
 
 /* The translator, collapsed to a corner (DESIGN §10.2): one tap to cast a word. */
 .shore-compose {
