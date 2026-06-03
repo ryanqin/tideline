@@ -12,10 +12,10 @@
 <body class="has-coastline">
   <header>
     <h1>Tideline</h1>
-    <nav>
-      <a href="/" class="active" data-i18n="nav_translate">Translate</a>
-      <a href="/learnings" data-i18n="nav_learnings">Learnings</a>
-    </nav>
+    <!-- One world, not two tabs (DESIGN §10.2/§10.7): the desk is the front
+         door, the shore is one swipe up, and the museum is reached from the
+         shore. So the header carries no flat Translate/Museum nav — just the
+         brand and the "me" anchor. -->
     <div class="identity">
       <label for="native-lang" data-i18n="first_lang_label">Your first language</label>
       <select id="native-lang">
@@ -46,8 +46,9 @@
 
     <p class="hint" data-i18n-html="index_hint">
       Everything you translate is stored locally. After enough translations
-      pile up, head to <a href="/learnings">Learnings</a> to see the clusters
-      that have quietly formed in the background.
+      pile up, wade into the shore — or head to the
+      <a href="/learnings">shelves</a> — to see the clusters that have quietly
+      formed in the background.
     </p>
   </main>
 
@@ -72,6 +73,17 @@
     <button class="shore-back" id="shoreBack" type="button" aria-label="回到桌前">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
     </button>
+
+    <!-- Walk back up the beach to the shelves on the dunes — the full
+         collection (DESIGN §10.7). The museum is reached *from the shore*, not
+         as a sibling tab; this doorway is that path. A real link (works without
+         JS, carries link semantics); the spatial walk-back lives in its title. -->
+    <a class="shore-museum" id="toMuseum" href="/learnings"
+       data-i18n-title="to_shelves_aria" title="沿沙滩走回沙丘上的货架">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span data-i18n="nav_museum">Museum</span>
+    </a>
+
     <button class="shore-compose" id="shoreCompose" type="button" data-i18n="btn_translate">Translate</button>
   </div>
 

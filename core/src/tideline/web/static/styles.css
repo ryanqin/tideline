@@ -98,6 +98,21 @@ header nav a.active {
 
 header nav a:hover { color: var(--accent-deep); }
 
+/* The museum's only way out: a quiet back-link to the shore (DESIGN §10.7).
+   It replaces the old flat nav — the museum is a place you came *to*, so you
+   go back, you don't tab sideways. */
+.back-to-shore {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 0.95rem;
+  transition: color 0.18s ease;
+}
+.back-to-shore svg { width: 18px; height: 18px; }
+.back-to-shore:hover { color: var(--accent-deep); }
+
 /* First language lives in the header — the always-visible "me" anchor that
    drives the translation target, the UI locale, and how learnings cluster. */
 .identity {
@@ -269,9 +284,15 @@ body.has-coastline .shoreline { display: none; }
 /* The invitation: a soft up-chevron resting quietly on the tideline. */
 .shore-handle {
   position: fixed;
-  left: 50%;
+  /* Center within the content area (between the edges, excluding a scrollbar
+     gutter) — the same reference the centered content column uses. `left:50%`
+     centers on the *full* viewport, so a classic scrollbar nudged the chevron
+     right of the text column; margin-auto between left:0/right:0 tracks the
+     column instead. */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   bottom: 28px;
-  transform: translateX(-50%);
   z-index: 20;
   width: 40px;
   height: 40px;
@@ -287,7 +308,7 @@ body.has-coastline .shoreline { display: none; }
   transition: opacity 0.3s ease, background 0.2s ease;
 }
 .shore-handle svg { width: 20px; height: 20px; }
-.shore-handle:hover { background: var(--accent-soft); transform: translateX(-50%) translateY(-2px); }
+.shore-handle:hover { background: var(--accent-soft); transform: translateY(-2px); }
 /* No perpetual bob — the chevron and the visible tideline are invitation
    enough; a bouncing handle read as a cheap toy against the quiet shore. */
 body.shore-open .shore-handle { opacity: 0; pointer-events: none; }
@@ -363,10 +384,10 @@ body.shore-open { overflow: hidden; }
    that twinkles at one spot near the shell, never a glow over the whole shape
    (that washed the color out) and never a badge or count. */
 .shell-spark {
-  /* the glint sits ON the shell — up on its upper body, where a real shell
+  /* the glint sits ON the shell — at its top-right corner, where a real shell
      would catch the light — not floating in the air above it (§10.2: the shell
      catches a faint light when it's freshly arrived). */
-  position: absolute; left: 50%; top: 16%;
+  position: absolute; left: auto; right: 4%; top: 4%;
   width: 28%; max-width: 15px; aspect-ratio: 1;
   pointer-events: none; transform-origin: center; opacity: 0;
   filter: drop-shadow(0 0 3px rgba(255, 214, 140, 0.95));
@@ -374,16 +395,16 @@ body.shore-open { overflow: hidden; }
 }
 .shell-spark svg { width: 100%; height: 100%; display: block; }
 .shell-spark svg path { fill: #fff1cf; }
-/* it sits above the shell and twinkles — two quick blinks, then a short rest,
-   on repeat (一闪一闪). translateX(-50%) stays in every frame so the scale /
-   rotate never knocks it off-centre. */
+/* it twinkles at that corner — two quick blinks, then a short rest, on repeat
+   (一闪一闪). Anchored by its top-right corner now, so the transform only needs
+   to scale / rotate (no centring offset to preserve). */
 @keyframes shell-spark {
-  0%   { opacity: 0;   transform: translateX(-50%) scale(0.3) rotate(0deg); }
-  15%  { opacity: 1;   transform: translateX(-50%) scale(1) rotate(10deg); }
-  30%  { opacity: 0.2; transform: translateX(-50%) scale(0.65) rotate(16deg); }
-  45%  { opacity: 1;   transform: translateX(-50%) scale(1.05) rotate(24deg); }
-  62%  { opacity: 0;   transform: translateX(-50%) scale(0.4) rotate(30deg); }
-  100% { opacity: 0;   transform: translateX(-50%) scale(0.3) rotate(0deg); }
+  0%   { opacity: 0;   transform: scale(0.3) rotate(0deg); }
+  15%  { opacity: 1;   transform: scale(1) rotate(10deg); }
+  30%  { opacity: 0.2; transform: scale(0.65) rotate(16deg); }
+  45%  { opacity: 1;   transform: scale(1.05) rotate(24deg); }
+  62%  { opacity: 0;   transform: scale(0.4) rotate(30deg); }
+  100% { opacity: 0;   transform: scale(0.3) rotate(0deg); }
 }
 
 /* Step back to the desk. */
@@ -425,6 +446,33 @@ body.shore-open { overflow: hidden; }
   transition: background 0.18s ease, transform 0.12s ease;
 }
 .shore-compose:hover { background: var(--accent-deep); transform: translateY(-1px); }
+
+/* The doorway up the beach to the shelves on the dunes — the museum (DESIGN
+   §10.7). Quiet dark glass like the back chevron (it's a doorway, a way out),
+   not the warm accent of the primary Translate action: the translator stays
+   primary, the museum is one step away. Sits in the far corner, balancing the
+   compose pill across the sand. */
+.shore-museum {
+  position: absolute;
+  z-index: 4;
+  left: 22px;
+  bottom: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(22, 24, 40, 0.2);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.92rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  transition: background 0.18s ease, transform 0.12s ease;
+}
+.shore-museum svg { width: 18px; height: 18px; }
+.shore-museum:hover { background: rgba(22, 24, 40, 0.34); transform: translateY(-1px); }
 
 /* A creature, opened: a warm sheet rises holding what washed up — a card's
    moments, a concept's synonyms, a theme's masked recall. Shared by the shore
@@ -470,7 +518,7 @@ body.shore-open { overflow: hidden; }
   .shore-handle { animation: none; }
   .shore-shell, .shore-shell.is-new { transition: none; animation: none; }
   /* keep the sparkle, just hold it still and visible instead of twinkling */
-  .shell-spark { animation: none; opacity: 0.95; transform: translateX(-50%) scale(0.9); }
+  .shell-spark { animation: none; opacity: 0.95; transform: scale(0.9); }
 }
 
 /* --- learnings page --- */
@@ -1039,10 +1087,10 @@ body.shore-open { overflow: hidden; }
 
 /* --- the header on a narrow phone --------------------------------------------
    One cramped row collapses into a calm stack: brand + first-language select on
-   top, the nav on its own line below. The long "your first language" label was
-   wrapping one character per line — on a phone it hides visually (the select
-   reads "中文" on its own) but stays in the DOM as the select's accessible name
-   for screen readers. */
+   top, the museum's back-link on its own line below. The long "your first
+   language" label was wrapping one character per line — on a phone it hides
+   visually (the select reads "中文" on its own) but stays in the DOM as the
+   select's accessible name for screen readers. */
 @media (max-width: 560px) {
   header {
     flex-wrap: wrap;
@@ -1058,6 +1106,6 @@ body.shore-open { overflow: hidden; }
     clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
   .identity select { font-size: 0.9rem; padding: 0.36rem 0.7rem; }
-  /* nav drops to its own full-width line under the brand */
-  header nav { order: 3; flex-basis: 100%; gap: 1.6rem; font-size: 0.92rem; }
+  /* the back-link drops to its own full-width line under the brand */
+  .back-to-shore { order: 3; flex-basis: 100%; font-size: 0.92rem; }
 }

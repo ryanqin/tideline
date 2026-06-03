@@ -355,6 +355,23 @@ def test_museum_page_exposes_all_lenses(client):
         assert f'data-lens="{lens}"' in r.text
 
 
+def test_navigation_is_one_world_not_two_tabs(client):
+    """Increment C (DESIGN §10.2/§10.7): translate ⇄ shore ⇄ museum is one
+    continuous place, reached spatially — not a flat Translate/Museum tab bar.
+    The desk drops the nav; the museum is reached *from the shore* via a doorway
+    to the shelves; the museum's way out is back to the shore."""
+    desk = client.get("/").text
+    museum = client.get("/learnings").text
+    # the old flat two-tab nav is gone from both pages
+    assert "<nav>" not in desk
+    assert "<nav>" not in museum
+    # the shore carries a doorway up to the shelves on the dunes (the museum)
+    assert 'id="toMuseum"' in desk
+    assert 'href="/learnings"' in desk
+    # the museum walks back down to the open shore (lands you in it, not the desk)
+    assert 'href="/?shore=open"' in museum
+
+
 # --- Drift gates ---------------------------------------------------------
 
 

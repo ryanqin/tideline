@@ -19,9 +19,10 @@ const I18N = {
     into_first: "Into your first language",
     btn_translate: "Translate",
     index_hint:
-      'Everything you translate is stored locally. After enough translations ' +
-      'pile up, head to <a href="/learnings">Learnings</a> to see the clusters ' +
-      "that have quietly formed in the background.",
+      "Everything you translate is stored locally. After enough translations " +
+      'pile up, wade into the shore — or head to the <a href="/learnings">' +
+      "shelves</a> — to see the clusters that have quietly formed in the " +
+      "background.",
 
     // learnings page
     learnings_hint:
@@ -48,6 +49,8 @@ const I18N = {
     lens_theme: "Theme",
     museum_forming: "Still forming",
     back_to_shore: "Back to the shore",
+    // the doorway from the shore up to the shelves on the dunes (§10.7)
+    to_shelves_aria: "Back up the beach to the shelves on the dunes",
 
     cards_empty:
       "No cards yet — cards surface on their own once a term repeats enough; " +
@@ -105,8 +108,8 @@ const I18N = {
     into_first: "译成你的第一语言",
     btn_translate: "翻译",
     index_hint:
-      '你翻译的一切都只存在本地。等翻译攒得够多,去<a href="/learnings">学习</a>页' +
-      "看那些在后台悄悄成形的聚类。",
+      "你翻译的一切都只存在本地。等翻译攒得够多,涉水走进海岸,或直接去" +
+      '<a href="/learnings">货架</a>,看那些在后台悄悄成形的聚类。',
 
     // learnings page
     learnings_hint:
@@ -132,6 +135,8 @@ const I18N = {
     lens_theme: "主题",
     museum_forming: "还在成形",
     back_to_shore: "回到海岸",
+    // 从海岸沿沙滩走回沙丘上的货架(§10.7)
+    to_shelves_aria: "沿沙滩走回沙丘上的货架",
 
     cards_empty:
       "还没有卡片——一个词反复出现得够多,卡片会自己浮现;你留下值得学的," +

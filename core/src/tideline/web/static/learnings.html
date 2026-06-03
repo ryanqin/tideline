@@ -12,10 +12,14 @@
 <body class="museum-page">
   <header>
     <h1>Tideline</h1>
-    <nav>
-      <a href="/" data-i18n="nav_translate">Translate</a>
-      <a href="/learnings" class="active" data-i18n="nav_museum">Museum</a>
-    </nav>
+    <!-- One world, not two tabs (DESIGN §10.2/§10.7): the museum sits on the
+         dunes behind the shore, so the way out is to walk back down to the
+         water — straight into the open shore, not to a sibling "Translate" tab.
+         Landing on /?shore=open returns you to the shore you came from. -->
+    <a class="back-to-shore" href="/?shore=open">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      <span data-i18n="back_to_shore">Back to the shore</span>
+    </a>
     <div class="identity">
       <label for="native-lang" data-i18n="first_lang_label">Your first language</label>
       <select id="native-lang">
