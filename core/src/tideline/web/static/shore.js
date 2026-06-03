@@ -426,7 +426,9 @@
     creatures.forEach((c, i) => {
       const id = c.id || String(i);
       const depth = hashFrac(id, 2);                       // 0 = far (up), 1 = near (down)
-      const px = Math.round((0.07 + depth * 0.05) * minSide);  // nearer reads larger
+      // near-big, far-small — a strong perspective so the beach reads as depth,
+      // not a flat scatter (~3x from the far horizon to the sand at your feet).
+      const px = Math.round((0.05 + depth * 0.1) * minSide);
       let x = (mx + ((i + 0.5) / n) * (1 - 2 * mx)) * 100  // even columns, inset
             + (hashFrac(id, 1) - 0.5) * (0.5 / n) * 100;   // gentle per-item jitter
       let y = (top + depth * (bottom - top)) * 100;
