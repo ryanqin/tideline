@@ -8,12 +8,13 @@ async runtime.
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -34,6 +35,32 @@ from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_settin
 
 _DEFAULT_DB = Path(".tideline") / "drawers.db"
 _STATIC_DIR = Path(__file__).parent / "static"
+
+# Cache-busting: the HTML references its assets as /static/x.js?v=<token>, where
+# the token is a short hash of those assets' mtimes. Edit any of them and the
+# token changes, so the browser is forced to fetch the new copy instead of
+# silently reusing a stale one (which once showed raw i18n keys like
+# "nav_museum" after the strings had already been translated).
+_VERSIONED_ASSETS = ("i18n.js", "shore.js", "sheet.js", "styles.css")
+
+
+def _asset_version() -> str:
+    h = hashlib.sha1()
+    for name in _VERSIONED_ASSETS:
+        try:
+            h.update(str((_STATIC_DIR / name).stat().st_mtime_ns).encode())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+def _render_page(filename: str) -> HTMLResponse:
+    """Serve a static HTML shell with the asset-version token stamped in, and
+    mark it no-cache so the browser always revalidates the shell and never
+    reuses one that points at stale (differently-versioned) assets."""
+    html = (_STATIC_DIR / filename).read_text(encoding="utf-8")
+    html = html.replace("__ASSET_V__", _asset_version())
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 # L0 identity: the user's first language now persists in the settings table
 # (DEFAULT_NATIVE_LANG until they pick one) and is read/written via /api/identity.
@@ -204,19 +231,19 @@ def create_app(
     app = FastAPI(title="Tideline", description="Local-first translation playground")
 
     @app.get("/")
-    def root() -> FileResponse:
-        return FileResponse(_STATIC_DIR / "index.html")
+    def root() -> HTMLResponse:
+        return _render_page("index.html")
 
     @app.get("/learnings")
-    def learnings_page() -> FileResponse:
-        return FileResponse(_STATIC_DIR / "learnings.html")
+    def learnings_page() -> HTMLResponse:
+        return _render_page("learnings.html")
 
     @app.get("/shore")
-    def shore_page() -> FileResponse:
+    def shore_page() -> HTMLResponse:
         """Preview of the living tidal shore (DESIGN §10), slice 1: the empty,
         time-driven coast. Standalone for now; slice 2 fuses this scene into the
         translate page's two collapsing states."""
-        return FileResponse(_STATIC_DIR / "shore.html")
+        return _render_page("shore.html")
 
     @app.post("/api/translate", response_model=TranslateResponse)
     def translate(req: TranslateRequest) -> TranslateResponse:
