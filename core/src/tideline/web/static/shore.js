@@ -181,6 +181,14 @@
       <stop offset="0" stop-color="${css(lerpRGB(s.sand, [70, 50, 40], 0.22))}"/>
       <stop offset="1" stop-color="${css(lerpRGB(s.hor, s.sand, 0.42))}"/>
     </linearGradient>
+    <!-- A fine grain for the sand — a frosted/matte texture, not a blur. Fractal
+         noise desaturated to a soft speckle; laid UNDER the shells (it lives in
+         the scene layer, the creatures sit in a layer above), washed in at low
+         opacity so it grains the sand without muddying the warm wash. -->
+    <filter id="sand-grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed="11" stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="saturate" values="0"/>
+    </filter>
   </defs>
 
   <rect x="0" y="0" width="${w}" height="${skyBot.toFixed(1)}" fill="url(#sky)"/>
@@ -188,6 +196,9 @@
 
   <!-- the shore: one warm shade wash, its depth drawn entirely by contour lines -->
   <rect x="0" y="${skyBot.toFixed(1)}" width="${w}" height="${(h - skyBot).toFixed(1)}" fill="url(#ground)"/>
+  <!-- frosted sand grain over the near sand (from the surf down to your feet),
+       beneath the contour lines and the shells -->
+  <rect x="0" y="${surfY.toFixed(1)}" width="${w}" height="${(h - surfY).toFixed(1)}" fill="#000" filter="url(#sand-grain)" opacity="0.14"/>
   ${field}
 
   <!-- two sea lines that breathe (animated), woven into the field -->
