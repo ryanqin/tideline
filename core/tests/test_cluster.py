@@ -26,8 +26,10 @@ import pytest
 from tideline.cluster import (
     _UnionFind,
     _canonical_pair,
+    _concept_partition,
     _deterministic_concept_edges,
     _pending_pairs,
+    _pending_theme_pairs,
     cluster_sweep,
     compare_pairs,
     init_db,
@@ -454,14 +456,47 @@ def test_concept_voting_skips_deterministic_pairs(conn):
     assert (same_rend_a, same_rend_b) not in pending
 
 
-def test_theme_voting_still_sees_all_pairs(conn):
-    """Theme relatedness has no deterministic shortcut and is not
-    language-scoped — even same-original pairs stay votable (theme keeps its
-    own, separate budget story)."""
-    a = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
-    b = _add_translation(conn, "駅", "Chinese", "车站", source_lang="Japanese")
-    assert (a, b) in _pending_pairs(conn, limit=10, vote_type="theme")
-    # And theme gets NO deterministic edges — no votes, no theme cluster.
+def test_theme_votes_between_concepts_not_rows(conn):
+    """Theme relatedness is judged between concepts, one node per concept.
+    Two rows of the same word are one concept, so they're never proposed as a
+    theme pair; two distinct concepts are."""
+    _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
+
+    reps = list(set(_concept_partition(conn).values()))
+    assert len(reps) == 2  # ramen-concept + gyoza-concept (not 3 rows)
+    pending = _pending_theme_pairs(conn, reps, limit=50)
+    assert len(pending) == 1  # exactly the one concept-pair
+
+
+def test_theme_cluster_expands_to_every_row_of_its_concepts(conn):
+    """The fragmentation fix: ONE theme vote between two concepts pulls in
+    every row behind both concepts — not just the two rows that were voted."""
+    r1 = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    r2 = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    r3 = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    g1 = _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
+    g2 = _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
+
+    ra, rb = sorted(set(_concept_partition(conn).values()))  # the two concepts
+    for _ in range(3):
+        vote_on_pair(conn, _AlwaysYes(), ra, rb, vote_type="theme")
+
+    assert rebuild_clusters(conn, vote_type="theme") == 1
+    assert set(_cluster_member_ids(conn, "theme")) == {r1, r2, r3, g1, g2}
+
+
+def test_a_single_concept_is_not_a_theme(conn):
+    """A theme needs >= 2 distinct concepts. One word seen many times is a
+    single concept — even a (degenerate) within-concept theme vote forms no
+    theme."""
+    rows = [
+        _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+        for _ in range(3)
+    ]
+    for _ in range(3):
+        vote_on_pair(conn, _AlwaysYes(), rows[0], rows[1], vote_type="theme")
     assert rebuild_clusters(conn, vote_type="theme") == 0
 
 

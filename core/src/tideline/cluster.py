@@ -268,16 +268,19 @@ def _pending_pairs(
     A pair is "pending" while its accumulated vote count is strictly
     less than `min_votes_per_pair`.
 
-    For `vote_type='concept'`, voting is restricted to pairs within the
-    same source language (clusters are scoped per language-pair, §3.3), and
-    deterministic same-concept pairs (same source word, or same
-    first-language rendering within one language — see
-    `_DETERMINISTIC_CONCEPT_PREDICATE`) are excluded entirely: they don't
-    need a model vote (they're settled by construction and added as edges
-    in rebuild_clusters), and excluding them keeps a modest budget from
-    being eaten by same-word pairs before it reaches genuinely ambiguous
-    synonyms. Theme voting is unaffected — relatedness has no such
-    deterministic shortcut and is not language-scoped here.
+    This is the concept (and general row-level) path. Voting is restricted to
+    pairs within the same source language (clusters are scoped per
+    language-pair, §3.3), and deterministic same-concept pairs (same source
+    word, or same first-language rendering within one language — see
+    `_DETERMINISTIC_CONCEPT_PREDICATE`) are excluded entirely: they don't need
+    a model vote (they're settled by construction and added as edges in
+    rebuild_clusters), and excluding them keeps a modest budget from being
+    eaten by same-word pairs before it reaches genuinely ambiguous synonyms.
+
+    Theme voting does NOT come through here — it votes between *concepts*, so
+    it uses `_pending_theme_pairs` over the concept partition. (`vote_type`
+    still parameterises the vote count, so this stays a correct general
+    "pending pairs of this relation" query if called with theme.)
 
     Priority order (Phase B4):
       1. Pairs already partially voted come first — finishing accumulation
@@ -371,13 +374,27 @@ def compare_pairs(
     # Track pairs that hedged within this call so we don't keep retrying
     # them and exhausting budget on a single unparseable case.
     hedged_pairs: set[tuple[int, int]] = set()
+    # Theme relatedness is judged between concepts, not rows: vote on pairs of
+    # concept representatives (one node per concept). Computed once — concept
+    # identity doesn't change as theme votes accumulate.
+    theme_reps = (
+        list(set(_concept_partition(conn).values()))
+        if vote_type == "theme" else None
+    )
     for _ in range(max_pairs):
-        pending = _pending_pairs(
-            conn, limit=1,
-            min_votes_per_pair=min_votes_per_pair,
-            exclude=hedged_pairs,
-            vote_type=vote_type,
-        )
+        if vote_type == "theme":
+            pending = _pending_theme_pairs(
+                conn, theme_reps, limit=1,
+                min_votes_per_pair=min_votes_per_pair,
+                exclude=hedged_pairs,
+            )
+        else:
+            pending = _pending_pairs(
+                conn, limit=1,
+                min_votes_per_pair=min_votes_per_pair,
+                exclude=hedged_pairs,
+                vote_type=vote_type,
+            )
         if not pending:
             break
         a, b = pending[0]
@@ -445,6 +462,114 @@ def _deterministic_concept_edges(
     ).fetchall()
 
 
+def _vote_edges(
+    conn: sqlite3.Connection,
+    vote_type: str,
+    vote_threshold: float,
+    min_votes: int,
+    lang_scoped: bool,
+) -> list[tuple[int, int]]:
+    """Translation-id pairs whose accumulated `vote_type` votes clear the
+    threshold (>= min_votes total AND yes-ratio >= vote_threshold). When
+    `lang_scoped`, only same-source-language pairs count (concept stays inside
+    one language-pair, §3.3); theme is not language-scoped.
+    """
+    lang_filter = (
+        "AND COALESCE(t1.source_lang, '') = COALESCE(t2.source_lang, '')"
+        if lang_scoped else ""
+    )
+    rows = conn.execute(
+        f"""
+        SELECT v.translation_id_a, v.translation_id_b
+        FROM pair_similarity_votes v
+        JOIN translations t1 ON t1.id = v.translation_id_a
+        JOIN translations t2 ON t2.id = v.translation_id_b
+        WHERE v.vote_type = ?
+          {lang_filter}
+        GROUP BY v.translation_id_a, v.translation_id_b
+        HAVING COUNT(*) >= ?
+           AND (SUM(CASE WHEN v.vote = 'yes' THEN 1 ELSE 0 END) * 1.0
+                / COUNT(*)) >= ?
+        """,
+        (vote_type, min_votes, vote_threshold),
+    ).fetchall()
+    return [(r[0], r[1]) for r in rows]
+
+
+def _concept_edges(
+    conn: sqlite3.Connection,
+    vote_threshold: float = _DEFAULT_VOTE_THRESHOLD,
+    min_votes: int = _DEFAULT_MIN_VOTES,
+) -> list[tuple[int, int]]:
+    """Every edge that makes two translations the same concept: the
+    deterministic same-concept pairs plus concept votes that cleared the
+    threshold (same-language only). Shared by concept rebuild and the concept
+    partition so both agree on what a concept is.
+    """
+    return _deterministic_concept_edges(conn) + _vote_edges(
+        conn, "concept", vote_threshold, min_votes, lang_scoped=True
+    )
+
+
+def _concept_partition(conn: sqlite3.Connection) -> dict[int, int]:
+    """Map every translation id to its concept representative.
+
+    Concepts are the connected components of `_concept_edges`; a translation
+    in no concept edge is its own concept (maps to itself). Theme clustering
+    uses this so relatedness is judged between *concepts* — one node per
+    concept — not between every repeated row of the same word. Without it the
+    six rows of a word seen six times are six separate theme nodes, and a
+    single theme vote only links one of them (fragmentation); collapsing to
+    concepts also shrinks the pair space from rows^2 to concepts^2.
+    """
+    uf = _UnionFind()
+    for a, b in _concept_edges(conn):
+        uf.union(a, b)
+    partition: dict[int, int] = {}
+    for (tid,) in conn.execute("SELECT id FROM translations"):
+        partition[tid] = uf.find(tid)  # find() seeds a singleton as its own rep
+    return partition
+
+
+def _pending_theme_pairs(
+    conn: sqlite3.Connection,
+    representatives: list[int],
+    limit: int,
+    min_votes_per_pair: int = 1,
+    exclude: set[tuple[int, int]] | None = None,
+) -> list[tuple[int, int]]:
+    """Pending theme pairs, one node per concept (the `representatives`).
+
+    Theme relatedness is judged between concepts, so candidates are pairs of
+    concept representatives that haven't yet accumulated `min_votes_per_pair`
+    theme votes. Partial-progress first (finish an in-progress pair before
+    opening a new one), mirroring `_pending_pairs`. One bulk query reads the
+    existing theme vote counts; the rep^2 enumeration runs in memory.
+    """
+    reps = sorted(representatives)
+    exclude = exclude or set()
+    counts: dict[tuple[int, int], int] = {
+        (a, b): n
+        for a, b, n in conn.execute(
+            "SELECT translation_id_a, translation_id_b, COUNT(*) "
+            "FROM pair_similarity_votes WHERE vote_type = 'theme' "
+            "GROUP BY translation_id_a, translation_id_b"
+        )
+    }
+    pending: list[tuple[int, int, int]] = []
+    for i in range(len(reps)):
+        for j in range(i + 1, len(reps)):
+            pair = (reps[i], reps[j])  # reps sorted → already canonical (a < b)
+            if pair in exclude:
+                continue
+            votes = counts.get(pair, 0)
+            if votes < min_votes_per_pair:
+                pending.append((votes, pair[0], pair[1]))
+    # Partial-progress first; stable order for the rest (deterministic).
+    pending.sort(key=lambda x: (-x[0], x[1], x[2]))
+    return [(a, b) for _, a, b in pending[:limit]]
+
+
 def rebuild_clusters(
     conn: sqlite3.Connection,
     vote_threshold: float = _DEFAULT_VOTE_THRESHOLD,
@@ -461,62 +586,58 @@ def rebuild_clusters(
     clusters coexist in the same tables.
 
     Algorithm:
-      1. SELECT pairs of this vote_type with vote_count >= min_votes
-         AND yes_ratio >= threshold
-      2. Union-Find over the resulting edge set (concept edges kept within
-         one source language); for 'concept', also union the deterministic
-         same-concept edges (see `_deterministic_concept_edges`)
-      3. DELETE this vote_type's clusters / their members
-      4. For each connected component with >= 2 members, INSERT a cluster
-         (tagged vote_type) and its members
+      1. Build the edge set for this relation:
+         - concept: deterministic same-concept edges + concept votes over
+           threshold, all within one source language (`_concept_edges`);
+         - theme: votes over threshold, mapped through the concept partition
+           so the graph is over concepts, not rows (`_concept_partition`).
+      2. Union-Find over those edges to get connected components.
+      3. DELETE this vote_type's clusters / their members.
+      4. INSERT a cluster (tagged vote_type) + members for each component
+         that qualifies: concept needs >= 2 member rows; theme needs >= 2
+         distinct concepts and then expands to every row behind them.
     """
     if not (0.0 <= vote_threshold <= 1.0):
         raise ValueError(f"vote_threshold must be in [0,1], got {vote_threshold}")
     if min_votes < 1:
         raise ValueError(f"min_votes must be >= 1, got {min_votes}")
 
-    # Concept edges stay inside one source language (clusters are scoped per
-    # language-pair, §3.3). Voting already avoids cross-language pairs, but
-    # filter here too so a cluster can never span languages even if a stale
-    # cross-language vote survives. Theme edges are not language-scoped.
-    lang_filter = (
-        "AND COALESCE(t1.source_lang, '') = COALESCE(t2.source_lang, '')"
-        if vote_type == "concept" else ""
-    )
-    edges = conn.execute(
-        f"""
-        SELECT
-            v.translation_id_a,
-            v.translation_id_b,
-            SUM(CASE WHEN v.vote = 'yes' THEN 1 ELSE 0 END) AS yes_votes,
-            COUNT(*) AS total_votes
-        FROM pair_similarity_votes v
-        JOIN translations t1 ON t1.id = v.translation_id_a
-        JOIN translations t2 ON t2.id = v.translation_id_b
-        WHERE v.vote_type = ?
-          {lang_filter}
-        GROUP BY v.translation_id_a, v.translation_id_b
-        HAVING total_votes >= ? AND (yes_votes * 1.0 / total_votes) >= ?
-        """,
-        (vote_type, min_votes, vote_threshold),
-    ).fetchall()
-
     uf = _UnionFind()
-    for a, b, _, _ in edges:
-        uf.union(a, b)
-
-    # Concept clusters also take deterministic edges — same source word, or
-    # same first-language rendering within one source language, means same
-    # concept with no vote required (and is what lets a cluster form on a
-    # zero-vote budget). Theme relatedness has no deterministic shortcut.
-    if vote_type == "concept":
-        for a, b in _deterministic_concept_edges(conn):
+    if vote_type == "theme":
+        # Theme votes are cast between concept representatives (one node per
+        # concept — see compare_pairs), so build the graph over concepts, not
+        # rows. Map every vote endpoint through the concept partition (a stale
+        # row-level vote still collapses to its concept). A theme is real only
+        # when it links >= 2 distinct concepts; then it expands to every
+        # translation row behind those concepts, so all the moments belong to
+        # the theme.
+        partition = _concept_partition(conn)
+        for a, b in _vote_edges(
+            conn, "theme", vote_threshold, min_votes, lang_scoped=False
+        ):
+            uf.union(partition.get(a, a), partition.get(b, b))
+        rep_rows: dict[int, list[int]] = defaultdict(list)
+        for row, rep in partition.items():
+            rep_rows[rep].append(row)
+        rep_groups: dict[int, list[int]] = defaultdict(list)
+        for rep in uf._parent:
+            rep_groups[uf.find(rep)].append(rep)
+        groups: dict[int, list[int]] = {}
+        for key, reps in rep_groups.items():
+            if len(reps) < 2:  # < 2 concepts → not a theme
+                continue
+            members: list[int] = []
+            for rep in reps:
+                members.extend(rep_rows.get(rep, [rep]))
+            groups[key] = members
+    else:
+        # Concept edges: deterministic same-concept pairs + concept votes that
+        # cleared the threshold, all kept inside one source language (§3.3).
+        for a, b in _concept_edges(conn, vote_threshold, min_votes):
             uf.union(a, b)
-
-    # Group nodes by their representative
-    groups: dict[int, list[int]] = defaultdict(list)
-    for node in uf._parent:
-        groups[uf.find(node)].append(node)
+        groups = defaultdict(list)
+        for node in uf._parent:
+            groups[uf.find(node)].append(node)
 
     # Snapshot existing (membership_signature → title) so a rebuild that
     # produces the same connected components preserves human-readable
