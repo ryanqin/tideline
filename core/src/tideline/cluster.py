@@ -137,8 +137,9 @@ class _Voter:
 _VOTERS: dict[str, _Voter] = {
     "concept": _Voter(
         system_prompt=concept_match.SYSTEM_PROMPT,
-        # The target-lang rendering disambiguates cross-language concept
-        # matches (ラーメン[ja] vs ramen[en]).
+        # Render each term with its SOURCE language so the model can recognise
+        # cross-language synonyms (ラーメン[Japanese] vs ramen[English] → same
+        # concept). _fetch_translation now returns source_lang in slot 1.
         build=lambda ra, rb: concept_match.build_prompt(
             ra[0], ra[1] or "unknown", rb[0], rb[1] or "unknown"
         ),
@@ -171,8 +172,13 @@ def _canonical_pair(a: int, b: int) -> tuple[int, int]:
 
 
 def _fetch_translation(conn: sqlite3.Connection, tid: int) -> tuple[str, str, str] | None:
+    # The middle field is the term's SOURCE language — the language it was met
+    # in (ラーメン→Japanese, ramen→English). The concept voter renders it next
+    # to the term so the model can see they're cross-language synonyms; passing
+    # the *target* language here (always the user's Chinese) mislabelled both
+    # terms as Chinese and made the model vote "no" on real twins.
     row = conn.execute(
-        "SELECT original, target_lang, translated FROM translations WHERE id = ?",
+        "SELECT original, source_lang, translated FROM translations WHERE id = ?",
         (tid,),
     ).fetchone()
     return row
