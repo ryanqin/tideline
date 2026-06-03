@@ -315,23 +315,73 @@
   // the contour field without ever becoming a block. Rounded joins = soft, a
   // little cute, hand-drawn rather than iconographic.
   const GLYPHS = {
-    // a scallop: a little fan, ribs radiating from the hinge
+    // concept → a scallop: a little fan, ribs radiating from the hinge
+    // (synonyms gathering under one meaning). The concept anchor.
     shell:
       '<path d="M24 41C12 38 7 24 8.5 15.5 24 8 39.5 15.5 39.5 15.5 41 24 36 38 24 41Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
       '<path d="M24 41 13 18M24 41 19 13.5M24 41 24 12M24 41 29 13.5M24 41 35 18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.7" stroke-linecap="round"/>',
-    // a round little crab: a domed shell, two dot eyes, raised claws, legs
+    // theme → a round little crab: a domed shell, two dot eyes, raised claws,
+    // legs (a remembered scene, alive). The theme anchor.
     crab:
       '<path d="M11 30c0-7.5 6-12 13-12s13 4.5 13 12c-2 3-24 3-26 0Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
       '<path d="M20 18.5v-3M28 18.5v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
       '<circle cx="20" cy="13.5" r="1.7" fill="currentColor"/><circle cx="28" cy="13.5" r="1.7" fill="currentColor"/>' +
       '<path d="M11.5 25c-4-1.5-6.5 0.5-6 4M36.5 25c4-1.5 6.5 0.5 6 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
       '<path d="M13 31l-5 4.5M15.5 33l-4 5.5M35 31l5 4.5M32.5 33l4 5.5" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.8" stroke-linecap="round"/>',
+
+    // --- the card shells: a single word that washed up is a single shell, and a
+    // real shore's single shells are endlessly varied — so a card is drawn from
+    // a pool of shapes (picked by a stable hash) and the beach of cards reads
+    // varied, never a wall of identical pebbles (the monotony we're fixing). ---
     // sea-glass: a soft frosted pebble with one inner gleam
     glass:
       '<path d="M17 14Q31 10 37 20 41 32 28 36 14 38 12 26 11 17 17 14Z" fill="currentColor" fill-opacity="0.22" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
       '<path d="M18 20.5Q23 17.5 27 20.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.65" stroke-linecap="round"/>',
+    // a snail / nautilus: a round shell curling into an inner spiral
+    snail:
+      '<path d="M24 12Q38 12 38 26 38 40 24 40 10 40 10 26 10 12 24 12Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M25 33Q17 33 17 25.5 17 19 24 19 30 19 30 25 30 29.5 25 30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-opacity="0.7" stroke-linecap="round"/>',
+    // an auger / tower shell: a tall banded cone, point up
+    auger:
+      '<path d="M24 8 33 39Q24 42 15 39Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M22 16h4M20.5 23h7M19 30h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.6" stroke-linecap="round"/>',
+    // a cowrie: a smooth egg with a curved seam down its back
+    cowrie:
+      '<path d="M24 11Q37 12 37 26 37 40 24 40 11 40 11 26 11 12 24 11Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M24 14Q26.5 26 24 37" fill="none" stroke="currentColor" stroke-width="1.4" stroke-opacity="0.65" stroke-linecap="round"/>',
+    // a sand dollar: a disc with a five-petal flower
+    dollar:
+      '<circle cx="24" cy="26" r="15" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2"/>' +
+      '<g fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.6" stroke-linejoin="round">' +
+      '<path d="M24 26Q22 19 24 14Q26 19 24 26Z"/>' +
+      '<path d="M24 26Q22 19 24 14Q26 19 24 26Z" transform="rotate(72 24 26)"/>' +
+      '<path d="M24 26Q22 19 24 14Q26 19 24 26Z" transform="rotate(144 24 26)"/>' +
+      '<path d="M24 26Q22 19 24 14Q26 19 24 26Z" transform="rotate(216 24 26)"/>' +
+      '<path d="M24 26Q22 19 24 14Q26 19 24 26Z" transform="rotate(288 24 26)"/>' +
+      '</g>',
   };
-  const CREATURE_NOUN = { shell: "贝壳", crab: "螃蟹", glass: "海玻璃" };
+  // What a card (sea-glass family) can wash up as — the variety pool.
+  const CARD_POOL = ["glass", "snail", "auger", "cowrie", "dollar"];
+  const CREATURE_NOUN = { shell: "扇贝", crab: "螃蟹", glass: "贝壳" };
+
+  // Relation kind → the glyph key to draw. Concept and theme keep their single
+  // anchor (scallop / crab); a card picks a shell from CARD_POOL by a stable
+  // hash of its seed, so the same card is always the same shell but the beach
+  // as a whole is varied (DESIGN §10.5, the creature-type→relation mapping made
+  // richer for the card family).
+  function glyphKey(kind, seed) {
+    if (kind === "glass") {
+      return CARD_POOL[Math.floor(hashFrac(String(seed == null ? "" : seed), 7) * CARD_POOL.length)] || "glass";
+    }
+    return GLYPHS[kind] ? kind : "glass";
+  }
+
+  // The bare glyph for a (kind, seed), as a ready <svg> (warm line art,
+  // currentColor). The museum (learnings) reuses this so the shelves and the
+  // shore speak one visual language without copying the paths.
+  function glyph(kind, seed) {
+    return '<svg viewBox="0 0 48 48" aria-hidden="true">' + (GLYPHS[glyphKey(kind, seed)] || GLYPHS.glass) + "</svg>";
+  }
 
   // A tiny deterministic hash → a fraction in [0,1). Same id+salt always gives
   // the same number, so a repaint/resize never makes the scatter jump.
@@ -392,7 +442,7 @@
         `<button type="button" class="shore-shell kind-${kind}${c.fresh ? " is-new" : ""}"` +
         ` style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${px}px;--rot:${rot.toFixed(1)}deg;--cap-max:${capMax}px;color:${ink}"` +
         ` data-id="${id}" data-kind="${kind}" aria-label="${label}">` +
-        `<svg viewBox="0 0 48 48" aria-hidden="true">${GLYPHS[kind]}</svg>` +
+        glyph(kind, id) +
         (c.fresh
           ? '<span class="shell-spark" aria-hidden="true"><svg viewBox="0 0 24 24">' +
             '<path d="M12 0 Q13 11 24 12 Q13 13 12 24 Q11 13 0 12 Q11 11 12 0 Z"/>' +
@@ -415,5 +465,5 @@
     return { date, tide: tideAt(date) };
   }
 
-  global.Shore = { render, renderStrip, renderCreatures, skyAt, tideAt, moonPhase, bodyAt, resolveDate, labelTime };
+  global.Shore = { render, renderStrip, renderCreatures, glyph, skyAt, tideAt, moonPhase, bodyAt, resolveDate, labelTime };
 })(typeof window !== "undefined" ? window : globalThis);

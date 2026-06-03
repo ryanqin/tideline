@@ -900,3 +900,164 @@ body.shore-open { overflow: hidden; }
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: none; }
 }
+
+/* --- the museum: the shelves on the dunes (DESIGN §10.7) -------------------
+   The calm, ordered, navigable counterpart to the alive shore — the full
+   collection, shelved by lens, every shell a focusable labelled button. This
+   is also the list / reduced-motion / screen-reader floor, so it stays plain
+   and quiet: warm line shells resting on sand, never a grid of coloured cards. */
+
+.museum-hint { margin-top: 0; margin-bottom: 1.4rem; }
+
+/* The lenses: one collection, shelved four ways. A pill row like the cluster
+   toggle, sized up to read as the museum's primary navigation. */
+.lens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  margin-bottom: 1.8rem;
+}
+.lens button {
+  flex: 1 1 auto;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.lens button.active { background: var(--accent); color: #fff; }
+.lens button.active:hover { background: var(--accent); transform: none; }
+.lens button:hover:not(.active) { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
+
+.shelves { min-height: 8rem; }
+
+/* A shelf: an optional name (the language groups name theirs) over a row of
+   shells. The label carries a hairline ledge — the edge of the dune shelf. */
+.shelf { margin-bottom: 2.2rem; }
+.shelf-label {
+  font-family: var(--serif);
+  font-size: 1rem;
+  color: var(--muted);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.01em;
+}
+.shelf-label .count {
+  color: var(--faint);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.4rem;
+}
+
+/* Shells wrap freely, each resting on its own patch of sand — no row ledge to
+   strand the upper rows, no card chrome. */
+.shelf-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6rem 1.4rem;
+  align-items: flex-start;
+}
+
+/* A shell on a shelf: the warm line glyph (shared with the shore) over its
+   first-language label. The base button chrome (pill / bg / glow) is fully
+   neutralized — the shell IS just the line art resting on sand (the same lesson
+   the shore shells taught: never a sticker disc). */
+.shelf-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 7.5rem;
+  padding: 0.2rem;
+  margin: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  border-radius: var(--radius-sm);
+  -webkit-appearance: none; appearance: none;
+  color: #84522c;          /* warm brown ink, like the shore's near-sand line */
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.27, 1);
+}
+.shelf-shell:hover { background: none; transform: translateY(-3px); }
+.shelf-shell:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.shelf-glyph {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  /* a soft warm shadow lifts the line art off the sand — but no fill disc */
+  filter: drop-shadow(0 3px 4px rgba(96, 60, 30, 0.18));
+  transition: filter 0.22s ease;
+}
+.shelf-shell:hover .shelf-glyph { filter: drop-shadow(0 7px 9px rgba(96, 60, 30, 0.2)); }
+.shelf-glyph svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+/* the crab reads a touch small in its box — give it a hair more room */
+.shelf-shell.kind-crab .shelf-glyph { width: 66px; height: 66px; }
+
+.shelf-cap {
+  font-size: 0.82rem;
+  line-height: 1.3;
+  color: var(--ink);
+  text-align: center;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.museum-forming { color: var(--muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .shelf-shell { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+  .shelf-shell:nth-child(2) { animation-delay: 0.03s; }
+  .shelf-shell:nth-child(3) { animation-delay: 0.06s; }
+  .shelf-shell:nth-child(4) { animation-delay: 0.09s; }
+  .shelf-shell:nth-child(n+5) { animation-delay: 0.12s; }
+}
+
+@media (max-width: 480px) {
+  .shelf-row { gap: 1.3rem 0.8rem; justify-content: space-between; }
+  .shelf-shell { width: 4.7rem; }
+  .shelf-glyph, .shelf-shell.kind-crab .shelf-glyph { width: 52px; height: 52px; }
+  .lens button { padding: 0.45rem 0.6rem; font-size: 0.84rem; }
+}
+
+/* --- the header on a narrow phone --------------------------------------------
+   One cramped row collapses into a calm stack: brand + first-language select on
+   top, the nav on its own line below. The long "your first language" label was
+   wrapping one character per line — on a phone it hides visually (the select
+   reads "中文" on its own) but stays in the DOM as the select's accessible name
+   for screen readers. */
+@media (max-width: 560px) {
+  header {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 1.1rem;
+    padding: 0.75rem 1.1rem;
+  }
+  header h1 { font-size: 1.32rem; }
+  .identity { margin-left: auto; gap: 0; }
+  .identity label {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .identity select { font-size: 0.9rem; padding: 0.36rem 0.7rem; }
+  /* nav drops to its own full-width line under the brand */
+  header nav { order: 3; flex-basis: 100%; gap: 1.6rem; font-size: 0.92rem; }
+}

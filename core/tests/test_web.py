@@ -346,11 +346,13 @@ def test_clusters_by_language_buckets_unknown_source(tmp_path):
     assert [g["lang"] for g in data] == ["Unknown"]
 
 
-def test_learnings_page_exposes_cluster_toggle(client):
-    """The panel ships both grouping tabs so the by-language view is reachable."""
+def test_museum_page_exposes_all_lenses(client):
+    """The museum shelves the collection four ways (DESIGN §10.7); every lens —
+    including the by-language view re-housed here — is reachable from the lens
+    switcher."""
     r = client.get("/learnings")
-    assert 'data-view="concept"' in r.text
-    assert 'data-view="language"' in r.text
+    for lens in ("cards", "concept", "language", "theme"):
+        assert f'data-lens="{lens}"' in r.text
 
 
 # --- Drift gates ---------------------------------------------------------

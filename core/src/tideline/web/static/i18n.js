@@ -36,6 +36,19 @@ const I18N = {
     themes_title: "Themes — moments that belong together",
     candidates_title: "Candidates — repeated translations",
 
+    // museum (the shelves on the dunes — the full collection, the list floor)
+    nav_museum: "Museum",
+    title_museum: "Tideline — museum",
+    museum_hint:
+      "Everything that's washed up, shelved on the dunes. Browse it by card, " +
+      "concept, language, or theme — tap a shell to open what it holds.",
+    lens_cards: "Cards",
+    lens_concept: "Concept",
+    lens_language: "Language",
+    lens_theme: "Theme",
+    museum_forming: "Still forming",
+    back_to_shore: "Back to the shore",
+
     cards_empty:
       "No cards yet — cards surface on their own once a term repeats enough; " +
       "you keep the ones worth studying and sink the rest.",
@@ -106,6 +119,19 @@ const I18N = {
     by_language: "按语言",
     themes_title: "主题 — 属于同一段的片刻",
     candidates_title: "候选 — 反复出现的翻译",
+
+    // 陈列馆(沙丘上的货架 — 完整收藏,也是 list 退路)
+    nav_museum: "陈列馆",
+    title_museum: "Tideline — 陈列馆",
+    museum_hint:
+      "冲上岸的一切,陈列在沙丘的货架上。按卡片、概念、语言或主题来逛——" +
+      "点一只贝壳,看它收着什么。",
+    lens_cards: "卡片",
+    lens_concept: "概念",
+    lens_language: "语言",
+    lens_theme: "主题",
+    museum_forming: "还在成形",
+    back_to_shore: "回到海岸",
 
     cards_empty:
       "还没有卡片——一个词反复出现得够多,卡片会自己浮现;你留下值得学的," +
