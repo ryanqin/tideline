@@ -389,10 +389,12 @@ body.shore-open { overflow: hidden; }
    that twinkles at one spot near the shell, never a glow over the whole shape
    (that washed the color out) and never a badge or count. */
 .shell-spark {
-  /* the glint sits ON the shell — at its top-right corner, where a real shell
-     would catch the light — not floating in the air above it (§10.2: the shell
-     catches a faint light when it's freshly arrived). */
-  position: absolute; left: auto; right: 4%; top: 4%;
+  /* the glint sits ON the shell's upper-right, hugging the line where a real
+     shell would catch the light. The glyphs are rounded blobs inset in their
+     box, so the box's very corner (right:4%/top:4%) floated the glint out in
+     the empty corner with a visible gap; nudged in to overlap the outline's
+     ~1:30 edge instead (§10.2: a shell catching a faint light). */
+  position: absolute; left: auto; right: 13%; top: 17%;
   width: 28%; max-width: 15px; aspect-ratio: 1;
   pointer-events: none; transform-origin: center; opacity: 0;
   filter: drop-shadow(0 0 3px rgba(255, 214, 140, 0.95));
