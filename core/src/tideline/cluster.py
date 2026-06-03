@@ -277,10 +277,10 @@ def _pending_pairs(
     rebuild_clusters), and excluding them keeps a modest budget from being
     eaten by same-word pairs before it reaches genuinely ambiguous synonyms.
 
-    Theme voting does NOT come through here — it votes between *concepts*, so
-    it uses `_pending_theme_pairs` over the concept partition. (`vote_type`
-    still parameterises the vote count, so this stays a correct general
-    "pending pairs of this relation" query if called with theme.)
+    Theme clustering does NOT vote at all — themes are co-occurrence (capture
+    sessions), built deterministically in rebuild_clusters. So this is the
+    concept path in practice. (`vote_type` still parameterises the vote count,
+    so it stays a correct general "pending pairs of this relation" query.)
 
     Priority order (Phase B4):
       1. Pairs already partially voted come first — finishing accumulation
@@ -374,27 +374,13 @@ def compare_pairs(
     # Track pairs that hedged within this call so we don't keep retrying
     # them and exhausting budget on a single unparseable case.
     hedged_pairs: set[tuple[int, int]] = set()
-    # Theme relatedness is judged between concepts, not rows: vote on pairs of
-    # concept representatives (one node per concept). Computed once — concept
-    # identity doesn't change as theme votes accumulate.
-    theme_reps = (
-        list(set(_concept_partition(conn).values()))
-        if vote_type == "theme" else None
-    )
     for _ in range(max_pairs):
-        if vote_type == "theme":
-            pending = _pending_theme_pairs(
-                conn, theme_reps, limit=1,
-                min_votes_per_pair=min_votes_per_pair,
-                exclude=hedged_pairs,
-            )
-        else:
-            pending = _pending_pairs(
-                conn, limit=1,
-                min_votes_per_pair=min_votes_per_pair,
-                exclude=hedged_pairs,
-                vote_type=vote_type,
-            )
+        pending = _pending_pairs(
+            conn, limit=1,
+            min_votes_per_pair=min_votes_per_pair,
+            exclude=hedged_pairs,
+            vote_type=vote_type,
+        )
         if not pending:
             break
         a, b = pending[0]
@@ -531,45 +517,6 @@ def _concept_partition(conn: sqlite3.Connection) -> dict[int, int]:
     return partition
 
 
-def _pending_theme_pairs(
-    conn: sqlite3.Connection,
-    representatives: list[int],
-    limit: int,
-    min_votes_per_pair: int = 1,
-    exclude: set[tuple[int, int]] | None = None,
-) -> list[tuple[int, int]]:
-    """Pending theme pairs, one node per concept (the `representatives`).
-
-    Theme relatedness is judged between concepts, so candidates are pairs of
-    concept representatives that haven't yet accumulated `min_votes_per_pair`
-    theme votes. Partial-progress first (finish an in-progress pair before
-    opening a new one), mirroring `_pending_pairs`. One bulk query reads the
-    existing theme vote counts; the rep^2 enumeration runs in memory.
-    """
-    reps = sorted(representatives)
-    exclude = exclude or set()
-    counts: dict[tuple[int, int], int] = {
-        (a, b): n
-        for a, b, n in conn.execute(
-            "SELECT translation_id_a, translation_id_b, COUNT(*) "
-            "FROM pair_similarity_votes WHERE vote_type = 'theme' "
-            "GROUP BY translation_id_a, translation_id_b"
-        )
-    }
-    pending: list[tuple[int, int, int]] = []
-    for i in range(len(reps)):
-        for j in range(i + 1, len(reps)):
-            pair = (reps[i], reps[j])  # reps sorted → already canonical (a < b)
-            if pair in exclude:
-                continue
-            votes = counts.get(pair, 0)
-            if votes < min_votes_per_pair:
-                pending.append((votes, pair[0], pair[1]))
-    # Partial-progress first; stable order for the rest (deterministic).
-    pending.sort(key=lambda x: (-x[0], x[1], x[2]))
-    return [(a, b) for _, a, b in pending[:limit]]
-
-
 def rebuild_clusters(
     conn: sqlite3.Connection,
     vote_threshold: float = _DEFAULT_VOTE_THRESHOLD,
@@ -585,17 +532,15 @@ def rebuild_clusters(
     clusters (and their titles) are untouched, so concept and theme
     clusters coexist in the same tables.
 
-    Algorithm:
-      1. Build the edge set for this relation:
-         - concept: deterministic same-concept edges + concept votes over
-           threshold, all within one source language (`_concept_edges`);
-         - theme: votes over threshold, mapped through the concept partition
-           so the graph is over concepts, not rows (`_concept_partition`).
-      2. Union-Find over those edges to get connected components.
-      3. DELETE this vote_type's clusters / their members.
-      4. INSERT a cluster (tagged vote_type) + members for each component
-         that qualifies: concept needs >= 2 member rows; theme needs >= 2
-         distinct concepts and then expands to every row behind them.
+    Algorithm differs by relation:
+      - concept: Union-Find over deterministic same-concept edges + concept
+        votes over threshold (within one source language, `_concept_edges`);
+        a component of >= 2 member rows becomes a cluster.
+      - theme: group translations by capture session (co-occurrence); a
+        session with >= 2 distinct concepts (via `_concept_partition`) becomes
+        a theme whose members are that session's rows. No votes — `min_votes`
+        and `vote_threshold` are ignored for theme.
+    Then DELETE this vote_type's clusters/members and INSERT the new ones.
     """
     if not (0.0 <= vote_threshold <= 1.0):
         raise ValueError(f"vote_threshold must be in [0,1], got {vote_threshold}")
@@ -604,32 +549,27 @@ def rebuild_clusters(
 
     uf = _UnionFind()
     if vote_type == "theme":
-        # Theme votes are cast between concept representatives (one node per
-        # concept — see compare_pairs), so build the graph over concepts, not
-        # rows. Map every vote endpoint through the concept partition (a stale
-        # row-level vote still collapses to its concept). A theme is real only
-        # when it links >= 2 distinct concepts; then it expands to every
-        # translation row behind those concepts, so all the moments belong to
-        # the theme.
+        # A theme is CO-OCCURRENCE, not relatedness: one capture session — a
+        # remembered occasion — that holds >= 2 distinct concepts. Members are
+        # the session's translations. A concept may recur across sessions (you
+        # ate sashimi at both the sushi counter and the izakaya), so themes can
+        # overlap — each is its own occasion. Deterministic: no model, no
+        # budget, no cross-domain leak. (Real-model B7 relatedness can't draw a
+        # clean scene boundary on real vocab — 2026-06-03 probe — so it is
+        # demoted to garnish; co-occurrence is the load-bearing signal. §3.2.)
         partition = _concept_partition(conn)
-        for a, b in _vote_edges(
-            conn, "theme", vote_threshold, min_votes, lang_scoped=False
+        sessions: dict[str, list[int]] = defaultdict(list)
+        for tid, sid in conn.execute(
+            "SELECT id, session_id FROM translations "
+            "WHERE session_id IS NOT NULL AND session_id <> ''"
         ):
-            uf.union(partition.get(a, a), partition.get(b, b))
-        rep_rows: dict[int, list[int]] = defaultdict(list)
-        for row, rep in partition.items():
-            rep_rows[rep].append(row)
-        rep_groups: dict[int, list[int]] = defaultdict(list)
-        for rep in uf._parent:
-            rep_groups[uf.find(rep)].append(rep)
+            sessions[sid].append(tid)
         groups: dict[int, list[int]] = {}
-        for key, reps in rep_groups.items():
-            if len(reps) < 2:  # < 2 concepts → not a theme
+        for idx, (_sid, rows) in enumerate(sessions.items()):
+            concepts = {partition.get(r, r) for r in rows}
+            if len(concepts) < 2:  # a one-concept session is not a scene
                 continue
-            members: list[int] = []
-            for rep in reps:
-                members.extend(rep_rows.get(rep, [rep]))
-            groups[key] = members
+            groups[idx] = rows
     else:
         # Concept edges: deterministic same-concept pairs + concept votes that
         # cleared the threshold, all kept inside one source language (§3.3).
@@ -783,19 +723,21 @@ def cluster_sweep(
     'theme'). The two relations are independent sweeps over the same
     tables — a caller wanting both kinds of clusters calls this twice.
 
-    `min_votes_per_pair` is applied uniformly: pairs stay in the voting
-    rotation until they reach it, and rebuild_clusters requires the
-    same minimum before counting an edge. Budget controls compare_pairs();
-    rebuild and name are cheap (SQL + at most one LLM call per unnamed
-    cluster).
+    Concept votes (budget = `max_pairs`); theme does NOT vote — themes are
+    co-occurrence (capture sessions), built deterministically in
+    rebuild_clusters, so the theme sweep is just rebuild + episodic naming.
     """
-    vote_stats = compare_pairs(
-        conn, runtime,
-        max_pairs=max_pairs,
-        model_label=model_label,
-        min_votes_per_pair=min_votes_per_pair,
-        vote_type=vote_type,
-    )
+    if vote_type == "theme":
+        # No voting step: themes are co-occurrence, not relatedness.
+        vote_stats = {"voted": 0, "yes": 0, "no": 0, "unparseable": 0}
+    else:
+        vote_stats = compare_pairs(
+            conn, runtime,
+            max_pairs=max_pairs,
+            model_label=model_label,
+            min_votes_per_pair=min_votes_per_pair,
+            vote_type=vote_type,
+        )
     n_clusters = rebuild_clusters(
         conn, vote_threshold=vote_threshold, min_votes=min_votes_per_pair,
         vote_type=vote_type,

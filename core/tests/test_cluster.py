@@ -29,7 +29,6 @@ from tideline.cluster import (
     _concept_partition,
     _deterministic_concept_edges,
     _pending_pairs,
-    _pending_theme_pairs,
     cluster_sweep,
     compare_pairs,
     init_db,
@@ -84,11 +83,13 @@ def _add_translation(
     target_lang: str,
     translated: str,
     source_lang: str | None = None,
+    session_id: str | None = None,
 ) -> int:
     cursor = c.execute(
-        "INSERT INTO translations (original, target_lang, translated, source_lang) "
-        "VALUES (?, ?, ?, ?)",
-        (original, target_lang, translated, source_lang),
+        "INSERT INTO translations "
+        "(original, target_lang, translated, source_lang, session_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (original, target_lang, translated, source_lang, session_id),
     )
     c.commit()
     return cursor.lastrowid
@@ -456,48 +457,68 @@ def test_concept_voting_skips_deterministic_pairs(conn):
     assert (same_rend_a, same_rend_b) not in pending
 
 
-def test_theme_votes_between_concepts_not_rows(conn):
-    """Theme relatedness is judged between concepts, one node per concept.
-    Two rows of the same word are one concept, so they're never proposed as a
-    theme pair; two distinct concepts are."""
-    _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
-    _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
-    _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
-
-    reps = list(set(_concept_partition(conn).values()))
-    assert len(reps) == 2  # ramen-concept + gyoza-concept (not 3 rows)
-    pending = _pending_theme_pairs(conn, reps, limit=50)
-    assert len(pending) == 1  # exactly the one concept-pair
-
-
-def test_theme_cluster_expands_to_every_row_of_its_concepts(conn):
-    """The fragmentation fix: ONE theme vote between two concepts pulls in
-    every row behind both concepts — not just the two rows that were voted."""
-    r1 = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
-    r2 = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
-    r3 = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
-    g1 = _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
-    g2 = _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
-
-    ra, rb = sorted(set(_concept_partition(conn).values()))  # the two concepts
-    for _ in range(3):
-        vote_on_pair(conn, _AlwaysYes(), ra, rb, vote_type="theme")
+def test_theme_is_a_capture_session_with_two_concepts(conn):
+    """A theme is co-occurrence: one capture session (a remembered occasion)
+    holding >= 2 distinct concepts. No votes — deterministic from session_id."""
+    r = _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                         source_lang="Japanese", session_id="ramen-night")
+    g = _add_translation(conn, "餃子", "Chinese", "煎饺",
+                         source_lang="Japanese", session_id="ramen-night")
 
     assert rebuild_clusters(conn, vote_type="theme") == 1
-    assert set(_cluster_member_ids(conn, "theme")) == {r1, r2, r3, g1, g2}
+    assert set(_cluster_member_ids(conn, "theme")) == {r, g}
 
 
-def test_a_single_concept_is_not_a_theme(conn):
-    """A theme needs >= 2 distinct concepts. One word seen many times is a
-    single concept — even a (degenerate) within-concept theme vote forms no
-    theme."""
+def test_theme_includes_every_row_captured_in_the_session(conn):
+    """No fragmentation: a theme is the whole session — every row, including
+    repeated words — not just one pair."""
     rows = [
-        _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+        _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                         source_lang="Japanese", session_id="s")
         for _ in range(3)
+    ] + [
+        _add_translation(conn, "餃子", "Chinese", "煎饺",
+                         source_lang="Japanese", session_id="s")
+        for _ in range(2)
     ]
+    assert rebuild_clusters(conn, vote_type="theme") == 1
+    assert set(_cluster_member_ids(conn, "theme")) == set(rows)
+
+
+def test_single_concept_session_is_not_a_theme(conn):
+    """One word seen many times in a session is a single concept, not a
+    scene — no theme forms."""
     for _ in range(3):
-        vote_on_pair(conn, _AlwaysYes(), rows[0], rows[1], vote_type="theme")
+        _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                         source_lang="Japanese", session_id="s")
     assert rebuild_clusters(conn, vote_type="theme") == 0
+
+
+def test_a_concept_can_belong_to_several_themes(conn):
+    """A concept met at two occasions belongs to both themes — sashimi at the
+    sushi counter and again at the izakaya. Themes overlap; each is its own
+    occasion."""
+    _add_translation(conn, "刺身", "Chinese", "生鱼片",
+                     source_lang="Japanese", session_id="sushi")
+    _add_translation(conn, "寿司", "Chinese", "寿司",
+                     source_lang="Japanese", session_id="sushi")
+    _add_translation(conn, "刺身", "Chinese", "生鱼片",
+                     source_lang="Japanese", session_id="izakaya")
+    _add_translation(conn, "焼き鳥", "Chinese", "烤鸡肉串",
+                     source_lang="Japanese", session_id="izakaya")
+    assert rebuild_clusters(conn, vote_type="theme") == 2
+
+
+def test_concept_partition_groups_same_concept_rows(conn):
+    """The unit theme clustering counts: same word OR same first-language
+    rendering (one language) = one concept; a distinct word = another."""
+    a = _add_translation(conn, "ラーメン", "Chinese", "拉面", source_lang="Japanese")
+    b = _add_translation(conn, "中華そば", "Chinese", "拉面", source_lang="Japanese")
+    c = _add_translation(conn, "餃子", "Chinese", "煎饺", source_lang="Japanese")
+    part = _concept_partition(conn)
+    assert part[a] == part[b]        # same rendering 拉面 → one concept
+    assert part[c] != part[a]        # a distinct concept
+    assert len(set(part.values())) == 2
 
 
 # --- UnionFind ----------------------------------------------------------
@@ -928,31 +949,31 @@ def test_pending_pairs_independent_per_vote_type(conn):
 
 
 def test_theme_and_concept_clusters_coexist(conn):
-    """rebuild_clusters scoped by vote_type: concept aggregates synonyms,
-    theme groups a related-but-distinct term, and both clusters live in the
-    table tagged by relation."""
-    a = _add_translation(conn, "ramen", "en", "ramen")
-    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles")
-    c = _add_translation(conn, "sushi", "en", "sushi")
+    """rebuild_clusters scoped by vote_type: concept aggregates synonyms (a
+    vote), theme groups a capture session's distinct concepts (co-occurrence),
+    and both clusters live in the table tagged by relation."""
+    a = _add_translation(conn, "ramen", "en", "ramen", session_id="night")
+    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles", session_id="night")
+    c = _add_translation(conn, "sushi", "en", "sushi", session_id="night")
     vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")  # a ≡ b
-    vote_on_pair(conn, _AlwaysYes(), a, c, vote_type="theme")    # a ~ c
 
     assert rebuild_clusters(conn, min_votes=1, vote_type="concept") == 1
-    assert rebuild_clusters(conn, min_votes=1, vote_type="theme") == 1
+    assert rebuild_clusters(conn, vote_type="theme") == 1   # the "night" session
 
     counts = dict(conn.execute(
         "SELECT vote_type, COUNT(*) FROM clusters GROUP BY vote_type"
     ).fetchall())
     assert counts == {"concept": 1, "theme": 1}
     assert _cluster_member_ids(conn, "concept") == sorted([a, b])
-    assert _cluster_member_ids(conn, "theme") == sorted([a, c])
+    # theme = every row of the session (a≡b is one concept, c another → 2)
+    assert _cluster_member_ids(conn, "theme") == sorted([a, b, c])
 
 
 def test_rebuild_one_relation_leaves_other_intact(conn):
     """The vote_type-scoped DELETE means rebuilding theme must not wipe the
     concept clusters or their human-edited titles."""
-    a = _add_translation(conn, "ramen", "en", "ramen")
-    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles")
+    a = _add_translation(conn, "ramen", "en", "ramen", session_id="night")
+    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles", session_id="night")
     vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")
     rebuild_clusters(conn, min_votes=1, vote_type="concept")
     conn.execute(
@@ -960,9 +981,8 @@ def test_rebuild_one_relation_leaves_other_intact(conn):
     )
     conn.commit()
 
-    c = _add_translation(conn, "sushi", "en", "sushi")
-    vote_on_pair(conn, _AlwaysYes(), a, c, vote_type="theme")
-    rebuild_clusters(conn, min_votes=1, vote_type="theme")
+    _add_translation(conn, "sushi", "en", "sushi", session_id="night")
+    rebuild_clusters(conn, vote_type="theme")   # the "night" session → a theme
 
     concept = conn.execute(
         "SELECT title FROM clusters WHERE vote_type='concept'"
@@ -972,19 +992,18 @@ def test_rebuild_one_relation_leaves_other_intact(conn):
 
 
 def test_cluster_sweep_theme_end_to_end(conn):
-    """cluster_sweep(vote_type='theme') votes + rebuilds + names theme
-    clusters, tagged separately from concept. AlwaysYes drives both the
-    yes-votes and a stub title (same single-runtime pattern as the concept
-    sweep test)."""
-    for term in ("ramen", "sushi", "tempura"):
-        _add_translation(conn, term, "en", term)
+    """cluster_sweep(vote_type='theme') builds themes from capture sessions
+    (co-occurrence — no voting) and names them. AlwaysFixedTitle stands in for
+    the B6 namer."""
+    _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                     source_lang="Japanese", session_id="night")
+    _add_translation(conn, "餃子", "Chinese", "煎饺",
+                     source_lang="Japanese", session_id="night")
 
-    stats = cluster_sweep(
-        conn, _AlwaysYes(),
-        max_pairs=10, min_votes_per_pair=1, vote_type="theme",
-    )
-    assert stats["voted"] == 3
+    stats = cluster_sweep(conn, _AlwaysFixedTitle("a Tokyo night"), vote_type="theme")
+    assert stats["voted"] == 0      # themes don't vote
     assert stats["clusters"] == 1
+    assert stats["named"] == 1
     assert stats["named"] == 1
     rows = conn.execute("SELECT vote_type, title FROM clusters").fetchall()
     assert len(rows) == 1

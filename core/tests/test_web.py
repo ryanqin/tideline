@@ -253,22 +253,22 @@ def test_themes_and_concept_clusters_isolated_across_endpoints(tmp_path):
     init_db(conn)
 
     def _add(original, translated):
+        # All captured in one session (a remembered meal) → co-occurrence theme.
         return conn.execute(
-            "INSERT INTO translations (original, target_lang, translated, source_lang) "
-            "VALUES (?, '中文', ?, 'Japanese')",
+            "INSERT INTO translations "
+            "(original, target_lang, translated, source_lang, session_id) "
+            "VALUES (?, '中文', ?, 'Japanese', 'meal')",
             (original, translated),
         ).lastrowid
 
     # Two same-meaning Japanese words → one CONCEPT cluster (拉面). A third,
-    # distinct concept (寿司). Theme links the two concepts (a remembered meal)
-    # — concept and theme are different relations on different pairs, which is
-    # the realistic shape now that a theme groups distinct concepts (§3.3).
+    # distinct concept (寿司). They share one capture session, so the THEME is
+    # that session (a remembered meal) spanning the two concepts — concept and
+    # theme are different relations, the realistic shape now (§3.3).
     a = _add("ラーメン", "拉面")
     b = _add("中華そば", "拉面")   # same concept as a (deterministic)
     c = _add("寿司", "寿司")        # a different concept
     conn.commit()
-    for _ in range(3):
-        vote_on_pair(conn, _Yes(), a, c, vote_type="theme")   # ramen ~ sushi
     rebuild_clusters(conn, vote_type="concept")
     rebuild_clusters(conn, vote_type="theme")
     name_clusters(conn, _Title(), vote_type="concept")

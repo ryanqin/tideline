@@ -63,6 +63,7 @@ Three principles, equally weighted. Every feature decision must align with all t
 - **Candidates point back to their drawer evidence.** A `candidate_evidence` join table preserves the full list of contributing drawer entries, not just a count.
 - **The UI never shows a candidate as "ramen × 6."** It shows the stack of six moments. The number is incidental; the moments are the point.
 - **Tier B intelligence (semantic clustering, cluster naming, summarization) must preserve provenance.** A cluster titled "your Tokyo lunches" links back to every constituent translation row; the cluster is a *view* over evidence, not a replacement for it.
+- **A theme IS a remembered occasion — co-occurrence, not semantic similarity (locked 2026-06-03).** Themes group what was captured *together* (the same session / time window) into "your night in the ramen alley", not what a model judges "related". We tried model relatedness (B7) and a real-model probe showed it can't draw a clean scene boundary on real vocabulary and leaks across domains (ラーメン~駅 = a systematic false yes); co-occurrence is deterministic, scene-level, and exactly the episodic anchor. Relatedness is demoted to garnish (naming, and a possible future "merge two nights that were the same kind of outing"). Concept clustering still merges synonyms; theme clustering just groups co-occurring concepts.
 
 ### 3.3 The target is always your first language; learning is scoped per language-pair (locked 2026-05-27)
 
@@ -199,6 +200,7 @@ If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + c
 | 2026-05-27 | Learnings surface reimagined as a living tidal **shore** (§10) — translate ⇄ shore as two collapsing states of one world; "the tide is theatre, not pedagogy"; the sea = the sediment layer | Extends §3, does not replace it; web first, Android later. Locked + built out (see §10.9) |
 | 2026-06-03 | Shore built out: one-world navigation, glint = unopened, varied card shells, drag-to-sink, frosted sand | §10.9 "Built since" |
 | 2026-06-03 | Concept clustering made **deterministic** and **scoped per language-pair** — same source word, or same first-language rendering within one source language, = same concept with no model vote; a cluster never spans two languages; forms on a near-zero budget (closes the "budget pit") | §3.3; `core/.../cluster.py` |
+| 2026-06-03 | **Themes = co-occurrence (capture sessions), not model relatedness** — a real-model B7 probe showed relatedness can't draw a clean scene boundary on real vocab and leaks across domains; co-occurrence is deterministic + scene-level. Theme clustering reworked to group a session's concepts; relatedness demoted to garnish | §3.2; `core/.../cluster.py` |
 
 ---
 
