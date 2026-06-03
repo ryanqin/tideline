@@ -1047,10 +1047,14 @@ body.shore-open { overflow: hidden; }
 /* Shells wrap freely, each resting on its own patch of sand — no row ledge to
    strand the upper rows, no card chrome. */
 .shelf-row {
-  display: flex;
-  flex-wrap: wrap;
+  /* A grid that fills the full shelf width — auto-fill packs as many ~7rem
+     columns as fit, each stretching to 1fr so the shells spread evenly and the
+     right edge is never left empty (a left-packed flex row stopped at 4 and
+     left a gap, making the full-width lens bar look like it overhung). */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
   gap: 1.6rem 1.4rem;
-  align-items: flex-start;
+  align-items: start;
 }
 
 /* A shell on a shelf: the warm line glyph (shared with the shore) over its
@@ -1062,7 +1066,7 @@ body.shore-open { overflow: hidden; }
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
-  width: 7.5rem;
+  width: auto;          /* fill the grid cell; the glyph + label center within */
   padding: 0.2rem;
   margin: 0;
   border: none;
@@ -1116,8 +1120,8 @@ body.shore-open { overflow: hidden; }
 }
 
 @media (max-width: 480px) {
-  .shelf-row { gap: 1.3rem 0.8rem; justify-content: space-between; }
-  .shelf-shell { width: 4.7rem; }
+  /* tighter columns on a phone — still fills the width, just smaller cells */
+  .shelf-row { gap: 1.3rem 0.8rem; grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr)); }
   .shelf-glyph, .shelf-shell.kind-crab .shelf-glyph { width: 52px; height: 52px; }
   .lens button { padding: 0.45rem 0.6rem; font-size: 0.84rem; }
 }
