@@ -426,11 +426,13 @@ body.shore-open { overflow: hidden; }
 }
 .shore-compose:hover { background: var(--accent-deep); transform: translateY(-1px); }
 
-/* A creature, opened (slice 3c): a warm sheet rises over the shore holding what
-   washed up — a card's moments, a concept's synonyms, a theme's masked recall.
-   The inner content reuses the learnings album classes (.cluster / .theme /
-   .member / .masked); only this sheet chrome is new. */
-.creature-sheet { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+/* A creature, opened: a warm sheet rises holding what washed up — a card's
+   moments, a concept's synonyms, a theme's masked recall. Shared by the shore
+   and the museum (sheet.js mounts it on <body>), so it's FIXED to the viewport
+   and rides above everything — including the full shore (z-index 50). The inner
+   content reuses the learnings album classes (.cluster / .theme / .member /
+   .masked); only this sheet chrome is new. */
+.creature-sheet { position: fixed; inset: 0; z-index: 120; pointer-events: none; }
 .creature-sheet.is-open { pointer-events: auto; }
 .sheet-scrim {
   position: absolute; inset: 0; background: rgba(36, 20, 10, 0.34);
