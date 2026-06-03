@@ -296,6 +296,11 @@ body.has-coastline .shoreline { display: none; }
   z-index: 20;
   width: 40px;
   height: 40px;
+  /* reset the base button's pill padding (1.4rem each side > the 40px width
+     under border-box) — it was stretching the circle to ~47px and shoving the
+     chevron off to the lower-right. With padding:0 the grid centers the glyph
+     dead in a true 40px circle. */
+  padding: 0;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -416,6 +421,7 @@ body.shore-open { overflow: hidden; }
   transform: translateX(-50%);
   width: 40px;
   height: 40px;
+  padding: 0;  /* same reset as .shore-handle — keep it a true centered circle */
   display: grid;
   place-items: center;
   border-radius: 999px;

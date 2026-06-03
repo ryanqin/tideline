@@ -198,11 +198,15 @@
 
     function openShore() {
       if (isOpen()) return;
-      paintShore();         // show whatever the tide already holds — no empty flash
-      tideRefresh();        // then re-read, in case it changed since last time
+      // Set the open STATE first, before any rendering. The museum's
+      // "back to the shore" link lands on /?shore=open and trusts this to open
+      // the shore — so a hiccup in paintShore() must never be able to throw
+      // before the class is set and leave you stranded on the desk.
       body.classList.add('shore-open');
       shoreFull.setAttribute('aria-hidden', 'false');
       shoreOpen.setAttribute('aria-expanded', 'true');
+      paintShore();         // show whatever the tide already holds — no empty flash
+      tideRefresh();        // then re-read, in case it changed since last time
     }
     function closeShore() {
       if (!isOpen()) return;
