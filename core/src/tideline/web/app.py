@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from tideline.promotion import (
 from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
+from tideline.tools.card import review_card
 from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
 
 
@@ -91,6 +93,11 @@ class PromoteRequest(BaseModel):
 
 class SinkRequest(BaseModel):
     card_id: int
+
+
+class ReviewRequest(BaseModel):
+    card_id: int
+    remembered: bool
 
 
 class IdentityRequest(BaseModel):
@@ -344,10 +351,12 @@ def create_app(
         Cards are auto-generated (opt-out); sunk cards are filtered out here,
         which is how the user's subtraction sticks."""
         conn = _connect(db)
+        now_iso = datetime.now().isoformat()
         try:
             rows = conn.execute(
                 """
                 SELECT id, candidate_id, original, target_lang, translated,
+                    strength, due_at,
                     (SELECT t.source_lang FROM candidate_evidence ce
                      JOIN translations t ON t.id = ce.translation_id
                      WHERE ce.candidate_id = cards.candidate_id
@@ -356,7 +365,8 @@ def create_app(
                 """
             ).fetchall()
             result: list[dict[str, Any]] = []
-            for card_id, cand_id, original, target_lang, translated, source_lang in rows:
+            for (card_id, cand_id, original, target_lang, translated,
+                 strength, due_at, source_lang) in rows:
                 moments = conn.execute(
                     """
                     SELECT t.translated, t.source, t.context_snippet, t.created_at
@@ -373,6 +383,12 @@ def create_app(
                     "source_lang": source_lang,
                     "target_lang": target_lang,
                     "translated": translated,
+                    # Review schedule (DESIGN §10.3): `due` is what the tide reads
+                    # to decide which shell washes ashore — never shown as a date
+                    # or count. `strength` is internal too. The museum ignores
+                    # both (it shows the whole deck).
+                    "strength": strength,
+                    "due": due_at is None or due_at <= now_iso,
                     "moments": [
                         {"translated": m_tr, "source": m_src or "", "context": m_ctx or "", "at": m_at}
                         for m_tr, m_src, m_ctx, m_at in moments
@@ -410,6 +426,22 @@ def create_app(
             if not sink_card(conn, req.card_id):
                 raise HTTPException(status_code=404, detail="card not found")
             return {"sunk": True}
+        finally:
+            conn.close()
+
+    @app.post("/api/cards/review")
+    def review(req: ReviewRequest) -> dict[str, int]:
+        """Record one masked-recall outcome and reschedule the card. This is
+        the consolidation loop closing: reaching for a word and remembering (or
+        not) feeds the spaced-repetition schedule that decides when the tide
+        carries it back (DESIGN §10.3). The schedule stays internal — the UI
+        records the outcome, never shows a due date or count."""
+        conn = _connect(db)
+        try:
+            strength = review_card(conn, req.card_id, req.remembered, datetime.now())
+            if strength is None:
+                raise HTTPException(status_code=404, detail="card not found")
+            return {"strength": strength}
         finally:
             conn.close()
 

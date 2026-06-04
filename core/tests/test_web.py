@@ -127,6 +127,31 @@ def test_translate_promotes_and_cards_live_without_restart(tmp_path):
     assert any(x["original"] == "ラーメン" for x in c.get("/api/cards").json())
 
 
+def test_card_review_reschedules_and_clears_due(tmp_path):
+    """The consolidation loop over HTTP: a fresh card is `due` (the tide can
+    carry it ashore); recording a 'remembered' outcome reschedules it so it's
+    no longer due — the schedule stays internal, surfaced only as `due`."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    for _ in range(3):
+        c.post("/api/translate", json={"text": "ラーメン"})
+
+    card = next(x for x in c.get("/api/cards").json() if x["original"] == "ラーメン")
+    assert card["due"] is True and card["strength"] == 0   # new + ready
+
+    r = c.post("/api/cards/review", json={"card_id": card["id"], "remembered": True})
+    assert r.status_code == 200
+    assert r.json()["strength"] == 1
+
+    after = next(x for x in c.get("/api/cards").json() if x["id"] == card["id"])
+    assert after["due"] is False   # pushed out, no longer washing ashore
+
+
+def test_card_review_unknown_card_is_404(client):
+    r = client.post("/api/cards/review", json={"card_id": 999, "remembered": True})
+    assert r.status_code == 404
+
+
 def test_translate_target_is_always_the_first_language(tmp_path):
     """No A→B picker: the translation target is whatever first language the
     user has set, not a per-request choice. Setting native_lang=Japanese makes

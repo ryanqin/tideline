@@ -8,6 +8,7 @@ guard.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta
 
 from tideline.promotion import (
     auto_promote_cards,
@@ -16,6 +17,9 @@ from tideline.promotion import (
     sink_card,
 )
 from tideline.tools import init_all_tables
+from tideline.tools.card import _REVIEW_INTERVALS_DAYS, due_cards, review_card
+
+_NOW = datetime(2026, 6, 3, 12, 0, 0)
 
 
 def _conn() -> sqlite3.Connection:
@@ -167,3 +171,119 @@ def test_sunk_card_not_resurrected_by_later_sweep() -> None:
     assert n == 0
     state = conn.execute("SELECT state FROM cards WHERE id=?", (card_id,)).fetchone()[0]
     assert state == "sunk"
+
+
+# --- review schedule (spaced repetition, DESIGN §10.3) --------------------
+
+
+def _one_card(conn: sqlite3.Connection, original: str = "station", translated: str = "駅") -> int:
+    for _ in range(3):
+        _add(conn, original, translated)
+    promote_candidates(conn, threshold=3)
+    auto_promote_cards(conn)
+    return conn.execute(
+        "SELECT id FROM cards WHERE original = ?", (original,)
+    ).fetchone()[0]
+
+
+def test_new_card_is_due_immediately() -> None:
+    # A freshly auto-promoted card has NULL due_at = new + ready to surface.
+    conn = _conn()
+    cid = _one_card(conn)
+    due = due_cards(conn, _NOW)
+    assert [c["id"] for c in due] == [cid]
+    assert due[0]["strength"] == 0
+
+
+def test_remembered_grows_the_interval() -> None:
+    conn = _conn()
+    cid = _one_card(conn)
+
+    assert review_card(conn, cid, remembered=True, now=_NOW) == 1
+    # No longer due right after a remembered review — it's been pushed out.
+    assert due_cards(conn, _NOW) == []
+    # Due again once its interval elapses.
+    later = _NOW + timedelta(days=_REVIEW_INTERVALS_DAYS[1])
+    assert [c["id"] for c in due_cards(conn, later)] == [cid]
+    # A second success climbs another box (interval grows further).
+    assert review_card(conn, cid, remembered=True, now=later) == 2
+
+
+def test_forgot_drops_a_box() -> None:
+    conn = _conn()
+    cid = _one_card(conn)
+    review_card(conn, cid, remembered=True, now=_NOW)   # → 1
+    review_card(conn, cid, remembered=True, now=_NOW)   # → 2
+    assert review_card(conn, cid, remembered=False, now=_NOW) == 1   # drops a box
+
+
+def test_strength_caps_and_floors() -> None:
+    conn = _conn()
+    cid = _one_card(conn)
+    max_box = len(_REVIEW_INTERVALS_DAYS) - 1
+    for _ in range(max_box + 3):
+        review_card(conn, cid, remembered=True, now=_NOW)
+    assert conn.execute(
+        "SELECT strength FROM cards WHERE id=?", (cid,)
+    ).fetchone()[0] == max_box
+    # A new card forgotten can't go below box 0.
+    other = _one_card(conn, "water", "水")
+    assert review_card(conn, other, remembered=False, now=_NOW) == 0
+
+
+def test_due_cards_hides_not_yet_due() -> None:
+    conn = _conn()
+    a = _one_card(conn, "station", "駅")
+    b = _one_card(conn, "water", "水")
+    review_card(conn, a, remembered=True, now=_NOW)   # a pushed out; b still new
+    assert [c["id"] for c in due_cards(conn, _NOW)] == [b]
+
+
+def test_due_cards_respects_limit() -> None:
+    conn = _conn()
+    _one_card(conn, "station", "駅")
+    _one_card(conn, "water", "水")
+    _one_card(conn, "coffee", "コーヒー")
+    assert len(due_cards(conn, _NOW)) == 3
+    assert len(due_cards(conn, _NOW, limit=2)) == 2
+
+
+def test_sunk_card_is_not_due() -> None:
+    conn = _conn()
+    cid = _one_card(conn)
+    sink_card(conn, cid)
+    assert due_cards(conn, _NOW) == []
+
+
+def test_review_unknown_card_returns_none() -> None:
+    conn = _conn()
+    assert review_card(conn, 999, remembered=True, now=_NOW) is None
+
+
+def test_migration_backfills_review_columns_on_legacy_cards() -> None:
+    # A pre-review-loop cards table (state but no review columns) gains them on
+    # init_db; old rows default to new + ready (strength 0, NULL due_at).
+    from tideline.tools import card as card_mod
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE cards (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "candidate_id INTEGER, original TEXT, target_lang TEXT, translated TEXT, "
+        "state TEXT NOT NULL DEFAULT 'active', "
+        "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+    )
+    conn.execute(
+        "INSERT INTO cards (candidate_id, original, target_lang, translated) "
+        "VALUES (1, 'station', 'Japanese', '駅')"
+    )
+    conn.commit()
+    assert "strength" not in {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
+
+    card_mod.init_db(conn)
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
+    assert {"strength", "due_at", "last_reviewed_at", "reviews"} <= cols
+    assert conn.execute(
+        "SELECT strength, due_at, reviews FROM cards"
+    ).fetchone() == (0, None, 0)
+    assert len(due_cards(conn, _NOW)) == 1   # legacy card surfaces as new
