@@ -12,10 +12,14 @@
 <body class="has-coastline">
   <header>
     <h1>Tideline</h1>
-    <!-- One world, not two tabs (DESIGN §10.2/§10.7): the desk is the front
-         door, the shore is one swipe up, and the museum is reached from the
-         shore. So the header carries no flat Translate/Museum nav — just the
-         brand and the "me" anchor. -->
+    <!-- The desk is the hub (DESIGN §10.7, 2026-06-03): the shore is one swipe
+         up AND the shelves are one tap here, so both your learnings views are
+         reachable from home — not the museum buried behind the shore. -->
+    <a class="to-museum" href="/learnings" data-i18n-title="to_shelves_aria"
+       title="去沙丘上的陈列馆">
+      <span data-i18n="nav_museum">Museum</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </a>
     <div class="identity">
       <label for="native-lang" data-i18n="first_lang_label">Your first language</label>
       <select id="native-lang">

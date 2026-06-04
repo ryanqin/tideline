@@ -101,7 +101,10 @@ header nav a:hover { color: var(--accent-deep); }
 /* The museum's only way out: a quiet back-link to the shore (DESIGN §10.7).
    It replaces the old flat nav — the museum is a place you came *to*, so you
    go back, you don't tab sideways. */
-.back-to-shore {
+/* Header doorways — the museum link on the desk and the way back from the
+   museum share one quiet style (desk is the hub: both the shore and the
+   shelves are one tap from home). */
+.back-to-shore, .to-museum {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -110,8 +113,8 @@ header nav a:hover { color: var(--accent-deep); }
   font-size: 0.95rem;
   transition: color 0.18s ease;
 }
-.back-to-shore svg { width: 18px; height: 18px; }
-.back-to-shore:hover { color: var(--accent-deep); }
+.back-to-shore svg, .to-museum svg { width: 18px; height: 18px; }
+.back-to-shore:hover, .to-museum:hover { color: var(--accent-deep); }
 
 /* First language lives in the header — the always-visible "me" anchor that
    drives the translation target, the UI locale, and how learnings cluster. */

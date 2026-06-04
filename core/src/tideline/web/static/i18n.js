@@ -48,7 +48,7 @@ const I18N = {
     lens_language: "Language",
     lens_theme: "Theme",
     museum_forming: "Still forming",
-    back_to_shore: "Back to the shore",
+    back_to_shore: "Back to the water's edge",
     // the doorway from the shore up to the shelves on the dunes (§10.7)
     to_shelves_aria: "Back up the beach to the shelves on the dunes",
 
@@ -136,7 +136,7 @@ const I18N = {
     lens_language: "语言",
     lens_theme: "主题",
     museum_forming: "还在成形",
-    back_to_shore: "回到海岸",
+    back_to_shore: "回到水边",
     // 从海岸沿沙滩走回沙丘上的货架(§10.7)
     to_shelves_aria: "沿沙滩走回沙丘上的货架",
 

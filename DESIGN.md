@@ -199,6 +199,8 @@ If Week 3 reveals Android is over-budget, **cut Android decisively, ship CLI + c
 | 2026-05-27 | Product principle **three**: the target is always the first language; learning is scoped per language-pair | §3.3; no target picker, native gloss removed, two tags (concept + direction) |
 | 2026-05-27 | Learnings surface reimagined as a living tidal **shore** (§10) — translate ⇄ shore as two collapsing states of one world; "the tide is theatre, not pedagogy"; the sea = the sediment layer | Extends §3, does not replace it; web first, Android later. Locked + built out (see §10.9) |
 | 2026-06-03 | Shore built out: one-world navigation, glint = unopened, varied card shells, drag-to-sink, frosted sand | §10.9 "Built since" |
+| 2026-06-03 | Consolidation loop: spaced-repetition review schedule on cards; due cards wash ashore, masked recall self-grades | §10.3; `card.py`, shore + sheet |
+| 2026-06-03 | Desk is the hub: museum reachable from home (header doorway) + the shore, not buried behind the shore; museum's way out lands on the desk | §10.7; revises Increment C |
 | 2026-06-03 | Concept clustering made **deterministic** and **scoped per language-pair** — same source word, or same first-language rendering within one source language, = same concept with no model vote; a cluster never spans two languages; forms on a near-zero budget (closes the "budget pit") | §3.3; `core/.../cluster.py` |
 | 2026-06-03 | **Themes = co-occurrence (capture sessions), not model relatedness** — a real-model B7 probe showed relatedness can't draw a clean scene boundary on real vocab and leaks across domains; co-occurrence is deterministic + scene-level. Theme clustering reworked to group a session's concepts; relatedness demoted to garnish | §3.2; `core/.../cluster.py` |
 
@@ -249,7 +251,7 @@ Tie the metaphor to §3.1's substrate: **the sea is the sediment.** Every transl
 
 ### 10.7 The museum (full collection + the accessible floor)
 
-The shore shows **only what's ashore right now** — which is what fixes overload: a calm few, not a wall of 23 cards. The **complete collection lives in a shell museum**, reached from the shore (walking back from the water to the shelves on the dunes). There the existing lenses live — **by concept / by language / by theme** — as ordered shelves of shells. The museum also **is the list / reduced-motion / screen-reader fallback**: every shell is a focusable, labelled control, and the museum is a plain, navigable view of the same data. Nothing built so far (cards, by-language, themes) is discarded — it is **re-housed** here.
+The shore shows **only what's ashore right now** — which is what fixes overload: a calm few, not a wall of 23 cards. The **complete collection lives in a shell museum**. **The desk is the hub (revised 2026-06-03):** the museum is one tap from home (a header doorway), and the shore is one swipe up — both your learnings views are reachable from the front door, not the museum buried behind the shore. (You can still walk to the museum from inside the shore via its own doorway; the museum's way out lands you back at the desk.) There the existing lenses live — **by concept / by language / by theme** — as ordered shelves of shells. The museum also **is the list / reduced-motion / screen-reader fallback**: every shell is a focusable, labelled control, and the museum is a plain, navigable view of the same data. Nothing built so far (cards, by-language, themes) is discarded — it is **re-housed** here.
 
 ### 10.8 Build constraints
 
