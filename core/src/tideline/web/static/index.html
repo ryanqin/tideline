@@ -167,21 +167,23 @@
       const named = (rows) => rows.filter((r) => r.title && r.title.trim());
       const shells = named(concepts).map((c) => ({ id: 'concept-' + c.id, kind: 'shell', label: c.title, data: c }));
       const crabs  = named(themes).map((t) => ({ id: 'theme-' + t.id, kind: 'crab', label: t.title, data: t }));
-      // /api/cards is newest-first; the label is the translation into your
-      // language. Drop any without one — nothing to read on that glass.
+      // Only cards the schedule says are DUE wash ashore (DESIGN §10.3 — the
+      // tide carries back what's ready for review, never the whole deck). The
+      // label is the translation into your language; drop any without one.
       const glass = cards
-        .filter((c) => c.translated && c.translated.trim())
+        .filter((c) => c.due && c.translated && c.translated.trim())
         .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.translated, data: c }));
       // Only a calm few wash up — never a wall; that restraint is what fixes the
-      // deck overload (DESIGN §10.5). The matured shells/crabs come first, then
-      // the freshest cards fill up to the cap. (slice-3b: "freshest" = newest
-      // arrivals; the real maturation rhythm lands later.)
+      // deck overload (DESIGN §10.5). Due cards (the review work) get a
+      // guaranteed share so consolidation never starves behind the matured
+      // shells/crabs (the discoveries); the rest fills with structure. The
+      // exact rhythm of the mix is a later polish pass.
       // Fewer ashore on a narrow phone — wider columns give each name room to
       // breathe (the calm-few rule, tuned to the screen).
       const CALM = (window.innerWidth || 1024) < 480 ? 3 : 5;
-      const matured = [...crabs, ...shells].slice(0, CALM);
-      const fill = glass.slice(0, Math.max(0, CALM - matured.length));
-      return [...matured, ...fill];
+      const cardSlots = Math.min(glass.length, Math.max(1, Math.floor(CALM / 2)));
+      const structure = [...crabs, ...shells].slice(0, CALM - cardSlots);
+      return [...glass.slice(0, cardSlots), ...structure];
     }
 
     function paintShore() {
@@ -356,6 +358,14 @@
       OPENED.add(cr.id);
       paintShore();
       Sheet.open(cr.kind, cr.data, {
+        // A due card opened on the shore is a review: you recall the word and
+        // self-grade (sheet.js POSTs the outcome). The schedule reschedules it,
+        // so it's no longer due — drop it from this tide + repaint.
+        review: true,
+        onReview: (card) => {
+          CREATURES = CREATURES.filter((c) => c.data !== card);
+          paintShore();
+        },
         // a sunk card slips back under the sea — drop it from the tide + repaint.
         onSink: (card) => {
           CREATURES = CREATURES.filter((c) => c.data !== card);

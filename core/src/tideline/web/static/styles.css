@@ -612,6 +612,18 @@ body.shore-open { overflow: hidden; }
 
 .sink-btn:disabled { opacity: 0.4; cursor: wait; }
 
+/* Review self-grade — two quiet choices after you reach for the masked word.
+   Functional for now; the warmer treatment comes with the polish pass. */
+.review-grade { display: flex; gap: 0.6rem; margin-top: 1.1rem; }
+.review-grade button { flex: 1; box-shadow: none; }
+.review-grade .grade-missed {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.review-grade .grade-missed:hover { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
+.review-grade button:disabled { opacity: 0.4; cursor: wait; }
+
 .cluster .members {
   display: grid;
   gap: 0.5rem;

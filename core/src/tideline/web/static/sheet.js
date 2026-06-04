@@ -56,12 +56,27 @@
     const body = c.readonly
       ? (c.count ? `<div class="moments"><div class="moment moment--compact"><span class="moment-meta">${esc(c.count)}×</span></div></div>` : "")
       : `<div class="moments">${(c.moments || []).map(momentRow).join("")}</div>`;
+    // In review mode (a due card the tide carried ashore) the foreign word is
+    // masked: you see the meaning, reach for the word, reveal it, then self-
+    // grade — that outcome feeds the schedule (DESIGN §10.3). The museum opens
+    // cards plainly (no review), so it stays browsing, not a quiz.
+    const reviewable = currentOpts.review && !c.readonly && c.id != null;
+    const word = reviewable
+      ? `<span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(c.original)}</span>`
+      : esc(c.original);
+    const grade = reviewable
+      ? `<div class="review-grade">
+          <button type="button" class="grade-missed" data-card-id="${c.id}">${esc(t("review_missed"))}</button>
+          <button type="button" class="grade-got" data-card-id="${c.id}">${esc(t("review_got"))}</button>
+        </div>`
+      : "";
     return `<div class="cluster card">
         <div class="card-head">
-          <h2>${esc(c.original)} → ${esc(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
+          <h2>${word} → ${esc(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
           ${sink}
         </div>
         ${body}
+        ${grade}
       </div>`;
   }
   // shell → a concept cluster: the synonyms that gathered under one meaning.
@@ -95,6 +110,7 @@
   const RENDER = { glass: cardSheet, crab: themeSheet, shell: conceptSheet };
 
   let root = null, content = null, current = null, onSink = null;
+  let onReview = null, currentOpts = {};
 
   // Inject the sheet chrome once (idempotent). Kept in document.body and fixed
   // to the viewport so the same panel serves both the shore and the museum,
@@ -137,6 +153,22 @@
         } catch (err) { sinkBtn.disabled = false; }
         return;
       }
+      const grade = e.target.closest(".grade-got, .grade-missed");
+      if (grade) {
+        grade.disabled = true;
+        const remembered = grade.classList.contains("grade-got");
+        try {
+          const r = await fetch("/api/cards/review", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ card_id: Number(grade.dataset.cardId), remembered }),
+          });
+          if (!r.ok) { grade.disabled = false; return; }
+          const reviewed = current;
+          close();
+          if (onReview) onReview(reviewed);   // the tide reschedules it away
+        } catch (err) { grade.disabled = false; }
+        return;
+      }
       const revealAll = e.target.closest(".reveal-all");
       if (revealAll) {
         const masks = content.querySelectorAll(".masked");
@@ -162,7 +194,9 @@
   function open(kind, data, opts) {
     mount();
     opts = opts || {};
+    currentOpts = opts;
     onSink = opts.onSink || null;
+    onReview = opts.onReview || null;
     current = data;
     const render = RENDER[kind] || conceptSheet;
     content.innerHTML = render(data || {});
