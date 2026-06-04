@@ -5,21 +5,26 @@ substrate emergence detection (Step 6b) will scan. Frequent terms appear 4-6
 times, occasional 2-3 times, rare 1 time — this gives candidate promotion
 something real to find.
 
-The story is **a week in Tokyo** for a first-language-Chinese traveller: one
-trip, **one foreign language** (Japanese), read off menus, signs and the
-counter. This is the lived scenario behind §3.3 — you translate from a single
-non-first-language across similar scenes, and what recurs there is what fuses.
-Every foreign text is translated INTO Chinese. It is shaped to exercise the
-whole pipeline end to end:
+The data is **two trips** for a first-language-Chinese traveller: a week in
+**Tokyo** (Japanese) and a few days in **Paris** (French). Each trip is **one
+foreign language**, read off menus, signs and the counter — the lived §3.3
+scenario: you translate from a single non-first-language across similar scenes,
+and what recurs *within that language* is what fuses. Every foreign text is
+translated INTO Chinese. The two-language shape is deliberate — it's what lets
+the **by-language lens** show something (a single trip hides it). It exercises
+the whole pipeline end to end:
 
   - repeated terms promote to candidates → cards (frequency);
   - **same-language synonyms** gather into one **concept** cluster (B1):
-    different Japanese words that land on the same first-language word fuse
-    deterministically, no vote (中華そば and ラーメン both → 拉面; メトロ and
-    地下鉄 both → 地铁). Clusters are scoped per language-pair (§3.3) — there
-    is only one source language here, so every cluster is cleanly Japanese;
-  - dishes that share a scene / cuisine gather into **theme** clusters (B7) —
-    "your night in the ramen alley", "the izakaya table".
+    different words *in the same language* that land on the same first-language
+    word fuse deterministically, no vote (中華そば & ラーメン both → 拉面;
+    addition & facture both → 账单). Clusters are scoped per language-pair
+    (§3.3): a native word reached from two languages stays **two** clusters —
+    お茶→茶 (Japanese) and thé→茶 (French) never fuse, métro→地铁 (French) and
+    地下鉄→地铁 (Japanese) never fuse. That separation IS the by-language story;
+  - dishes / sights that share a scene gather into **theme** clusters by
+    co-occurrence (a capture session) — "your night in the ramen alley", "the
+    morning at the Paris café".
 
 **Episodic honesty (2026-05-28):** the demo's "scene feel" must only use
 signals the real capture pipeline can actually produce — never narrated prose
@@ -68,7 +73,8 @@ from pathlib import Path
 from typing import Any
 
 
-# One trip, told as its capture moments — a week in Tokyo. Each scenario carries
+# Two trips, each told as its capture moments — a week in Tokyo (Japanese) and
+# a few days in Paris (French). Each scenario carries
 # its word pairs (in three frequency tiers) plus a list of `sessions`: the
 # discrete capture moments of the trip. A session's `gist` is the short scene
 # description a VLM would emit for an image capture (the recorded
@@ -156,6 +162,68 @@ SCENARIOS: list[dict[str, Any]] = [
             "切符": ["station"],
         },
     },
+    {
+        "name": "Paris trip — a few days of cafés and the métro",
+        "slug": "paris",
+        "target_lang": "Chinese",
+        "sessions": [
+            {"suffix": "cafe-morning", "source": "image", "day": 18,
+             "gist": "清晨街角咖啡馆露天座上那杯冒着热气的咖啡"},
+            {"suffix": "boulangerie", "source": "image", "day": 17,
+             "gist": "面包店橱窗里斜插在藤篮中的长棍面包"},
+            {"suffix": "metro", "source": "image", "day": 16,
+             "gist": "地铁站台上方那块白底的线路指示牌"},
+            {"suffix": "bistro", "source": "image", "day": 15,
+             "gist": "小酒馆黑板上用粉笔写的当日菜单"},
+            {"suffix": "market", "source": "image", "day": 14,
+             "gist": "露天市场摊位上堆成小山的奶酪和水果"},
+            {"suffix": "waiter-audio", "source": "audio", "day": 15,
+             "gist": None},
+        ],
+        "frequent": [
+            # One language (French — Latin script, so source_lang is the
+            # *model's* call in the live app, not deterministic like kana). Two
+            # are *same-language synonyms* of each other that land on the same
+            # first-language word → they fuse into ONE French concept cluster,
+            # mirroring the Japanese 中華そば/ラーメン fusion within this trip:
+            #   addition → 账单  (fuses with facture)
+            # Two more (thé→茶, métro→地铁) deliberately collide with Japanese
+            # native words but MUST stay separate clusters (§3.3, per
+            # language-pair) — that collision is the by-language demo.
+            ("café", "咖啡"),
+            ("thé", "茶"),
+            ("métro", "地铁"),
+            ("pain", "面包"),
+            ("fromage", "奶酪"),
+            ("addition", "账单"),
+            ("facture", "账单"),
+        ],
+        "occasional": [
+            ("vin", "葡萄酒"),
+            ("croissant", "牛角包"),
+            ("musée", "博物馆"),
+        ],
+        "rare": [
+            ("bonjour", "你好"),
+            ("billet", "车票"),
+            ("merci", "谢谢"),
+        ],
+        "term_sessions": {
+            "café": ["cafe-morning", "bistro", "waiter-audio"],
+            "thé": ["cafe-morning", "bistro"],
+            "métro": ["metro"],
+            "pain": ["boulangerie", "market"],
+            "fromage": ["market", "bistro"],
+            "addition": ["bistro", "cafe-morning", "waiter-audio"],
+            "facture": ["bistro"],
+            "vin": ["bistro", "market"],
+            "croissant": ["cafe-morning", "boulangerie"],
+            "musée": ["metro"],
+            "bonjour": ["waiter-audio", "cafe-morning"],
+            "billet": ["metro"],
+            "merci": ["waiter-audio"],
+        },
+    },
 ]
 
 
@@ -170,11 +238,12 @@ _SESSION_SPREAD_MINUTES = 90
 
 
 # Source language per scenario (the language the user encountered / typed).
-# The Tokyo trip is Japanese throughout — one trip, one foreign language. A
+# Each trip is one foreign language: Tokyo is Japanese, Paris is French. A
 # word pair may still override its source language with an optional 3rd
-# element, but the single-language trip doesn't use it.
+# element, but each single-language trip doesn't use it.
 _SCENARIO_SOURCE_LANG = {
     "Tokyo trip — a week of meals and trains": "Japanese",
+    "Paris trip — a few days of cafés and the métro": "French",
 }
 
 

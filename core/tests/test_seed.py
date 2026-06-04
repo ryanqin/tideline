@@ -115,23 +115,35 @@ def test_seed_db_count_matches_generate(conn):
     assert inserted > 30  # one focused trip, ~40 captures
 
 
-def test_seed_is_one_foreign_language_into_chinese(conn):
-    """The trip is a single source language (Japanese) translated INTO the
-    user's first language (Chinese) — the lived §3.3 scenario. No Chinese
-    *source* (you don't translate your own language), and no second foreign
-    language: meeting one concept in two languages is the rare case we don't
-    seed."""
+def test_seed_each_capture_is_one_foreign_language_into_chinese(conn):
+    """The §3.3 unit is a single lived moment in a single foreign language,
+    translated INTO the user's first language (Chinese). The drawer may hold
+    *several* trips in different languages (Tokyo in Japanese, Paris in French)
+    — that multiplicity is exactly what the by-language lens shows — but no
+    single capture session mixes languages, and nothing is translated FROM
+    Chinese (you don't translate your own language)."""
     seed_db(conn)
 
-    source_langs = conn.execute(
-        "SELECT DISTINCT source_lang FROM translations"
-    ).fetchall()
-    assert source_langs == [("Japanese",)], source_langs
+    # Several foreign source languages coexist (several trips), never the
+    # user's own first language as a source.
+    source_langs = {
+        r[0] for r in conn.execute("SELECT DISTINCT source_lang FROM translations")
+    }
+    assert source_langs == {"Japanese", "French"}, source_langs
+    assert "Chinese" not in source_langs
 
     # Everything is translated INTO the user's first language (Chinese).
     assert conn.execute(
         "SELECT DISTINCT target_lang FROM translations"
     ).fetchall() == [("Chinese",)]
+
+    # Each capture session is monolingual — a single remembered moment is one
+    # language (the §3.3 unit; the by-language split lives across sessions).
+    mixed = conn.execute(
+        "SELECT session_id FROM translations "
+        "GROUP BY session_id HAVING COUNT(DISTINCT source_lang) > 1"
+    ).fetchall()
+    assert mixed == [], mixed
 
 
 # --- CLI ------------------------------------------------------------------
@@ -214,3 +226,32 @@ def test_seed_has_same_language_synonyms_for_concept_fusion(conn):
     originals = {r[0] for r in rows}
     assert {"ラーメン", "中華そば"} <= originals, originals
     assert {r[1] for r in rows} == {"Japanese"}  # one language-pair
+
+
+def test_seed_french_trip_has_same_language_synonyms_for_concept_fusion(conn):
+    """The Paris trip mirrors the fusion within French: addition and facture
+    both → 账单, both French, so within-language fusion is demonstrated in a
+    second language too (and exercises the Latin-script source-lang path)."""
+    seed_db(conn)
+    rows = conn.execute(
+        "SELECT DISTINCT original, source_lang FROM translations "
+        "WHERE translated = '账单' ORDER BY original"
+    ).fetchall()
+    originals = {r[0] for r in rows}
+    assert {"addition", "facture"} <= originals, originals
+    assert {r[1] for r in rows} == {"French"}  # one language-pair
+
+
+def test_seed_same_native_word_from_two_languages_stays_separate(conn):
+    """A native word reached from two languages must NOT collapse into one
+    language-pair (§3.3): 茶 is reached from both お茶 (Japanese) and thé
+    (French). They share the translated word but differ in source language —
+    the by-language lens depends on them staying distinct."""
+    seed_db(conn)
+    rows = conn.execute(
+        "SELECT DISTINCT original, source_lang FROM translations "
+        "WHERE translated = '茶' ORDER BY source_lang"
+    ).fetchall()
+    by_lang = {r[1]: r[0] for r in rows}
+    assert by_lang.get("Japanese") == "お茶"
+    assert by_lang.get("French") == "thé"
