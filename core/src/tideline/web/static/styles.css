@@ -615,16 +615,21 @@ body.shore-open { overflow: hidden; }
 
 .sink-btn:disabled { opacity: 0.4; cursor: wait; }
 
-/* Review self-grade — two quiet choices after you reach for the masked word.
-   Functional for now; the warmer treatment comes with the polish pass. */
+/* Review self-grade — two warm choices after you reach for the masked word.
+   "I remembered" keeps the amber glow of the primary action: it's the reward,
+   the same warmth as revealing the word. "Didn't come" is a soft sand tile —
+   quiet and unpunishing, never red or scolding (DESIGN §10.3: the schedule
+   just brings it back sooner; there is no failure here). Both lift a touch on
+   hover so each feels alive under the finger. */
 .review-grade { display: flex; gap: 0.6rem; margin-top: 1.1rem; }
-.review-grade button { flex: 1; box-shadow: none; }
+.review-grade button { flex: 1; }
 .review-grade .grade-missed {
-  background: transparent;
+  background: var(--surface-sink);
   color: var(--muted);
   border: 1px solid var(--border);
+  box-shadow: none;
 }
-.review-grade .grade-missed:hover { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
+.review-grade .grade-missed:hover { background: var(--accent-soft); color: var(--accent-deep); transform: translateY(-1px); }
 .review-grade button:disabled { opacity: 0.4; cursor: wait; }
 
 .cluster .members {

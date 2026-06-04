@@ -174,9 +174,15 @@
       // Only cards the schedule says are DUE wash ashore (DESIGN §10.3 — the
       // tide carries back what's ready for review, never the whole deck). The
       // label is the translation into your language; drop any without one.
-      const glass = cards
-        .filter((c) => c.due && c.translated && c.translated.trim())
-        .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.translated, data: c }));
+      // Among the due, the tide brings the *weakest* memories first: lowest
+      // strength box ahead, so a word you keep getting right yields its scarce
+      // slot to one you're still shaky on. (The /api/cards deck is ordered by
+      // recency for the museum's whole-deck view; the shore re-sorts by the
+      // spaced-repetition box — honoring due_cards()'s priority intent, which
+      // the shared endpoint can't carry without disturbing the museum.)
+      const due = cards.filter((c) => c.due && c.translated && c.translated.trim());
+      due.sort((a, b) => (a.strength | 0) - (b.strength | 0));
+      const glass = due.map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.translated, data: c }));
       // Only a calm few wash up — never a wall; that restraint is what fixes the
       // deck overload (DESIGN §10.5). Due cards (the review work) get a
       // guaranteed share so consolidation never starves behind the matured
