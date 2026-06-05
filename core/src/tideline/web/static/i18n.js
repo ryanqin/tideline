@@ -96,7 +96,7 @@ const I18N = {
 
     lang_Chinese: "Chinese", lang_English: "English", lang_Japanese: "Japanese",
     lang_French: "French", lang_Spanish: "Spanish", lang_German: "German",
-    lang_Italian: "Italian", lang_Korean: "Korean",
+    lang_Italian: "Italian", lang_Korean: "Korean", lang_Unknown: "Unknown",
   },
   zh: {
     nav_translate: "翻译",
@@ -181,7 +181,7 @@ const I18N = {
 
     lang_Chinese: "中文", lang_English: "英语", lang_Japanese: "日语",
     lang_French: "法语", lang_Spanish: "西班牙语", lang_German: "德语",
-    lang_Italian: "意大利语", lang_Korean: "韩语",
+    lang_Italian: "意大利语", lang_Korean: "韩语", lang_Unknown: "未知",
   },
 };
 
@@ -200,6 +200,29 @@ function t(key) {
   const table = I18N[LOCALE] || I18N.en;
   const val = key in table ? table[key] : I18N.en[key];
   return val == null ? key : val;
+}
+
+// Language NAMES, locale-aware, one source of truth for the whole UI so neither
+// locale leaks the other's script. Full form (langName) for section labels —
+// the by-language lens — reuses the lang_* keys: "Japanese" / "日语". Compact
+// form (langShort) for the dense inline source→target tag: a single CJK glyph
+// in Chinese (日→中), a two-letter code in English (JA→ZH), never the other
+// script. Replaces the per-file LANG_SHORT copies sheet.js and learnings.html
+// each carried.
+const LANG_SHORT = {
+  zh: { Japanese: "日", English: "英", Chinese: "中", French: "法",
+        Spanish: "西", German: "德", Italian: "意", Korean: "韩", Unknown: "?" },
+  en: { Japanese: "JA", English: "EN", Chinese: "ZH", French: "FR",
+        Spanish: "ES", German: "DE", Italian: "IT", Korean: "KO", Unknown: "?" },
+};
+function langShort(name) {
+  const m = LANG_SHORT[LOCALE] || LANG_SHORT.en;
+  return m[name] || name || "?";
+}
+function langName(name) {
+  if (!name) return "";
+  const v = t("lang_" + name);
+  return v === "lang_" + name ? name : v;  // t() echoes the key when unmapped
 }
 
 // A moment's worth is in the moment, not its clock-time (DESIGN §3.2), so we

@@ -17,12 +17,11 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
-  const LANG_SHORT = { Japanese: "日", English: "英", Chinese: "中", French: "法",
-    Spanish: "西", German: "德", Italian: "意", Korean: "韩" };
-  const shortLang = (n) => LANG_SHORT[n] || esc(n || "?");
   // Tideline always translates into your language, so the tag tells you which
-  // language the original came from.
-  const annot = (src, tgt) => `<span class="langtag">(${shortLang(src)}→${shortLang(tgt)})</span>`;
+  // language the original came from. The compact name comes from i18n's
+  // locale-aware langShort (one source of truth — a CJK glyph in zh, a
+  // two-letter code in en — so neither locale leaks the other's script).
+  const annot = (src, tgt) => `<span class="langtag">(${langShort(src)}→${langShort(tgt)})</span>`;
 
   // How a moment was caught, drawn small and warm: a photo seen, a voice heard,
   // a phrase looked up. Monochrome inline SVG (inherits currentColor).
@@ -85,7 +84,7 @@
         <h2>${esc(c.title || "")}</h2>
         <div class="members">${(c.members || []).map((m) => `
           <div class="member">
-            <span class="original">${shortLang(m.source_lang)} ${esc(m.original)}</span>
+            <span class="original">${langShort(m.source_lang)} ${esc(m.original)}</span>
             <span class="translated">${esc(m.translated)}</span>
             ${m.context ? `<span class="context">${esc(m.context)}</span>` : ""}
           </div>`).join("")}</div>

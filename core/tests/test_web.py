@@ -24,8 +24,10 @@ Drift gates:
 from __future__ import annotations
 
 import inspect
+import re
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -557,6 +559,38 @@ def test_drift_web_app_runs_same_startup_sweep_as_cli():
     ):
         assert token in cli_src, f"cli/__main__.py missing {token}"
         assert token in web_src, f"web/app.py missing {token}"
+
+
+def test_drift_language_names_come_from_shared_i18n_helper():
+    """Language names — the by-language buckets (full: 日语 / Japanese) and the
+    source→target tag (compact: 日→中 / JA→ZH) — must resolve through i18n's
+    locale-aware langName / langShort, one source of truth, so neither locale
+    leaks the other's script. The views must NOT carry their own LANG_SHORT
+    copy (the bug that left raw 'Japanese' in the Chinese UI and CJK tags in the
+    English UI)."""
+    import tideline.web.app as web_app
+
+    static = Path(web_app.__file__).parent / "static"
+    i18n = (static / "i18n.js").read_text()
+    assert "function langShort" in i18n and "function langName" in i18n
+
+    # en/zh language-name keys are aligned and cover every language + Unknown.
+    en_block = i18n[i18n.index("\n  en"):i18n.index("\n  zh")]
+    zh_block = i18n[i18n.index("\n  zh"):]
+    en_langs = set(re.findall(r"\blang_(\w+):", en_block))
+    zh_langs = set(re.findall(r"\blang_(\w+):", zh_block))
+    assert en_langs == zh_langs, f"lang_* drift: {en_langs ^ zh_langs}"
+    for lang in ("Chinese", "English", "Japanese", "French", "Spanish",
+                 "German", "Italian", "Korean", "Unknown"):
+        assert lang in en_langs, f"missing lang_{lang} in i18n"
+
+    # No per-file LANG_SHORT definition leaked back into the views.
+    for name in ("sheet.js", "learnings.html"):
+        src = (static / name).read_text()
+        assert not re.search(r"LANG_SHORT\s*=", src), (
+            f"{name} redefines LANG_SHORT; language names must come from the "
+            f"shared i18n langShort / langName helper."
+        )
 
 
 # --- /api/cards and the user nod -----------------------------------------

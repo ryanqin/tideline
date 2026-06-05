@@ -66,10 +66,8 @@
   </div>
 
   <script>
-    const LANG_SHORT = {
-      Japanese: '日', English: '英', Chinese: '中', French: '法',
-      Spanish: '西', German: '德', Italian: '意', Korean: '韩',
-    };
+    // Language names come from i18n's locale-aware langShort / langName (one
+    // source of truth, shared with sheet.js) — no per-file LANG_SHORT copy.
     let NATIVE_LANG = 'Chinese';  // overwritten by /api/identity
     let LENS = 'cards';           // the open shelf
 
@@ -85,8 +83,7 @@
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       })[ch]);
     }
-    const shortLang = (n) => LANG_SHORT[n] || escape(n || '?');
-    const annot = (src, tgt) => `<span class="langtag">(${shortLang(src)}→${shortLang(tgt)})</span>`;
+    const annot = (src, tgt) => `<span class="langtag">(${langShort(src)}→${langShort(tgt)})</span>`;
 
     // One shell on a shelf: the warm line glyph (shared with the shore via
     // Shore.glyph) + its first-language label, as a real focusable button
@@ -182,7 +179,7 @@
           } };
           return { kind: 'glass', key, label: m.translated };
         });
-        const label = `${escape(g.lang)} <span class="count">${g.total}×</span>`;
+        const label = `${escape(langName(g.lang))} <span class="count">${g.total}×</span>`;
         return shelf(items, label);
       }).join('');
     }
