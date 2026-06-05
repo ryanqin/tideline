@@ -49,7 +49,7 @@ const I18N = {
     lens_language: "Language",
     lens_theme: "Theme",
     museum_forming: "Still forming",
-    back_to_shore: "Back to the water's edge",
+    back_to_shore: "Water's edge",
     // the doorway from the shore up to the shelves on the dunes (§10.7)
     to_shelves_aria: "Back up the beach to the shelves on the dunes",
 
