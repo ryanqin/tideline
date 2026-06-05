@@ -30,6 +30,7 @@ const I18N = {
       "terms repeat — keep the ones worth studying and sink the rest. Each " +
       "card keeps the stack of moments it grew from.",
     first_lang_label: "Your first language",
+    ui_lang_label: "Interface",
     deck_title: "Your review deck — cards",
     clusters_title: "Clusters",
     by_concept: "By concept",
@@ -118,6 +119,7 @@ const I18N = {
       "到目前为止悄悄沉淀下来的东西。词反复出现,卡片会自己浮现——留下值得学的," +
       "把其余的沉回去。每张卡都留着它生长出来的那叠片刻。",
     first_lang_label: "你的第一语言",
+    ui_lang_label: "界面",
     deck_title: "你的复习卡组",
     clusters_title: "聚类",
     by_concept: "按概念",
@@ -187,12 +189,16 @@ const I18N = {
 
 let LOCALE = "en";
 
+// The interface language we default to before the user picks one: it follows
+// the first language (Chinese → zh, else → en). Once the user chooses an
+// interface language it's independent (server: ui_locale).
 function localeFor(nativeLang) {
   return nativeLang === "Chinese" ? "zh" : "en";
 }
 
-function setLocale(nativeLang) {
-  LOCALE = localeFor(nativeLang);
+// Set the active UI locale directly (a locale, not a language name).
+function setLocale(locale) {
+  LOCALE = locale === "zh" ? "zh" : "en";
   document.documentElement.lang = LOCALE === "zh" ? "zh-Hans" : "en";
 }
 
@@ -266,27 +272,39 @@ function applyStaticI18n(root) {
   });
 }
 
-// Wire the header's shared first-language picker (#native-lang). Loads the
-// current value, localizes the page, and on change persists it + re-localizes
-// + runs the page's own refresh hook. `onChanged(lang)` fires once on load and
-// again on every change, so each page routes its own re-render through it.
+// Wire the header's two shared pickers: the first language (#native-lang →
+// translation target) and the interface language (#ui-locale → UI locale).
+// They are independent settings, EXCEPT the UI follows the first language until
+// the user explicitly picks an interface language (the smart default). Loads
+// both, localizes the page, persists changes, and routes each page's re-render
+// through `onChanged(nativeLang)` (fired once on load and on every change).
 async function setupIdentityPicker(onChanged) {
-  let lang = "English";
+  let native = "English", uiLocale = "en", uiExplicit = false;
   try {
-    const r = await fetch("/api/identity");
-    const id = await r.json();
-    if (id && id.native_lang) lang = id.native_lang;
+    const id = await (await fetch("/api/identity")).json();
+    if (id) {
+      if (id.native_lang) native = id.native_lang;
+      if (id.ui_locale) uiLocale = id.ui_locale;
+      uiExplicit = !!id.ui_locale_set;
+    }
   } catch (e) {
     /* fall back to the English UI */
   }
-  setLocale(lang);
+  setLocale(uiLocale);
   applyStaticI18n();
-  const sel = document.getElementById("native-lang");
-  if (sel) {
-    sel.value = lang;
-    sel.addEventListener("change", async () => {
-      const next = sel.value;
-      sel.disabled = true;
+
+  const nat = document.getElementById("native-lang");
+  const ui = document.getElementById("ui-locale");
+  const syncUiPicker = () => { if (ui) ui.value = LOCALE; };
+
+  // First language: the translation target (§3.3). While the interface language
+  // is still following it (not yet chosen), changing it also moves the UI;
+  // once the UI language is explicit, the first language no longer touches it.
+  if (nat) {
+    nat.value = native;
+    nat.addEventListener("change", async () => {
+      const next = nat.value;
+      nat.disabled = true;
       try {
         const r = await fetch("/api/identity", {
           method: "POST",
@@ -294,16 +312,44 @@ async function setupIdentityPicker(onChanged) {
           body: JSON.stringify({ native_lang: next }),
         });
         if (r.ok) {
-          setLocale(next);
-          applyStaticI18n();
+          native = next;
+          if (!uiExplicit) { setLocale(localeFor(next)); applyStaticI18n(); syncUiPicker(); }
           if (onChanged) onChanged(next);
         }
       } catch (e) {
         /* keep the previous selection */
       } finally {
-        sel.disabled = false;
+        nat.disabled = false;
       }
     });
   }
-  if (onChanged) onChanged(lang);
+
+  // Interface language: its own setting. Choosing one makes it explicit, so it
+  // stops following the first language from here on.
+  if (ui) {
+    syncUiPicker();
+    ui.addEventListener("change", async () => {
+      const next = ui.value;
+      ui.disabled = true;
+      try {
+        const r = await fetch("/api/ui-locale", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale: next }),
+        });
+        if (r.ok) {
+          uiExplicit = true;
+          setLocale(next);
+          applyStaticI18n();
+          if (onChanged) onChanged(native);
+        }
+      } catch (e) {
+        /* keep the previous selection */
+      } finally {
+        ui.disabled = false;
+      }
+    });
+  }
+
+  if (onChanged) onChanged(native);
 }

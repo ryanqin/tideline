@@ -32,6 +32,14 @@
         <option value="Italian" data-i18n="lang_Italian">Italian</option>
         <option value="Korean" data-i18n="lang_Korean">Korean</option>
       </select>
+      <!-- Interface language: its own setting (multilingual UI). Options stay in
+           their own script — a language switcher names each language in itself,
+           so they are NOT data-i18n'd. -->
+      <label for="ui-locale" data-i18n="ui_lang_label">Interface</label>
+      <select id="ui-locale" class="ui-locale">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
     </div>
   </header>
 
