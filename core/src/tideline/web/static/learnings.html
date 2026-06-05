@@ -12,9 +12,13 @@
 <body class="museum-page">
   <header>
     <h1>Tideline</h1>
-    <!-- The desk is the hub (DESIGN §10.7, 2026-06-03): the way out of the
-         museum is back down to the water's edge — home, where the shore is one
-         wade up. Lands on the desk (/), not deep in the open shore. -->
+    <!-- The desk is the hub (DESIGN §10.7): the way out of the museum is back
+         down to the water's edge. It returns you to WHERE YOU CAME FROM — the
+         desk (/) by default, but the OPEN shore (/?shore=open) if you walked up
+         here from the shore (carried as ?from=shore). Static href="/" is the
+         no-JS / desk-origin default; the script below upgrades it for a shore
+         arrival, so a wade → museum → back round-trip doesn't strand you on the
+         desk with your shore closed. -->
     <a class="back-to-shore" href="/">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
       <span data-i18n="back_to_shore">Back to the water's edge</span>
@@ -68,6 +72,13 @@
     };
     let NATIVE_LANG = 'Chinese';  // overwritten by /api/identity
     let LENS = 'cards';           // the open shelf
+
+    // Return to where you came from: a shore arrival (?from=shore) goes back to
+    // the OPEN shore, not the desk, so a wade → museum → back round-trip lands
+    // you on the water you were exploring. Desk arrivals keep the plain href.
+    if (new URLSearchParams(location.search).get('from') === 'shore') {
+      document.querySelector('.back-to-shore')?.setAttribute('href', '/?shore=open');
+    }
 
     function escape(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({
