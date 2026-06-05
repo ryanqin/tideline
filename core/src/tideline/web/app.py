@@ -111,6 +111,22 @@ class IdentityRequest(BaseModel):
     native_lang: str
 
 
+class UiLocaleRequest(BaseModel):
+    locale: str
+
+
+# The interface languages Tideline ships (DESIGN: multilingual UI, zh + en
+# first). The UI language is its OWN setting, independent of the first language
+# (which only sets the translation target, §3.3) — but until the user picks one
+# it follows the first language, so a Chinese-first user gets a Chinese UI for
+# free. Mirrors the frontend's localeFor.
+_UI_LOCALES = ("zh", "en")
+
+
+def _derived_ui_locale(native_lang: str) -> str:
+    return "zh" if native_lang == "Chinese" else "en"
+
+
 def _connect(db_path: str) -> sqlite3.Connection:
     if db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -528,13 +544,23 @@ def create_app(
             conn.close()
 
     @app.get("/api/identity")
-    def identity() -> dict[str, str]:
-        """L0 identity: the user's first language (persisted). The learnings view
-        uses it to localize labels and to decide when a native gloss is worth
-        showing — a gloss into a language you already speak is just noise."""
+    def identity() -> dict[str, Any]:
+        """L0 identity: the user's first language + interface language.
+
+        `native_lang` sets the translation target (§3.3). `ui_locale` is the
+        interface language — its own setting, but until the user picks one it
+        follows the first language (`ui_locale_set` is false then), so a
+        Chinese-first user gets a Chinese UI without choosing. Once set, the UI
+        is independent of the first language."""
         conn = _connect(db)
         try:
-            return {"native_lang": get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)}
+            native = get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)
+            stored = get_setting(conn, "ui_locale", "")
+            return {
+                "native_lang": native,
+                "ui_locale": stored or _derived_ui_locale(native),
+                "ui_locale_set": bool(stored),
+            }
         finally:
             conn.close()
 
@@ -549,6 +575,21 @@ def create_app(
         try:
             set_setting(conn, "native_lang", lang)
             return {"native_lang": lang}
+        finally:
+            conn.close()
+
+    @app.post("/api/ui-locale")
+    def set_ui_locale(req: UiLocaleRequest) -> dict[str, str]:
+        """Persist the interface language, independent of the first language.
+        After this the UI no longer follows the first language — the user owns
+        it (the smart default only seeds the first, unset state)."""
+        loc = req.locale.strip()
+        if loc not in _UI_LOCALES:
+            raise HTTPException(status_code=400, detail="unsupported ui locale")
+        conn = _connect(db)
+        try:
+            set_setting(conn, "ui_locale", loc)
+            return {"ui_locale": loc}
         finally:
             conn.close()
 

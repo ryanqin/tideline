@@ -177,6 +177,51 @@ def test_translate_target_is_always_the_first_language(tmp_path):
     assert target.lower() == "japanese"
 
 
+# --- interface language (multilingual support, zh + en) ------------------
+
+
+def test_ui_locale_defaults_follow_first_language_until_set(tmp_path):
+    """Smart default: before the user picks an interface language, it follows
+    the first language — Chinese → zh, anything else → en — and reports it as
+    not-yet-explicit so the picker knows it may still drift with the first
+    language."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+
+    ident = c.get("/api/identity").json()
+    assert ident["ui_locale"] == "zh"          # default native is Chinese
+    assert ident["ui_locale_set"] is False
+
+    c.post("/api/identity", json={"native_lang": "English"})
+    ident = c.get("/api/identity").json()
+    assert ident["ui_locale"] == "en"          # follows the first language
+    assert ident["ui_locale_set"] is False
+
+
+def test_ui_locale_is_independent_once_set(tmp_path):
+    """Once chosen, the interface language is its own setting: changing the
+    first language (the translation target) no longer moves the UI."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+
+    assert c.post("/api/ui-locale", json={"locale": "en"}).status_code == 200
+    ident = c.get("/api/identity").json()
+    assert ident["ui_locale"] == "en" and ident["ui_locale_set"] is True
+
+    # First language → Japanese (translate into Japanese), UI stays English.
+    c.post("/api/identity", json={"native_lang": "Japanese"})
+    ident = c.get("/api/identity").json()
+    assert ident["native_lang"] == "Japanese"
+    assert ident["ui_locale"] == "en"          # independent — did not follow
+
+
+def test_ui_locale_rejects_unsupported(tmp_path):
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    assert c.post("/api/ui-locale", json={"locale": "fr"}).status_code == 400
+    assert c.post("/api/ui-locale", json={"locale": ""}).status_code == 400
+
+
 # --- live sessionization (theme refinement) ------------------------------
 
 
