@@ -638,6 +638,24 @@ def test_drift_language_names_come_from_shared_i18n_helper():
         )
 
 
+def test_drift_aria_labels_default_to_english():
+    """Accessibility chrome labels are English by default (the interface falls
+    back to English for screen readers): visible UI text is localized via i18n,
+    but a hardcoded Chinese aria-label would read as CJK to a screen reader even
+    in the English UI. Locks the fix — no static aria-label literal regresses to
+    Chinese. (Dynamic aria-label="${...}" interpolations carry DATA — a learned
+    word — not chrome, so they are out of scope and contain no literal CJK.)"""
+    import tideline.web.app as web_app
+
+    static = Path(web_app.__file__).parent / "static"
+    cjk = re.compile(r'aria-label="[^"]*[぀-ヿ一-鿿][^"]*"')
+    offenders = []
+    for f in static.iterdir():
+        if f.suffix in (".html", ".js"):
+            offenders += [f"{f.name}: {m.group(0)}" for m in cjk.finditer(f.read_text())]
+    assert not offenders, f"CJK literal in aria-label (keep English): {offenders}"
+
+
 # --- /api/cards and the user nod -----------------------------------------
 
 

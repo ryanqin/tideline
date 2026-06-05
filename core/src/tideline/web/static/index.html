@@ -67,14 +67,14 @@
   <div class="coastline" id="coastline" aria-hidden="true"></div>
 
   <!-- Swipe up (or click) to wade from the desk into the full shore (DESIGN §10.2). -->
-  <button class="shore-handle" id="shoreOpen" type="button" aria-label="去海岸"
+  <button class="shore-handle" id="shoreOpen" type="button" aria-label="Wade into the shore"
           aria-expanded="false" aria-controls="shoreFull">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>
   </button>
 
   <!-- The full shore. Hidden until you wade in; in here the translator steps
        back to a corner (slice 2b). Shells wash up here in slice 3. -->
-  <div class="shore-full" id="shoreFull" aria-hidden="true" role="region" aria-label="海岸">
+  <div class="shore-full" id="shoreFull" aria-hidden="true" role="region" aria-label="The shore">
     <div class="shore-scene-host" id="shoreScene"></div>
     <div class="shore-creatures" id="shoreCreatures"></div>
 
@@ -82,7 +82,7 @@
          concept's synonyms, or a theme's masked recall. The warm sheet itself
          is owned by sheet.js (shared with the museum), injected on first open. -->
 
-    <button class="shore-back" id="shoreBack" type="button" aria-label="回到桌前">
+    <button class="shore-back" id="shoreBack" type="button" aria-label="Back to the desk">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
     </button>
 

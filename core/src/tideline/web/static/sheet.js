@@ -134,8 +134,8 @@
     root.setAttribute("aria-hidden", "true");
     root.innerHTML =
       '<div class="sheet-scrim" id="sheetScrim"></div>' +
-      '<div class="sheet-panel" role="dialog" aria-modal="true" aria-label="海岸拾物">' +
-        '<button class="sheet-close" id="sheetClose" type="button" aria-label="收起">' +
+      '<div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Shore findings">' +
+        '<button class="sheet-close" id="sheetClose" type="button" aria-label="Close">' +
           '<span class="sheet-grip" aria-hidden="true"></span>' +
         '</button>' +
         '<div class="sheet-content" id="sheetContent"></div>' +
