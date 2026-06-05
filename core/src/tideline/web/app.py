@@ -32,6 +32,7 @@ from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 from tideline.tools.card import review_card
+from tideline.tools.theme_review import review_states, review_theme
 from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
 
 
@@ -97,6 +98,11 @@ class SinkRequest(BaseModel):
 
 class ReviewRequest(BaseModel):
     card_id: int
+    remembered: bool
+
+
+class ThemeReviewRequest(BaseModel):
+    session_id: str
     remembered: bool
 
 
@@ -180,7 +186,8 @@ def _fetch_clusters(
     for cid, title in rows:
         members = conn.execute(
             """
-            SELECT t.original, t.translated, t.context_snippet, t.source_lang
+            SELECT t.original, t.translated, t.context_snippet, t.source_lang,
+                   t.session_id
             FROM cluster_members cm
             JOIN translations t ON t.id = cm.translation_id
             WHERE cm.cluster_id = ?
@@ -188,13 +195,19 @@ def _fetch_clusters(
             """,
             (cid,),
         ).fetchall()
+        # A theme IS one capture session, so all its members share a session_id
+        # — the stable key its review schedule hangs on (theme_review), unlike
+        # the cluster id which the night-watch sweep rebuilds. Concept members
+        # span sessions, so this is only meaningful (single-valued) for themes.
+        session_ids = {m[4] for m in members if m[4]}
         result.append({
             "id": cid,
             "title": title,
+            "session_id": next(iter(session_ids)) if len(session_ids) == 1 else None,
             "members": [
                 {"original": o, "translated": tr, "context": ctx or "",
                  "source_lang": sl}
-                for o, tr, ctx, sl in members
+                for o, tr, ctx, sl, _sid in members
             ],
         })
     return result
@@ -300,10 +313,24 @@ def create_app(
         """Album-style thematic recall: theme clusters (B7 relatedness) — the
         "your Tokyo lunches" groupings, distinct from the synonym clusters at
         /api/clusters. Same shape so the panel can reuse the card. Passive by
-        design: surfaced only when the user opens this view, never pushed."""
+        design: surfaced only when the user opens this view, never pushed.
+
+        Each theme also carries its review state (DESIGN §10.3): `due` is what
+        the shore reads to decide which scene washes ashore — a never-reviewed
+        scene is due by default; a graded one rests until its interval elapses.
+        `strength` is internal. The museum ignores both (it shows every scene)."""
         conn = _connect(db)
         try:
-            return _fetch_clusters(conn, "theme")
+            result = _fetch_clusters(conn, "theme")
+            states = review_states(conn, datetime.now())
+            for theme in result:
+                sid = theme.get("session_id")
+                state = states.get(sid) if sid else None
+                # A scene with no review row has never been reviewed → due,
+                # strength 0 (mirrors a brand-new card).
+                theme["due"] = state["due"] if state else True
+                theme["strength"] = state["strength"] if state else 0
+            return result
         finally:
             conn.close()
 
@@ -441,6 +468,22 @@ def create_app(
             strength = review_card(conn, req.card_id, req.remembered, datetime.now())
             if strength is None:
                 raise HTTPException(status_code=404, detail="card not found")
+            return {"strength": strength}
+        finally:
+            conn.close()
+
+    @app.post("/api/themes/review")
+    def review_theme_endpoint(req: ThemeReviewRequest) -> dict[str, int]:
+        """Record one masked-recall outcome for a whole scene and reschedule it.
+        The theme review unit (DESIGN §10.3): you reach for the words of a
+        remembered occasion and grade the night once. Keyed on session_id (the
+        scene's stable handle), so it survives cluster rebuilds. Schedule stays
+        internal — the UI records the outcome, never a date or count."""
+        conn = _connect(db)
+        try:
+            strength = review_theme(
+                conn, req.session_id, req.remembered, datetime.now()
+            )
             return {"strength": strength}
         finally:
             conn.close()

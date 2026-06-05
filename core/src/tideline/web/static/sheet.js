@@ -92,7 +92,11 @@
       </div>`;
   }
   // crab → a theme: masked recall — you see the meaning, recall the word
-  // (tap to reveal); "reveal all" flips to plain browsing.
+  // (tap to reveal); "reveal all" flips to plain browsing. On the shore (review
+  // mode) a scene is a review unit too: recall the night's words, then self-
+  // grade once — that outcome reschedules the whole scene (DESIGN §10.3, keyed
+  // on session_id). The museum opens themes plainly (no review), so it stays
+  // browsing, not a quiz — same split as cards.
   function themeSheet(c) {
     const rows = (c.members || []).map((m) => `
       <div class="member">
@@ -100,10 +104,18 @@
         <span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(m.original)}</span>
         ${m.context ? `<span class="context">${esc(m.context)}</span>` : ""}
       </div>`).join("");
+    const reviewable = currentOpts.review && c.session_id != null;
+    const grade = reviewable
+      ? `<div class="review-grade">
+          <button type="button" class="grade-missed" data-session-id="${esc(c.session_id)}">${esc(t("review_missed"))}</button>
+          <button type="button" class="grade-got" data-session-id="${esc(c.session_id)}">${esc(t("review_got"))}</button>
+        </div>`
+      : "";
     return `<div class="theme">
         <h2>${esc(c.title || "")}</h2>
         <div class="theme-tools"><button type="button" class="reveal-all">${esc(t("reveal_all"))}</button></div>
         <div class="members">${rows}</div>
+        ${grade}
       </div>`;
   }
 
@@ -157,10 +169,17 @@
       if (grade) {
         grade.disabled = true;
         const remembered = grade.classList.contains("grade-got");
+        // One grade flow, two review units: a card (a word) or a theme (a whole
+        // scene). The button carries whichever id it has; route to its endpoint.
+        const cardId = grade.dataset.cardId;
+        const url = cardId ? "/api/cards/review" : "/api/themes/review";
+        const body = cardId
+          ? { card_id: Number(cardId), remembered }
+          : { session_id: grade.dataset.sessionId, remembered };
         try {
-          const r = await fetch("/api/cards/review", {
+          const r = await fetch(url, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ card_id: Number(grade.dataset.cardId), remembered }),
+            body: JSON.stringify(body),
           });
           if (!r.ok) { grade.disabled = false; return; }
           const reviewed = current;

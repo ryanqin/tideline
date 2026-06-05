@@ -310,6 +310,57 @@ def test_themes_and_concept_clusters_isolated_across_endpoints(tmp_path):
     assert {m["original"] for m in theme[0]["members"]} == {"ラーメン", "中華そば", "寿司"}
 
 
+def test_theme_is_reviewable_and_grading_reschedules_it(tmp_path):
+    """A theme is a review unit too (DESIGN §10.3): it carries `due`/`strength`
+    and a session_id, and grading it through /api/themes/review reschedules the
+    scene so it stops being due — the consolidation loop, but for a remembered
+    occasion rather than a single word."""
+    from tideline.cluster import init_db, name_clusters, rebuild_clusters
+    from tideline.runtime import ModelRuntime
+    from tideline.tools import init_all_tables
+
+    class _Title(ModelRuntime):
+        def generate(self, prompt: str) -> str:
+            return "a remembered meal"
+
+    db = str(tmp_path / "t.db")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    init_db(conn)
+    for original, translated in [("ラーメン", "拉面"), ("寿司", "寿司")]:
+        conn.execute(
+            "INSERT INTO translations "
+            "(original, target_lang, translated, source_lang, session_id) "
+            "VALUES (?, '中文', ?, 'Japanese', 'meal')",
+            (original, translated),
+        )
+    conn.commit()
+    rebuild_clusters(conn, vote_type="theme")
+    name_clusters(conn, _Title(), vote_type="theme")
+    conn.close()
+
+    client = TestClient(create_app(runtime_name="mock", db_path=db))
+
+    before = client.get("/api/themes").json()
+    assert len(before) == 1
+    theme = before[0]
+    assert theme["session_id"] == "meal"
+    assert theme["due"] is True            # never reviewed → due
+    assert theme["strength"] == 0
+
+    # Grade the scene as remembered → it climbs a box and stops being due.
+    r = client.post(
+        "/api/themes/review",
+        json={"session_id": "meal", "remembered": True},
+    )
+    assert r.status_code == 200
+    assert r.json()["strength"] == 1
+
+    after = client.get("/api/themes").json()
+    assert after[0]["due"] is False
+    assert after[0]["strength"] == 1
+
+
 # --- /api/clusters/by-language (deterministic lens) ----------------------
 
 

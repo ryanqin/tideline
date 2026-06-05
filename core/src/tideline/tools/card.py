@@ -31,6 +31,19 @@ from tideline.tools.base import Tool
 _REVIEW_INTERVALS_DAYS = (0, 1, 3, 7, 16, 35, 75)
 
 
+def reschedule(strength: int, remembered: bool, now: datetime) -> tuple[int, str]:
+    """One Leitner step on the shared ladder: a remembered item climbs a box
+    (its interval grows), a forgotten one drops a box (it returns sooner).
+    Returns ``(new_strength, due_at_iso)``. Both the card review and the theme
+    review (`theme_review.review_theme`) go through this, so the spaced-
+    repetition schedule stays one source of truth across review units."""
+    max_box = len(_REVIEW_INTERVALS_DAYS) - 1
+    strength = strength or 0
+    strength = min(strength + 1, max_box) if remembered else max(strength - 1, 0)
+    due = now + timedelta(days=_REVIEW_INTERVALS_DAYS[strength])
+    return strength, due.isoformat()
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -100,14 +113,11 @@ def review_card(
     ).fetchone()
     if row is None:
         return None
-    max_box = len(_REVIEW_INTERVALS_DAYS) - 1
-    strength = (row[0] or 0)
-    strength = min(strength + 1, max_box) if remembered else max(strength - 1, 0)
-    due = now + timedelta(days=_REVIEW_INTERVALS_DAYS[strength])
+    strength, due_iso = reschedule(row[0] or 0, remembered, now)
     conn.execute(
         "UPDATE cards SET strength = ?, due_at = ?, last_reviewed_at = ?, "
         "reviews = reviews + 1 WHERE id = ?",
-        (strength, due.isoformat(), now.isoformat(), card_id),
+        (strength, due_iso, now.isoformat(), card_id),
     )
     conn.commit()
     return strength

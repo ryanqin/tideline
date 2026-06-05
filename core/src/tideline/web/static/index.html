@@ -170,7 +170,15 @@
       ]);
       const named = (rows) => rows.filter((r) => r.title && r.title.trim());
       const shells = named(concepts).map((c) => ({ id: 'concept-' + c.id, kind: 'shell', label: c.title, data: c }));
-      const crabs  = named(themes).map((t) => ({ id: 'theme-' + t.id, kind: 'crab', label: t.title, data: t }));
+      // Themes are a review unit too: only scenes the schedule says are DUE wash
+      // ashore (a scene you just recalled rests until its interval elapses), and
+      // among the due the weakest memories come first — same rhythm as cards.
+      // Concepts (shells) carry no review, so they stay always-browsable
+      // discoveries, not due-gated. Opening a crab on the shore offers masked
+      // recall + a self-grade (sheet.js), which reschedules the scene away.
+      const dueThemes = named(themes).filter((t) => t.due);
+      dueThemes.sort((a, b) => (a.strength | 0) - (b.strength | 0));
+      const crabs = dueThemes.map((t) => ({ id: 'theme-' + t.id, kind: 'crab', label: t.title, data: t }));
       // Only cards the schedule says are DUE wash ashore (DESIGN §10.3 — the
       // tide carries back what's ready for review, never the whole deck). The
       // label is the translation into your language; drop any without one.
