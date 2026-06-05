@@ -136,6 +136,14 @@ header nav a:hover { color: var(--accent-deep); }
   padding: 0.32rem 0.6rem;
   font-size: 0.85rem;
 }
+/* Each picker (first language, interface language) is a label+select unit, so
+   the two language dropdowns stay clearly paired with their labels — they read
+   identically ("中文" / "中文") without them. */
+.identity .picker {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
 
 main {
   max-width: var(--max-width);
@@ -1150,11 +1158,10 @@ body.shore-open { overflow: hidden; }
 }
 
 /* --- the header on a narrow phone --------------------------------------------
-   One cramped row collapses into a calm stack: brand + first-language select on
-   top, the museum's back-link on its own line below. The long "your first
-   language" label was wrapping one character per line — on a phone it hides
-   visually (the select reads "中文" on its own) but stays in the DOM as the
-   select's accessible name for screen readers. */
+   The cramped row wraps into a calm stack. The two language pickers (first
+   language + interface) drop to their own row and each keeps a SHORT label
+   stacked above its select — without it they'd both just read "中文" and look
+   like one control duplicated. The back-link sits on its own full-width line. */
 @media (max-width: 560px) {
   header {
     flex-wrap: wrap;
@@ -1163,12 +1170,15 @@ body.shore-open { overflow: hidden; }
     padding: 0.75rem 1.1rem;
   }
   header h1 { font-size: 1.32rem; }
-  .identity { margin-left: auto; gap: 0; }
-  .identity label {
-    position: absolute; width: 1px; height: 1px;
-    padding: 0; margin: -1px; overflow: hidden;
-    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  .identity {
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem 1rem;
   }
+  /* label small, stacked tight above its select — each picker self-labels */
+  .identity .picker { flex-direction: column; align-items: flex-start; gap: 0.1rem; }
+  .identity label { font-size: 0.72rem; white-space: nowrap; }
   .identity select { font-size: 0.9rem; padding: 0.36rem 0.7rem; }
   /* the back-link drops to its own full-width line under the brand */
   .back-to-shore { order: 3; flex-basis: 100%; font-size: 0.92rem; }

@@ -24,6 +24,7 @@
       <span data-i18n="back_to_shore">Back to the water's edge</span>
     </a>
     <div class="identity">
+      <span class="picker">
       <label for="native-lang" data-i18n="first_lang_label">Your first language</label>
       <select id="native-lang">
         <option value="Chinese" data-i18n="lang_Chinese">Chinese</option>
@@ -35,13 +36,16 @@
         <option value="Italian" data-i18n="lang_Italian">Italian</option>
         <option value="Korean" data-i18n="lang_Korean">Korean</option>
       </select>
+      </span>
       <!-- Interface language: its own setting (multilingual UI). Options stay in
            their own script (not data-i18n'd). -->
+      <span class="picker">
       <label for="ui-locale" data-i18n="ui_lang_label">Interface</label>
       <select id="ui-locale" class="ui-locale">
         <option value="zh">中文</option>
         <option value="en">English</option>
       </select>
+      </span>
     </div>
   </header>
 
