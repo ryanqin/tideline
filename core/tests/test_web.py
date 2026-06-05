@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import inspect
 import sqlite3
+from datetime import datetime
 
 import pytest
 
@@ -172,6 +173,75 @@ def test_translate_target_is_always_the_first_language(tmp_path):
     # insensitive: the mock lowercases the parsed target; a real model keeps
     # the prompt's casing — either way it must be the first language.
     assert target.lower() == "japanese"
+
+
+# --- live sessionization (theme refinement) ------------------------------
+
+
+def _session_of(db, original):
+    conn = sqlite3.connect(db)
+    sid = conn.execute(
+        "SELECT session_id FROM translations WHERE original = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (original,),
+    ).fetchone()[0]
+    conn.close()
+    return sid
+
+
+def test_live_translations_in_one_sitting_share_a_session(tmp_path):
+    """Live captures land with a session id now (not NULL), and two within the
+    same sitting share it — the time-window co-occurrence that lets live words
+    form themes (DESIGN §3.2). Without this they were session-less and the theme
+    sweep never saw them."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    c.post("/api/translate", json={"text": "ラーメン"})
+    c.post("/api/translate", json={"text": "寿司"})
+
+    s1, s2 = _session_of(db, "ラーメン"), _session_of(db, "寿司")
+    assert s1 and s1.startswith("live-")   # no longer NULL
+    assert s1 == s2                        # one sitting → one session
+
+
+def test_live_session_breaks_after_an_inactivity_gap(tmp_path):
+    """A gap longer than the window starts a new session — distinct sittings are
+    distinct scenes, so they don't fuse into one giant theme."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    c.post("/api/translate", json={"text": "ラーメン"})
+    first = _session_of(db, "ラーメン")
+
+    # Simulate the sitting ending: push the last-seen time well past the window.
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE settings SET value = ? WHERE key = 'live_session_last_at'",
+        ((datetime(2020, 1, 1)).isoformat(),),
+    )
+    conn.commit()
+    conn.close()
+
+    c.post("/api/translate", json={"text": "寿司"})
+    assert _session_of(db, "寿司") != first   # new sitting → new session
+
+
+def test_live_captures_form_a_theme_after_the_sweep(tmp_path):
+    """The payoff: two distinct concepts captured in one live sitting co-occur
+    into a theme on the next sweep — emergence works on real usage, not only on
+    seed data."""
+    db = str(tmp_path / "t.db")
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    c.post("/api/translate", json={"text": "ラーメン"})  # one concept
+    c.post("/api/translate", json={"text": "寿司"})       # a distinct concept
+    session = _session_of(db, "ラーメン")
+
+    # A fresh app on the same db runs the boot sweep (theme grouping + naming).
+    c2 = TestClient(create_app(runtime_name="mock", db_path=db))
+    themes = c2.get("/api/themes").json()
+    live = [t for t in themes if t.get("session_id") == session]
+    assert len(live) == 1, themes
+    assert {m["original"] for m in live[0]["members"]} == {"ラーメン", "寿司"}
+    assert live[0]["due"] is True   # a brand-new scene is due to revisit
 
 
 # --- /api/clusters and /api/candidates ----------------------------------
