@@ -175,8 +175,12 @@
     }
 
     // language → one shelf per source language, sea-glass for each term. These
-    // are the emergent vocabulary (candidates), not full cards, so a tap opens a
-    // read-only glass (the word, the direction, how often it's been met).
+    // are the emergent vocabulary (candidates), not full cards. The tile shows
+    // the FOREIGN word itself (not its translation), so this lens answers "what
+    // have I met in each language" — and same-meaning synonyms stay distinct
+    // tiles instead of collapsing into a duplicate of the shared translation
+    // (中華そば and ラーメン both mean 拉面 but are two different words met).
+    // A tap opens a read-only glass (the word, the direction, how often met).
     async function lensLanguage() {
       const groups = await getJSON('/api/clusters/by-language');
       SHELF_DATA = {};
@@ -188,7 +192,7 @@
             original: m.original, translated: m.translated, count: m.count,
             source_lang: m.source_lang, target_lang: m.target_lang, readonly: true,
           } };
-          return { kind: 'glass', key, label: m.translated };
+          return { kind: 'glass', key, label: m.original };
         });
         const label = `${escape(langName(g.lang))} <span class="count">${g.total}×</span>`;
         return shelf(items, label);

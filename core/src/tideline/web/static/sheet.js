@@ -97,11 +97,29 @@
   // on session_id). The museum opens themes plainly (no review), so it stays
   // browsing, not a quiz — same split as cards.
   function themeSheet(c) {
-    const rows = (c.members || []).map((m) => `
+    // One recall prompt per meaning. A scene is a single-language capture
+    // session, so rows sharing a translation share a concept (账单 ← addition /
+    // facture); collapse them, or the meaning shows twice with the word masked,
+    // which just reads as a duplicate. The masked side then holds every foreign
+    // word that meant it, so revealing teaches the whole synonym set the scene
+    // used instead of one word per identical-looking row.
+    const byMeaning = [];
+    const seen = new Map();
+    (c.members || []).forEach((m) => {
+      let g = seen.get(m.translated);
+      if (!g) {
+        g = { translated: m.translated, originals: [], context: "" };
+        seen.set(m.translated, g);
+        byMeaning.push(g);
+      }
+      if (!g.originals.includes(m.original)) g.originals.push(m.original);
+      if (!g.context && m.context) g.context = m.context;
+    });
+    const rows = byMeaning.map((g) => `
       <div class="member">
-        <span class="translated">${esc(m.translated)}</span>
-        <span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(m.original)}</span>
-        ${m.context ? `<span class="context">${esc(m.context)}</span>` : ""}
+        <span class="translated">${esc(g.translated)}</span>
+        <span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(g.originals.join(" / "))}</span>
+        ${g.context ? `<span class="context">${esc(g.context)}</span>` : ""}
       </div>`).join("");
     const reviewable = currentOpts.review && c.session_id != null;
     const grade = reviewable
