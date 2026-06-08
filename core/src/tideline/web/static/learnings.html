@@ -64,11 +64,6 @@
 
     <!-- The active lens's shelves render here (the list / a11y floor). -->
     <div id="shelves" class="shelves"></div>
-
-    <!-- Still forming: the repeated translations that haven't matured into a
-         card yet — the substrate under the shelves, shown plainly. -->
-    <h3 class="section-title museum-forming" data-i18n="museum_forming">Still forming</h3>
-    <div id="candidates"></div>
   </main>
 
   <div class="shoreline" aria-hidden="true">
@@ -93,7 +88,6 @@
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       })[ch]);
     }
-    const annot = (src, tgt) => `<span class="langtag">(${langShort(src)}→${langShort(tgt)})</span>`;
 
     // One shell on a shelf: the warm line glyph (shared with the shore via
     // Shore.glyph) + its first-language label, as a real focusable button
@@ -225,27 +219,10 @@
       });
     }
 
-    async function loadCandidates() {
-      const target = document.getElementById('candidates');
-      const data = await getJSON('/api/candidates');
-      if (!data.length) {
-        target.innerHTML = `<div class="empty">${escape(t('candidates_empty'))}</div>`;
-        return;
-      }
-      target.innerHTML = data.map(c => `
-        <div class="candidate">
-          <span>${escape(c.original)} → ${escape(c.translated)}</span>
-          ${annot(c.source_lang, c.target_lang)}
-          <span class="count">${c.count}×</span>
-        </div>
-      `).join('');
-    }
-
     // Everything that depends on the first language: the active lens (labels +
-    // direction tags) and the forming list. Keeps whichever lens is open.
+    // direction tags). Keeps whichever lens is open.
     function refreshMuseum() {
       renderLens();
-      loadCandidates();
     }
 
     function init() {

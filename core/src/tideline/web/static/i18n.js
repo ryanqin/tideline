@@ -47,7 +47,6 @@ const I18N = {
     lens_cards: "Cards",
     lens_language: "Language",
     lens_theme: "Theme",
-    museum_forming: "Still forming",
     back_to_shore: "Water's edge",
     // the doorway from the shore up to the shelves on the dunes (§10.7)
     to_shelves_aria: "Back up the beach to the shelves on the dunes",
@@ -60,7 +59,6 @@ const I18N = {
     themes_empty:
       "No themes yet — as related words pile up, they quietly gather into a " +
       "remembered scene you can revisit here.",
-    candidates_empty: "No candidates yet.",
 
     sink: "Sink",
     sink_title: "Sink this card back to sediment",
@@ -134,7 +132,6 @@ const I18N = {
     lens_cards: "卡片",
     lens_language: "语言",
     lens_theme: "主题",
-    museum_forming: "还在成形",
     back_to_shore: "回到水边",
     // 从海岸沿沙滩走回沙丘上的货架(§10.7)
     to_shelves_aria: "沿沙滩走回沙丘上的货架",
@@ -144,7 +141,6 @@ const I18N = {
       "把其余的沉回去。",
     by_language_empty: "还没有沉淀——翻译开始重复后,会在这里按原文语言归拢。",
     themes_empty: "还没有主题——相关的词攒多了,会在这里悄悄聚成一段可以回访的记忆。",
-    candidates_empty: "还没有候选。",
 
     sink: "沉底",
     sink_title: "把这张卡沉回沉淀层",

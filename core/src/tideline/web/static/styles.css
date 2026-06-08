@@ -829,31 +829,12 @@ body.shore-open { overflow: hidden; }
   font-variant-numeric: tabular-nums;
 }
 
-.candidate {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  margin-bottom: 0.4rem;
-  font-size: 0.95rem;
-  box-shadow: 0 1px 1px rgba(122, 88, 38, 0.03);
-}
-
-.candidate .count {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
 .langtag {
   color: var(--muted);
   font-size: 0.8rem;
   white-space: nowrap;
 }
 
-.candidate .langtag { margin: 0 0.6rem; }
 .cluster .langtag { display: block; margin: -0.2rem 0 0.7rem; }
 
 /* --- themes: an album of remembered scenes you choose to open --- */
@@ -1148,7 +1129,6 @@ body.shore-open { overflow: hidden; }
   overflow: hidden;
 }
 
-.museum-forming { color: var(--muted); }
 
 @media (prefers-reduced-motion: no-preference) {
   .shelf-shell { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
