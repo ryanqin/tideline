@@ -1,12 +1,20 @@
 """Theme review tier — spaced repetition for a remembered SCENE.
 
-A theme is one capture session's worth of co-occurring words (DESIGN §3.2 /
-§10.3). Unlike a card it has no stable row of its own — theme clusters are
-rebuilt by the night-watch sweep, so their cluster ids churn. The stable handle
-is the **session_id** every member of a theme shares (a theme IS a capture
-session). So the review schedule lives in its own table keyed on session_id,
-decoupled from the rebuilt cluster rows: a sweep can recompute the clusters all
-it likes and the "when does this scene wash back ashore" state survives.
+A theme is one capture session's worth of co-occurring words, in one language
+(DESIGN §3.2 / §3.3 / §10.3). Unlike a card it has no stable row of its own —
+theme clusters are rebuilt by the night-watch sweep, so their cluster ids
+churn. The stable handle is the **session_id** every member of a theme shares
+(a theme IS a capture session). So the review schedule lives in its own table
+keyed on session_id, decoupled from the rebuilt cluster rows: a sweep can
+recompute the clusters all it likes and the "when does this scene wash back
+ashore" state survives.
+
+Single-language is enforced at grouping time (cluster.py), so session_id keys a
+theme uniquely for the usual single-language sitting (every seed, most live).
+The rare live sitting that mixed two languages splits into two scenes that
+currently share this one session_id's review state — a known limitation; the
+fix would be a (session_id, source_lang) key, deferred until mixed sittings are
+common enough to matter.
 
 Reviewing a theme is masked recall of the whole scene — you see the meanings,
 reach for the words, and self-grade once for the night. The Leitner ladder is

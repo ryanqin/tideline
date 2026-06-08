@@ -536,10 +536,11 @@ def rebuild_clusters(
       - concept: Union-Find over deterministic same-concept edges + concept
         votes over threshold (within one source language, `_concept_edges`);
         a component of >= 2 member rows becomes a cluster.
-      - theme: group translations by capture session (co-occurrence); a
-        session with >= 2 distinct concepts (via `_concept_partition`) becomes
-        a theme whose members are that session's rows. No votes — `min_votes`
-        and `vote_threshold` are ignored for theme.
+      - theme: group a capture session's rows into single-language scenes
+        (co-occurrence, single-language per §3.3) — a session holding two+
+        known source languages splits by language, else stays one scene; a
+        scene with >= 2 distinct concepts (via `_concept_partition`) becomes a
+        theme. No votes — `min_votes` and `vote_threshold` are ignored for theme.
     Then DELETE this vote_type's clusters/members and INSERT the new ones.
     """
     if not (0.0 <= vote_threshold <= 1.0):
@@ -558,18 +559,36 @@ def rebuild_clusters(
         # clean scene boundary on real vocab — 2026-06-03 probe — so it is
         # demoted to garnish; co-occurrence is the load-bearing signal. §3.2.)
         partition = _concept_partition(conn)
-        sessions: dict[str, list[int]] = defaultdict(list)
-        for tid, sid in conn.execute(
-            "SELECT id, session_id FROM translations "
+        # A theme is single-language (§3.3): a sitting that mixed two languages
+        # becomes two scenes, never one mixed scene. But source-language
+        # detection is incomplete — a bare kanji word stays untagged until the
+        # model labels it — so DON'T fragment a genuinely single-language
+        # sitting just because one word isn't tagged yet: a session with at most
+        # one *known* source language is one scene (tagged + untagged rows
+        # together). Only a session holding two or more known languages splits,
+        # strictly by language (untagged rows can't be placed, so they join
+        # neither — never a mixed scene). Seeds tag every row, so they are
+        # unaffected; this hardens the live path.
+        rows_by_session: dict[str, list[tuple[int, str]]] = defaultdict(list)
+        for tid, sid, slang in conn.execute(
+            "SELECT id, session_id, COALESCE(source_lang, '') FROM translations "
             "WHERE session_id IS NOT NULL AND session_id <> ''"
         ):
-            sessions[sid].append(tid)
+            rows_by_session[sid].append((tid, slang))
+        scenes: list[list[int]] = []
+        for rows in rows_by_session.values():
+            known = {sl for _, sl in rows if sl}
+            if len(known) <= 1:
+                scenes.append([tid for tid, _ in rows])
+            else:  # a genuinely mixed sitting → one scene per known language
+                for lang in known:
+                    scenes.append([tid for tid, sl in rows if sl == lang])
         groups: dict[int, list[int]] = {}
-        for idx, (_sid, rows) in enumerate(sessions.items()):
-            concepts = {partition.get(r, r) for r in rows}
-            if len(concepts) < 2:  # a one-concept session is not a scene
+        for idx, members in enumerate(scenes):
+            concepts = {partition.get(r, r) for r in members}
+            if len(concepts) < 2:  # a one-concept scene is not a scene
                 continue
-            groups[idx] = rows
+            groups[idx] = members
     else:
         # Concept edges: deterministic same-concept pairs + concept votes that
         # cleared the threshold, all kept inside one source language (§3.3).

@@ -509,6 +509,51 @@ def test_a_concept_can_belong_to_several_themes(conn):
     assert rebuild_clusters(conn, vote_type="theme") == 2
 
 
+def test_theme_splits_a_mixed_language_session_by_language(conn):
+    """A theme is single-language (§3.3): a sitting that mixed two languages
+    becomes two single-language scenes, never one mixed scene. One capture
+    session holds two Japanese concepts and two French concepts → two themes,
+    each holding only its own language's rows."""
+    ja1 = _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                           source_lang="Japanese", session_id="trip")
+    ja2 = _add_translation(conn, "餃子", "Chinese", "煎饺",
+                           source_lang="Japanese", session_id="trip")
+    fr1 = _add_translation(conn, "café", "Chinese", "咖啡",
+                           source_lang="French", session_id="trip")
+    fr2 = _add_translation(conn, "thé", "Chinese", "茶",
+                           source_lang="French", session_id="trip")
+
+    assert rebuild_clusters(conn, vote_type="theme") == 2
+    by_cluster: dict[int, set] = {}
+    member_ids: dict[int, set] = {}
+    for cid, slang, tid in conn.execute(
+        "SELECT cm.cluster_id, t.source_lang, t.id "
+        "FROM cluster_members cm "
+        "JOIN clusters c ON c.id = cm.cluster_id "
+        "JOIN translations t ON t.id = cm.translation_id "
+        "WHERE c.vote_type = 'theme'"
+    ):
+        by_cluster.setdefault(cid, set()).add(slang)
+        member_ids.setdefault(cid, set()).add(tid)
+    # every theme holds exactly one source language
+    assert all(len(langs) == 1 for langs in by_cluster.values()), by_cluster
+    # the two scenes are exactly the Japanese pair and the French pair
+    assert set(map(frozenset, member_ids.values())) == {
+        frozenset({ja1, ja2}), frozenset({fr1, fr2})}
+
+
+def test_mixed_language_session_with_one_concept_each_is_not_a_theme(conn):
+    """The single-language split also means a sitting with just one concept per
+    language is not a scene in either language — no theme forms (before the
+    split this mixed session counted two concepts and wrongly formed one mixed
+    theme)."""
+    _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                     source_lang="Japanese", session_id="trip")
+    _add_translation(conn, "café", "Chinese", "咖啡",
+                     source_lang="French", session_id="trip")
+    assert rebuild_clusters(conn, vote_type="theme") == 0
+
+
 def test_concept_partition_groups_same_concept_rows(conn):
     """The unit theme clustering counts: same word OR same first-language
     rendering (one language) = one concept; a distinct word = another."""
