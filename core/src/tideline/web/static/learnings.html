@@ -52,13 +52,12 @@
   <main class="museum">
     <p class="hint museum-hint" data-i18n="museum_hint">
       Everything that's washed up, shelved on the dunes. Browse it by card,
-      concept, language, or theme — tap a shell to open what it holds.
+      language, or theme — tap one to open what it holds.
     </p>
 
-    <!-- The lenses (DESIGN §10.7): the same collection, shelved four ways. -->
+    <!-- The lenses (DESIGN §10.7): the same collection, shelved three ways. -->
     <div class="lens" id="lens" role="tablist" aria-label="Museum lenses">
       <button type="button" data-lens="cards" class="active" role="tab" aria-selected="true" data-i18n="lens_cards">Cards</button>
-      <button type="button" data-lens="concept" role="tab" aria-selected="false" data-i18n="lens_concept">Concept</button>
       <button type="button" data-lens="language" role="tab" aria-selected="false" data-i18n="lens_language">Language</button>
       <button type="button" data-lens="theme" role="tab" aria-selected="false" data-i18n="lens_theme">Theme</button>
     </div>
@@ -146,20 +145,6 @@
       return shelf(items);
     }
 
-    // concept → scallop shells: synonym clusters. Tap opens the synonyms.
-    async function lensConcept() {
-      const concepts = await getJSON('/api/clusters');
-      SHELF_DATA = {};
-      const named = concepts.filter(c => c.title && c.title.trim());
-      if (!named.length) return emptyShelf('clusters_empty');
-      const items = named.map(c => {
-        const key = 'concept-' + c.id;
-        SHELF_DATA[key] = { kind: 'shell', data: c };
-        return { kind: 'shell', key, label: c.title };
-      });
-      return shelf(items);
-    }
-
     // theme → crabs: remembered scenes. Tap opens album-style masked recall.
     async function lensTheme() {
       const themes = await getJSON('/api/themes');
@@ -200,7 +185,7 @@
     }
 
     const LENS_LOADERS = {
-      cards: lensCards, concept: lensConcept, language: lensLanguage, theme: lensTheme,
+      cards: lensCards, language: lensLanguage, theme: lensTheme,
     };
 
     async function renderLens() {

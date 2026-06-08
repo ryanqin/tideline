@@ -82,9 +82,9 @@
     <div class="shore-scene-host" id="shoreScene"></div>
     <div class="shore-creatures" id="shoreCreatures"></div>
 
-    <!-- Tap a creature to open what washed ashore: a card's lived moments, a
-         concept's synonyms, or a theme's masked recall. The warm sheet itself
-         is owned by sheet.js (shared with the museum), injected on first open. -->
+    <!-- Tap a creature to open what washed ashore: a card's lived moments or a
+         theme's masked recall. The warm sheet itself is owned by sheet.js
+         (shared with the museum), injected on first open. -->
 
     <button class="shore-back" id="shoreBack" type="button" aria-label="Back to the desk">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
@@ -162,13 +162,12 @@
     const shoreOpen = document.getElementById('shoreOpen');
     const isOpen = () => body.classList.contains('shore-open');
 
-    // Slice 3b — the tide brings real learnings ashore. Three relations, one
-    // visual language (DESIGN §10.5): a concept cluster → a shell, a theme →
-    // a crab, a single card → sea-glass. Every label is the FIRST-language
-    // form, never the source (the Tideline rule): a card shows its `translated`,
-    // a cluster shows its `title` (named in the first language by
-    // episodic_title). shore.js only draws; this page owns the data — the
-    // load-bearing split stays in engineering.
+    // Slice 3b — the tide brings real learnings ashore. Two relations, one
+    // visual language (DESIGN §10.5): a theme → a crab, a single card →
+    // sea-glass. Every label is the FIRST-language form, never the source (the
+    // Tideline rule): a card shows its `translated`, a theme shows its `title`
+    // (named in the first language by episodic_title). shore.js only draws;
+    // this page owns the data — the load-bearing split stays in engineering.
     let CREATURES = [];                  // what the tide last left ashore
     // Every shell you haven't opened yet glows; opening one puts its glint out.
     // Session-scoped (resets when you next walk down to the water) — a gentle
@@ -177,8 +176,8 @@
 
     async function gatherCreatures() {
       const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => []);
-      const [cards, concepts, themes] = await Promise.all([
-        get('/api/cards'), get('/api/clusters'), get('/api/themes'),
+      const [cards, themes] = await Promise.all([
+        get('/api/cards'), get('/api/themes'),
       ]);
       const named = (rows) => rows.filter((r) => r.title && r.title.trim());
       // Among DUE review units the tide brings the *weakest* memories first
@@ -190,11 +189,9 @@
       const dueWeakestFirst = (rows) =>
         rows.filter((r) => r.due).sort((a, b) => (a.strength | 0) - (b.strength | 0));
 
-      const shells = named(concepts).map((c) => ({ id: 'concept-' + c.id, kind: 'shell', label: c.title, data: c }));
-      // Themes are a review unit too: only DUE scenes wash ashore (a scene you
-      // just recalled rests until its interval elapses). Concepts (shells) carry
-      // no review, so they stay always-browsable discoveries, not due-gated.
-      // Opening a crab on the shore offers masked recall + a self-grade (sheet.js).
+      // Themes are a review unit: only DUE scenes wash ashore (a scene you just
+      // recalled rests until its interval elapses). Opening a crab on the shore
+      // offers masked recall + a self-grade (sheet.js).
       const crabs = dueWeakestFirst(named(themes))
         .map((t) => ({ id: 'theme-' + t.id, kind: 'crab', label: t.title, data: t }));
       // Cards wash ashore when due; the label is the translation into your
@@ -203,14 +200,14 @@
         .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.translated, data: c }));
       // Only a calm few wash up — never a wall; that restraint is what fixes the
       // deck overload (DESIGN §10.5). Due cards (the review work) get a
-      // guaranteed share so consolidation never starves behind the matured
-      // shells/crabs (the discoveries); the rest fills with structure. The
-      // exact rhythm of the mix is a later polish pass.
+      // guaranteed share so consolidation never starves behind the due scenes
+      // (crabs); the rest fills with those scenes. The exact rhythm of the mix
+      // is a later polish pass.
       // Fewer ashore on a narrow phone — wider columns give each name room to
       // breathe (the calm-few rule, tuned to the screen).
       const CALM = (window.innerWidth || 1024) < 480 ? 3 : 5;
       const cardSlots = Math.min(glass.length, Math.max(1, Math.floor(CALM / 2)));
-      const structure = [...crabs, ...shells].slice(0, CALM - cardSlots);
+      const structure = crabs.slice(0, CALM - cardSlots);
       return [...glass.slice(0, cardSlots), ...structure];
     }
 
@@ -289,8 +286,8 @@
     // what it holds. DRAG one up over the surf, into the open water, and let go
     // → it sinks back into the sediment (DESIGN §10.4/§10.5: the sea above is
     // the resting layer; flinging a card up there lets it rest). Only cards
-    // sink; a concept/theme eases back — the water won't take a cluster. The
-    // sheet's "沉底" button stays as the keyboard / screen-reader path.
+    // sink; a theme eases back — the water won't take a scene. The sheet's
+    // "沉底" button stays as the keyboard / screen-reader path.
     const SEA_LINE = () => innerHeight * 0.5;   // above this you're over the water
     const isSinkable = (cr) => !!cr && cr.kind === 'glass' && cr.data
       && cr.data.id != null && !cr.data.readonly;

@@ -546,12 +546,14 @@ def test_clusters_by_language_buckets_unknown_source(tmp_path):
 
 
 def test_museum_page_exposes_all_lenses(client):
-    """The museum shelves the collection four ways (DESIGN §10.7); every lens —
+    """The museum shelves the collection three ways (DESIGN §10.7); every lens —
     including the by-language view re-housed here — is reachable from the lens
-    switcher."""
+    switcher. The by-concept lens was retired (themes carry the grouping; the
+    concept axis was redundant with cards + language)."""
     r = client.get("/learnings")
-    for lens in ("cards", "concept", "language", "theme"):
+    for lens in ("cards", "language", "theme"):
         assert f'data-lens="{lens}"' in r.text
+    assert 'data-lens="concept"' not in r.text
 
 
 def test_navigation_desk_is_the_hub(client):

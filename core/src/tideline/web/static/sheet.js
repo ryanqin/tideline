@@ -78,18 +78,6 @@
         ${grade}
       </div>`;
   }
-  // shell → a concept cluster: the synonyms that gathered under one meaning.
-  function conceptSheet(c) {
-    return `<div class="cluster">
-        <h2>${esc(c.title || "")}</h2>
-        <div class="members">${(c.members || []).map((m) => `
-          <div class="member">
-            <span class="original">${langShort(m.source_lang)} ${esc(m.original)}</span>
-            <span class="translated">${esc(m.translated)}</span>
-            ${m.context ? `<span class="context">${esc(m.context)}</span>` : ""}
-          </div>`).join("")}</div>
-      </div>`;
-  }
   // crab → a theme: masked recall — you see the meaning, recall the word
   // (tap to reveal); "reveal all" flips to plain browsing. On the shore (review
   // mode) a scene is a review unit too: recall the night's words, then self-
@@ -136,7 +124,7 @@
       </div>`;
   }
 
-  const RENDER = { glass: cardSheet, crab: themeSheet, shell: conceptSheet };
+  const RENDER = { glass: cardSheet, crab: themeSheet };
 
   let root = null, content = null, current = null, onSink = null;
   let onReview = null, currentOpts = {};
@@ -234,7 +222,7 @@
     onSink = opts.onSink || null;
     onReview = opts.onReview || null;
     current = data;
-    const render = RENDER[kind] || conceptSheet;
+    const render = RENDER[kind] || cardSheet;
     content.innerHTML = render(data || {});
     content.scrollTop = 0;
     root.classList.add("is-open");

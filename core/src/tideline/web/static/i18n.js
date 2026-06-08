@@ -43,9 +43,8 @@ const I18N = {
     title_museum: "Tideline — museum",
     museum_hint:
       "Everything that's washed up, shelved on the dunes. Browse it by card, " +
-      "concept, language, or theme — tap a shell to open what it holds.",
+      "language, or theme — tap one to open what it holds.",
     lens_cards: "Cards",
-    lens_concept: "Concept",
     lens_language: "Language",
     lens_theme: "Theme",
     museum_forming: "Still forming",
@@ -56,7 +55,6 @@ const I18N = {
     cards_empty:
       "No cards yet — cards surface on their own once a term repeats enough; " +
       "you keep the ones worth studying and sink the rest.",
-    clusters_empty: "No clusters yet. Keep translating and they'll surface on their own.",
     by_language_empty:
       "No learnings yet — once translations repeat, they group by source language here.",
     themes_empty:
@@ -131,10 +129,9 @@ const I18N = {
     nav_museum: "陈列馆",
     title_museum: "Tideline — 陈列馆",
     museum_hint:
-      "冲上岸的一切,陈列在沙丘的货架上。按卡片、概念、语言或主题来逛——" +
-      "点一只贝壳,看它收着什么。",
+      "冲上岸的一切,陈列在沙丘的货架上。按卡片、语言或主题来逛——" +
+      "点开一件,看它收着什么。",
     lens_cards: "卡片",
-    lens_concept: "概念",
     lens_language: "语言",
     lens_theme: "主题",
     museum_forming: "还在成形",
@@ -145,7 +142,6 @@ const I18N = {
     cards_empty:
       "还没有卡片——一个词反复出现得够多,卡片会自己浮现;你留下值得学的," +
       "把其余的沉回去。",
-    clusters_empty: "还没有聚类。继续翻译,它们会自己浮现。",
     by_language_empty: "还没有沉淀——翻译开始重复后,会在这里按原文语言归拢。",
     themes_empty: "还没有主题——相关的词攒多了,会在这里悄悄聚成一段可以回访的记忆。",
     candidates_empty: "还没有候选。",
