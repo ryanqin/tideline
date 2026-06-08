@@ -20,6 +20,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from tideline.intelligence.source_language import detect_script, normalize_language
 from tideline.tools.base import Tool
 
 
@@ -63,6 +64,7 @@ class AddTranslationTool(Tool):
     capability = "memory"
     schema: dict[str, str] = {
         "original": "string",
+        "source_lang": "string",
         "target_lang": "string",
         "translated": "string",
         "source": "string",
@@ -73,6 +75,7 @@ class AddTranslationTool(Tool):
         "Record a completed translation. Use this AFTER you have produced "
         "a translation, to silently sediment the original-text + translated-"
         "text pair into the user's sediment layer. Required args: original, "
+        "source_lang (the language the original text is written in), "
         "target_lang, translated. Optional args: source (image/audio/text), "
         "context_snippet (surrounding text from OCR or transcript), "
         "session_id (groups translations from one outing/session)."
@@ -87,14 +90,28 @@ class AddTranslationTool(Tool):
         # LLM to reason about which input modality fired.
         source = args.get("source") or context.get("source")
         session_id = args.get("session_id") or context.get("session_id")
+        # The direction tag (source language → your first language) belongs ON
+        # the translation, set the moment it's made: the model that just read and
+        # translated the text knows its source language — with full context, so
+        # better than an isolated later detect(). The agent passes it as
+        # source_lang, NORMALIZED to the app's one spelling (a model says "ja",
+        # the rest of the app says "Japanese" — they must bucket together). If
+        # it's omitted/unknown, fall back to the deterministic script check (kana
+        # → Japanese, hangul → Korean), leaving a genuinely ambiguous script
+        # (kanji / Latin) NULL for a model sweep to backfill. (§3.3, two tags.)
+        source_lang = normalize_language(args.get("source_lang")) or detect_script(
+            args["original"]
+        )
         cursor = conn.execute(
             "INSERT INTO translations "
-            "(original, target_lang, translated, source, context_snippet, session_id) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(original, target_lang, translated, source_lang, source, "
+            "context_snippet, session_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 args["original"],
                 args["target_lang"],
                 args["translated"],
+                source_lang,
                 source,
                 args.get("context_snippet"),
                 session_id,

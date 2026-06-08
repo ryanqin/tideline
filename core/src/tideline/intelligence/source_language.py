@@ -80,6 +80,28 @@ def parse_response(response: str) -> str | None:
     return None
 
 
+# ISO-639-1 codes the model sometimes emits instead of a name ("ja", "en").
+# Matched EXACTLY (never as a substring — "it" must not swallow "the bill is…").
+_ISO_CODE: dict[str, str] = {
+    "ja": "Japanese", "zh": "Chinese", "ko": "Korean", "fr": "French",
+    "es": "Spanish", "de": "German", "it": "Italian", "pt": "Portuguese",
+    "ru": "Russian", "ar": "Arabic", "th": "Thai", "nl": "Dutch",
+    "vi": "Vietnamese", "en": "English",
+}
+
+
+def normalize_language(value: str | None) -> str | None:
+    """Canonicalize a language the agent reported into the app's single spelling
+    (the full English name), so a model that says 'ja' and a script check that
+    says 'Japanese' land in the same by-language / theme bucket. Exact ISO-639-1
+    code first, then the tolerant name parser. None if it names nothing known."""
+    if not value:
+        return None
+    if value.strip().lower() in _ISO_CODE:
+        return _ISO_CODE[value.strip().lower()]
+    return parse_response(value)
+
+
 def detect(text: str, runtime: ModelRuntime | None = None) -> str | None:
     """Identify the source language: deterministic script first (free,
     reliable), then the model for ambiguous Latin-script text if a runtime is

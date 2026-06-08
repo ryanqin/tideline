@@ -66,6 +66,33 @@ def test_parse_response_none_when_no_language():
     assert sl.parse_response("") is None
 
 
+# --- normalize_language: canonicalize what the agent reports --------------
+
+
+def test_normalize_language_maps_iso_codes_to_names():
+    assert sl.normalize_language("ja") == "Japanese"
+    assert sl.normalize_language("en") == "English"
+    assert sl.normalize_language("DE") == "German"   # case-insensitive
+
+
+def test_normalize_language_passes_through_full_names():
+    assert sl.normalize_language("Japanese") == "Japanese"
+    assert sl.normalize_language("Mandarin") == "Chinese"
+
+
+def test_normalize_language_iso_match_is_exact_not_substring():
+    # "it" is the Italian code, but a chatty "It is French." must resolve to
+    # French via the name parser — never be swallowed as Italian by a substring.
+    assert sl.normalize_language("it") == "Italian"
+    assert sl.normalize_language("It is French.") == "French"
+
+
+def test_normalize_language_none_for_empty_or_unknown():
+    assert sl.normalize_language(None) is None
+    assert sl.normalize_language("") is None
+    assert sl.normalize_language("ramen") is None
+
+
 # --- detect orchestration (script-first, then model) ---------------------
 
 

@@ -275,11 +275,13 @@ def test_live_session_breaks_after_an_inactivity_gap(tmp_path):
 def test_live_captures_form_a_theme_after_the_sweep(tmp_path):
     """The payoff: two distinct concepts captured in one live sitting co-occur
     into a theme on the next sweep — emergence works on real usage, not only on
-    seed data."""
+    seed data. Both words are katakana, so source_lang is tagged
+    deterministically even under the mock runtime; a theme is single-language
+    (§3.3), so co-occurring words must share a source language to form a scene."""
     db = str(tmp_path / "t.db")
     c = TestClient(create_app(runtime_name="mock", db_path=db))
     c.post("/api/translate", json={"text": "ラーメン"})  # one concept
-    c.post("/api/translate", json={"text": "寿司"})       # a distinct concept
+    c.post("/api/translate", json={"text": "サラダ"})     # a distinct concept
     session = _session_of(db, "ラーメン")
 
     # A fresh app on the same db runs the boot sweep (theme grouping + naming).
@@ -287,7 +289,7 @@ def test_live_captures_form_a_theme_after_the_sweep(tmp_path):
     themes = c2.get("/api/themes").json()
     live = [t for t in themes if t.get("session_id") == session]
     assert len(live) == 1, themes
-    assert {m["original"] for m in live[0]["members"]} == {"ラーメン", "寿司"}
+    assert {m["original"] for m in live[0]["members"]} == {"ラーメン", "サラダ"}
     assert live[0]["due"] is True   # a brand-new scene is due to revisit
 
 

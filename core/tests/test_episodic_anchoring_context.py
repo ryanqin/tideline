@@ -73,6 +73,40 @@ def test_session_id_follows_same_fallback_pattern(conn):
     assert row[0] == "tokyo-2026-04"
 
 
+def test_explicit_source_lang_is_stored_and_normalized(conn):
+    """The translating model reports the source language; it lands on the row —
+    the §3.3 direction tag, set the moment the translation is made (not deferred
+    to a later detection sweep). An ISO code the model emits ('ja') is normalized
+    to the app's one spelling ('Japanese') so it buckets with everything else.
+    '寿司' is bare kanji (detect_script gives None), so this proves the agent's
+    value is used, not the deterministic fallback."""
+    AddTranslationTool().run(
+        {"original": "寿司", "source_lang": "ja",
+         "target_lang": "zh", "translated": "寿司"},
+        {"db": conn},
+    )
+    row = conn.execute("SELECT source_lang FROM translations").fetchone()
+    assert row[0] == "Japanese"
+
+
+def test_source_lang_falls_back_to_deterministic_script(conn):
+    """If the agent omits source_lang, the deterministic script check fills it
+    for unambiguous scripts (kana → Japanese); a genuinely ambiguous script
+    (bare Latin / kanji) stays NULL for a model sweep to backfill."""
+    AddTranslationTool().run(
+        {"original": "ラーメン", "target_lang": "zh", "translated": "拉面"},
+        {"db": conn},
+    )
+    AddTranslationTool().run(
+        {"original": "café", "target_lang": "zh", "translated": "咖啡"},
+        {"db": conn},
+    )
+    rows = conn.execute(
+        "SELECT original, source_lang FROM translations ORDER BY id"
+    ).fetchall()
+    assert dict(rows) == {"ラーメン": "Japanese", "café": None}
+
+
 def test_cli_tags_translations_as_text_source(tmp_path):
     """End-to-end: CLI translation should land source='text' on the row."""
     db_path = tmp_path / "test.db"
