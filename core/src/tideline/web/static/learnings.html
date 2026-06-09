@@ -124,18 +124,38 @@
     }
 
     // cards → sea-glass: the full deck (the museum holds all of it; the shore
-    // only the calm few). Tap opens the card + its moments; sink sends it back.
+    // only the calm few). Same-language synonyms that share a meaning collapse
+    // into ONE tile (拉面 ← 中華そば / ラーメン), so the deck never shows the
+    // meaning twice; opening it reveals every word that carried it. The SAME
+    // meaning from a different language stays its own tile (DESIGN §3.3 — one
+    // cluster is one language pair), so a group is always single-language. Tap
+    // opens the card(s) + moments; sink sends a word back.
     async function lensCards() {
-      const cards = await getJSON('/api/cards');
+      const cards = (await getJSON('/api/cards')).filter(c => c.translated && c.translated.trim());
       SHELF_DATA = {};
       if (!cards.length) return emptyShelf('cards_empty');
-      const items = cards
-        .filter(c => c.translated && c.translated.trim())
-        .map(c => {
-          const key = 'card-' + c.id;
-          SHELF_DATA[key] = { kind: 'glass', data: c };
-          return { kind: 'glass', key, label: c.translated };
-        });
+      // Group by (meaning, source language), keeping first-seen order.
+      const groups = [];
+      const byKey = new Map();
+      cards.forEach(c => {
+        const k = JSON.stringify([c.translated, c.source_lang || '']);
+        let g = byKey.get(k);
+        if (!g) {
+          g = { translated: c.translated, source_lang: c.source_lang, target_lang: c.target_lang, cards: [] };
+          byKey.set(k, g);
+          groups.push(g);
+        }
+        g.cards.push(c);
+      });
+      const items = groups.map((g, i) => {
+        const key = 'cards-' + i;
+        // A lone card opens the plain card sheet; a real synonym group opens the
+        // grouped sheet (each word with its own moments + sink).
+        SHELF_DATA[key] = g.cards.length === 1
+          ? { kind: 'glass', data: g.cards[0] }
+          : { kind: 'cardgroup', data: g };
+        return { kind: 'glass', key, label: g.translated };
+      });
       return shelf(items);
     }
 

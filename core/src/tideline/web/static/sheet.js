@@ -78,6 +78,31 @@
         ${grade}
       </div>`;
   }
+
+  // A concept group in the museum's card deck: same-language synonyms that
+  // share a meaning (拉面 ← 中華そば / ラーメン) collapse to one shelf tile, so
+  // the deck never shows the meaning twice. Opening it shows the meaning once,
+  // then each foreign word that carried it — its own moments, its own sink
+  // (each is still an independent card; the grouping is only how the deck
+  // BROWSES them, and the shore still reviews each word on its own). A different
+  // language with the same meaning stays its own tile (DESIGN §3.3: one cluster
+  // is one language pair), so a group is always single-language.
+  function cardGroupSheet(g) {
+    const words = (g.cards || []).map((c) => {
+      const moments = `<div class="moments">${(c.moments || []).map(momentRow).join("")}</div>`;
+      return `<div class="group-word">
+          <div class="card-head">
+            <h3>${esc(c.original)}</h3>
+            <button type="button" class="sink-btn" data-card-id="${c.id}" title="${esc(t("sink_title"))}">${esc(t("sink"))}</button>
+          </div>
+          ${moments}
+        </div>`;
+    }).join("");
+    return `<div class="cluster card">
+        <h2>${esc(g.translated)} ${annot(g.source_lang, g.target_lang)}</h2>
+        <div class="group-words">${words}</div>
+      </div>`;
+  }
   // crab → a theme: masked recall — you see the meaning, recall the word
   // (tap to reveal); "reveal all" flips to plain browsing. On the shore (review
   // mode) a scene is a review unit too: recall the night's words, then self-
@@ -124,7 +149,7 @@
       </div>`;
   }
 
-  const RENDER = { glass: cardSheet, crab: themeSheet };
+  const RENDER = { glass: cardSheet, cardgroup: cardGroupSheet, crab: themeSheet };
 
   let root = null, content = null, current = null, onSink = null;
   let onReview = null, currentOpts = {};

@@ -609,6 +609,23 @@ body.shore-open { overflow: hidden; }
 
 .card-head h2 { margin-bottom: 0.7rem; }
 
+/* A concept group in the deck: one meaning, then each same-language synonym
+   kept distinct with its own moments + sink (the deck collapses the duplicate
+   tile; opening it keeps every word). */
+.group-word + .group-word {
+  margin-top: 1.2rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--border);
+}
+.group-word .card-head { margin-bottom: 0.5rem; }
+.group-word h3 {
+  font-family: var(--serif);
+  font-size: 1.04rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+
 /* Sink is the one quiet way to send a card back to the sediment. */
 .sink-btn {
   flex: none;
