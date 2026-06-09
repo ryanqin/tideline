@@ -31,12 +31,6 @@ const I18N = {
       "card keeps the stack of moments it grew from.",
     first_lang_label: "Your first language",
     ui_lang_label: "Interface",
-    deck_title: "Your review deck — cards",
-    clusters_title: "Clusters",
-    by_concept: "By concept",
-    by_language: "By language",
-    themes_title: "Themes — moments that belong together",
-    candidates_title: "Candidates — repeated translations",
 
     // museum (the shelves on the dunes — the full collection, the list floor)
     nav_museum: "Museum",
@@ -67,12 +61,7 @@ const I18N = {
     tap_reveal: "tap to reveal",
     review_got: "I remembered",
     review_missed: "Didn't come",
-    tap_recall: "open to recall",
     no_context: "a quiet one — no scene saved",
-    moment_one: "moment",
-    moment_many: "moments",
-    cluster_fallback: "Cluster #",
-    theme_fallback: "A theme #",
 
     // how a moment was caught — warm, human, never "source: image"
     src_image: "seen",
@@ -84,12 +73,6 @@ const I18N = {
     time_yesterday: "yesterday",
     time_days_ago: "{n} days ago",
     time_last_week: "last week",
-
-    err_cards: "Couldn't load cards: ",
-    err_clusters: "Couldn't load clusters: ",
-    err_languages: "Couldn't load language groups: ",
-    err_themes: "Couldn't load themes: ",
-    err_candidates: "Couldn't load candidates: ",
 
     lang_Chinese: "Chinese", lang_English: "English", lang_Japanese: "Japanese",
     lang_French: "French", lang_Spanish: "Spanish", lang_German: "German",
@@ -116,12 +99,6 @@ const I18N = {
       "把其余的沉回去。每张卡都留着它生长出来的那叠片刻。",
     first_lang_label: "你的第一语言",
     ui_lang_label: "界面",
-    deck_title: "你的复习卡组",
-    clusters_title: "聚类",
-    by_concept: "按概念",
-    by_language: "按语言",
-    themes_title: "主题 — 属于同一段的片刻",
-    candidates_title: "候选 — 反复出现的翻译",
 
     // 陈列馆(沙丘上的货架 — 完整收藏,也是 list 退路)
     nav_museum: "陈列馆",
@@ -149,12 +126,7 @@ const I18N = {
     tap_reveal: "点一下揭开",
     review_got: "想起来了",
     review_missed: "没想起来",
-    tap_recall: "翻开回忆",
     no_context: "安静的一次 — 没留下情景",
-    moment_one: "个片刻",
-    moment_many: "个片刻",
-    cluster_fallback: "聚类 #",
-    theme_fallback: "主题 #",
 
     // 这个片刻是怎么遇上的 — 用人话,不是 "来源:图片"
     src_image: "看到的",
@@ -166,12 +138,6 @@ const I18N = {
     time_yesterday: "昨天",
     time_days_ago: "{n} 天前",
     time_last_week: "上周",
-
-    err_cards: "卡片加载失败:",
-    err_clusters: "聚类加载失败:",
-    err_languages: "语言分组加载失败:",
-    err_themes: "主题加载失败:",
-    err_candidates: "候选加载失败:",
 
     lang_Chinese: "中文", lang_English: "英语", lang_Japanese: "日语",
     lang_French: "法语", lang_Spanish: "西班牙语", lang_German: "德语",

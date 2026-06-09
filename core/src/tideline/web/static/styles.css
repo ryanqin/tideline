@@ -648,33 +648,6 @@ body.shore-open { overflow: hidden; }
 .review-grade .grade-missed:hover { background: var(--accent-soft); color: var(--accent-deep); transform: translateY(-1px); }
 .review-grade button:disabled { opacity: 0.4; cursor: wait; }
 
-.cluster .members {
-  display: grid;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-}
-
-.cluster .member {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.6rem;
-  padding: 0.45rem 0;
-  border-top: 1px dashed var(--border);
-}
-
-.cluster .member:first-child { border-top: none; }
-
-.cluster .original { font-weight: 500; }
-.cluster .translated { color: var(--muted); }
-
-.cluster .context {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-style: italic;
-  margin-left: 0.2rem;
-}
-
 /* --- the moment stack: the back of every card is a pile of lived moments
    (DESIGN §3.2). The moment is the point; its when/where is incidental, so the
    captured detail leads and the metadata recedes beneath it. --- */
@@ -769,64 +742,6 @@ body.shore-open { overflow: hidden; }
   border-bottom: 1.5px solid var(--accent);
   border-radius: 0 0 40px 40px / 0 0 9px 9px;
   opacity: 0.32;
-}
-
-.section-title {
-  font-family: var(--serif);
-  font-size: 1.05rem;
-  letter-spacing: 0;
-  color: var(--ink);
-  margin: 2.6rem 0 1rem;
-  font-weight: 600;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 2.6rem 0 1rem;
-}
-
-.section-head .section-title { margin: 0; }
-
-.toggle {
-  display: inline-flex;
-  flex: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--surface);
-}
-
-.toggle button {
-  background: transparent;
-  color: var(--muted);
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0.32rem 0.95rem;
-  font-size: 0.78rem;
-  font-weight: 500;
-  transition: background 0.18s ease, color 0.18s ease;
-}
-
-.toggle button + button { border-left: 1px solid var(--border); }
-.toggle button.active { background: var(--accent); color: #fff; }
-.toggle button.active:hover { background: var(--accent); transform: none; }
-.toggle button:hover:not(.active) { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
-
-.cluster h2 .count {
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.cluster .member .count {
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-variant-numeric: tabular-nums;
 }
 
 .langtag {
