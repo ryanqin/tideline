@@ -339,6 +339,24 @@
       '<circle cx="20" cy="13.5" r="1.7" fill="currentColor"/><circle cx="28" cy="13.5" r="1.7" fill="currentColor"/>' +
       '<path d="M11.5 25c-4-1.5-6.5 0.5-6 4M36.5 25c4-1.5 6.5 0.5 6 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
       '<path d="M13 31l-5 4.5M15.5 33l-4 5.5M35 31l5 4.5M32.5 33l4 5.5" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.8" stroke-linecap="round"/>',
+    // theme variants — the SAME crab family, so a shelf of scenes reads as
+    // varied as the cards while every one still says "a remembered scene"
+    // (crab = theme stays the type signal). Picked from CRAB_POOL by a stable
+    // hash, exactly like the card shells.
+    // crab2 → claws raised in a little V above a rounder body
+    crab2:
+      '<path d="M13.5 31.5c0-8 5-13 10.5-13s10.5 5 10.5 13c-2 2.6-19 2.6-21 0Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M20.5 19.5v-3M27.5 19.5v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<circle cx="20.5" cy="14" r="1.7" fill="currentColor"/><circle cx="27.5" cy="14" r="1.7" fill="currentColor"/>' +
+      '<path d="M16 23.5c-3.5-2-5.5-5.5-4.5-9.5M32 23.5c3.5-2 5.5-5.5 4.5-9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<path d="M14 32l-5 4M16 34l-4 5M34 32l5 4M32 34l4 5" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.8" stroke-linecap="round"/>',
+    // crab3 → a wide, flat spider-crab: long legs spread, small tucked claws
+    crab3:
+      '<path d="M9 28.5c0-6 7-9.5 15-9.5s15 3.5 15 9.5c-2.5 2.4-27.5 2.4-30 0Z" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M20.5 19.5v-2.6M27.5 19.5v-2.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<circle cx="20.5" cy="15" r="1.6" fill="currentColor"/><circle cx="27.5" cy="15" r="1.6" fill="currentColor"/>' +
+      '<path d="M11 25.5c-3-1-4.5 0-4.5 2.5M37 25.5c3-1 4.5 0 4.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+      '<path d="M12 29l-7 3.5M15 31l-6 5.5M18 32.5l-5 6.5M36 29l7 3.5M33 31l6 5.5M30 32.5l5 6.5" stroke="currentColor" stroke-width="1.3" stroke-opacity="0.8" stroke-linecap="round"/>',
 
     // --- the card shells: a single word that washed up is a single shell, and a
     // real shore's single shells are endlessly varied — so a card is drawn from
@@ -373,6 +391,9 @@
   };
   // What a card (sea-glass family) can wash up as — the variety pool.
   const CARD_POOL = ["glass", "snail", "auger", "cowrie", "dollar"];
+  // What a theme (crab family) can wash up as — same idea, so a shelf of
+  // scenes isn't a row of identical crabs.
+  const CRAB_POOL = ["crab", "crab2", "crab3"];
   const CREATURE_NOUN = { shell: "扇贝", crab: "螃蟹", glass: "贝壳" };
 
   // Relation kind → the glyph key to draw. Concept and theme keep their single
@@ -381,8 +402,12 @@
   // as a whole is varied (DESIGN §10.5, the creature-type→relation mapping made
   // richer for the card family).
   function glyphKey(kind, seed) {
+    const key = String(seed == null ? "" : seed);
     if (kind === "glass") {
-      return CARD_POOL[Math.floor(hashFrac(String(seed == null ? "" : seed), 7) * CARD_POOL.length)] || "glass";
+      return CARD_POOL[Math.floor(hashFrac(key, 7) * CARD_POOL.length)] || "glass";
+    }
+    if (kind === "crab") {
+      return CRAB_POOL[Math.floor(hashFrac(key, 7) * CRAB_POOL.length)] || "crab";
     }
     return GLYPHS[kind] ? kind : "glass";
   }
