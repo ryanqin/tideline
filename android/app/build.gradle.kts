@@ -85,4 +85,6 @@ dependencies {
   // Gallery-picked photos carry EXIF orientation that BitmapFactory ignores;
   // needed so persisted recall photos aren't stored sideways.
   implementation(libs.androidx.exifinterface)
+
+  testImplementation(libs.junit)
 }

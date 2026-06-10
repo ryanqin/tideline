@@ -28,6 +28,7 @@ import com.google.ai.edge.litertlm.SamplerConfig
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.intelligence.parseImageReply
 import com.ryanqin.tideline.media.exifRotationDegrees
 import com.ryanqin.tideline.media.prepareCaptureImage
 import java.util.UUID
@@ -66,7 +67,11 @@ enum class EngineState { IDLE, INITIALIZING, READY, INFERRING, ERROR }
 data class TidelineUiState(
   val engineState: EngineState = EngineState.IDLE,
   val sourceText: String = "",
-  val targetLang: String = "Japanese",
+  // Principle 3 (DESIGN §3.3): Tideline always translates INTO your first
+  // language — the shell's probe-era "Japanese" default predated that
+  // decision. A real first-language setting (mirroring web's identity
+  // picker) is later work; Chinese matches the product's current user.
+  val targetLang: String = "Chinese",
   val translation: String = "",
   val errorMessage: String? = null,
 )
@@ -246,10 +251,17 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
       )
       return
     }
+    // Third line TERMS = the emergence loop's feed: each original=translation
+    // pair becomes its own drawer row (the shape promotion/clustering reads),
+    // instead of one unpromotable "[image N B]" placeholder. TERMS comes LAST
+    // so a partial/garbled tail degrades the vocabulary, never the
+    // translation the user is waiting on.
     val prompt =
-      "Look at this image and reply in exactly two lines:\n" +
+      "Look at this image and reply in exactly three lines:\n" +
         "TRANSLATION: all visible text translated to $lang (write NONE if there is no text)\n" +
-        "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects"
+        "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects\n" +
+        "TERMS: the 1-6 most useful words or short phrases from the image, " +
+        "each as original=translation, separated by | (write NONE if there is no text)"
     dispatchInference(
       contents = Contents.of(listOf(Content.ImageBytes(prepared), Content.Text(prompt))),
       originalLabel = "[image ${prepared.size} B]",
@@ -335,21 +347,13 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
           override fun onDone() {
             val raw = acc.toString().trim()
-            // Image prompt returns "TRANSLATION: ...\nSCENE: ..."; split so the
-            // scene gist becomes context_snippet. Text/audio have no SCENE:
-            // marker, so they pass through unchanged (sceneGist stays null).
-            var translated = raw
-            var sceneGist: String? = null
-            val sceneIdx = raw.indexOf("SCENE:", ignoreCase = true)
-            if (sceneIdx >= 0) {
-              sceneGist = raw.substring(sceneIdx + 6).trim()
-                .lineSequence().firstOrNull()?.trim()?.ifBlank { null }
-              translated = raw.substring(0, sceneIdx)
-                .replace(Regex("(?i)TRANSLATION:\\s*"), "")
-                .trim()
-            }
+            // Image prompt returns marked TRANSLATION / SCENE / TERMS lines;
+            // text/audio replies carry no markers and pass through unchanged
+            // (gist null, no terms).
+            val reply = parseImageReply(raw)
+            val translated = reply.translated
             _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
-            Log.i(TAG, "BENCH scene_gist=\"$sceneGist\"")
+            Log.i(TAG, "BENCH scene_gist=\"${reply.sceneGist}\" terms=${reply.terms.size}")
             val tDone = System.currentTimeMillis()
             val total = tDone - tStart
             val genMs = if (firstSeen) tDone - tFirst else 0L
@@ -360,20 +364,40 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
               "BENCH done total_ms=$total gen_ms=$genMs out_chars=$outChars " +
                 "approx_tok_per_s=${"%.2f".format(tokPerSec)} out=\"$translated\""
             )
-            if (translated.isNotEmpty()) {
+            // The words are the sediment: with parsed TERMS each pair lands as
+            // its own row — original = the foreign word actually met — every
+            // row carrying the scene gist AND the photo (the per-word recall
+            // material the museum's moment stacks render). Without terms, fall
+            // back to the single summary row so nothing regresses.
+            val rows = if (reply.terms.isNotEmpty()) {
+              reply.terms.map { term ->
+                TranslationEntity(
+                  original = term.original,
+                  targetLang = lang,
+                  translated = term.translated,
+                  source = source,
+                  contextSnippet = reply.sceneGist,
+                  sessionId = sessionId,
+                  sourceImage = sourceImage,
+                )
+              }
+            } else if (translated.isNotEmpty()) {
+              listOf(
+                TranslationEntity(
+                  original = originalLabel,
+                  targetLang = lang,
+                  translated = translated,
+                  source = source,
+                  contextSnippet = reply.sceneGist,
+                  sessionId = sessionId,
+                  sourceImage = sourceImage,
+                )
+              )
+            } else emptyList()
+            if (rows.isNotEmpty()) {
               viewModelScope.launch(Dispatchers.IO) {
                 try {
-                  dao.insert(
-                    TranslationEntity(
-                      original = originalLabel,
-                      targetLang = lang,
-                      translated = translated,
-                      source = source,
-                      contextSnippet = sceneGist,
-                      sessionId = sessionId,
-                      sourceImage = sourceImage,
-                    )
-                  )
+                  rows.forEach { dao.insert(it) }
                 } catch (t: Throwable) {
                   Log.e(TAG, "Persist translation failed", t)
                 }
