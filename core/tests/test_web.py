@@ -857,3 +857,37 @@ def test_sink_removes_card_from_deck(tmp_path):
 def test_sink_unknown_card_404(client):
     r = client.post("/api/cards/sink", json={"card_id": 99999})
     assert r.status_code == 404
+
+
+def test_translation_image_is_served_as_recall_material(tmp_path):
+    """A captured photo is kept on its translation row and served back as recall
+    material (§3.2): an image capture serves its bytes with a content type
+    sniffed from the bytes; a text/audio capture (no image) and an unknown id
+    both 404 — so a future view can ask for the photo and fail cleanly."""
+    from tideline.seed import seed_db
+    from tideline.tools import init_all_tables
+
+    db = str(tmp_path / "shots.db")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    seed_db(conn)
+    img_id = conn.execute(
+        "SELECT id FROM translations WHERE source = 'image' "
+        "AND source_image IS NOT NULL ORDER BY id LIMIT 1"
+    ).fetchone()[0]
+    txt_id = conn.execute(
+        "SELECT id FROM translations WHERE source_image IS NULL ORDER BY id LIMIT 1"
+    ).fetchone()[0]
+    conn.close()
+
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+
+    r = c.get(f"/api/translations/{img_id}/image")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    # A text / audio capture carries no image → 404.
+    assert c.get(f"/api/translations/{txt_id}/image").status_code == 404
+    # An unknown translation id → 404.
+    assert c.get("/api/translations/999999/image").status_code == 404

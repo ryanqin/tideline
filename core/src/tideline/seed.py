@@ -64,9 +64,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import random
 import sqlite3
+import struct
 import sys
+import zlib
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -247,15 +250,49 @@ _SCENARIO_SOURCE_LANG = {
 }
 
 
+# --- Demo capture images -----------------------------------------------------
+# An image capture keeps its source photo so the storage + serving path carries
+# real image bytes — honest to §3.2, where the source image is recall material,
+# not discarded once the VLM has read it. The seed can't ship real photos, so
+# each image session gets a small solid swatch in a distinct warm tone; the real
+# on-device camera/album capture replaces it with the actual photo. Pure-stdlib
+# (a hand-assembled minimal PNG) so seeding pulls in no Pillow dependency.
+def _swatch_png(rgb: tuple[int, int, int], size: int = 96) -> bytes:
+    def _chunk(typ: bytes, data: bytes) -> bytes:
+        body = typ + data
+        return (
+            struct.pack(">I", len(data))
+            + body
+            + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+        )
+
+    row = b"\x00" + bytes(rgb) * size  # filter byte 0 (None) + `size` RGB pixels
+    raw = row * size
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+        + _chunk(b"IDAT", zlib.compress(raw, 9))
+        + _chunk(b"IEND", b"")
+    )
+
+
+def _session_color(session_id: str) -> tuple[int, int, int]:
+    """A stable warm tone per capture session, so each seeded photo is a
+    distinct swatch (recognizable once a display slice renders it)."""
+    h = hashlib.sha1(session_id.encode("utf-8")).digest()
+    return (150 + h[0] % 95, 110 + h[1] % 90, 80 + h[2] % 80)
+
+
 def generate_entries(
     seed: int = 42,
     now: datetime | None = None,
-) -> list[tuple[str, str, str, str, str, str, str, str]]:
-    """Generate seed rows as 8-tuples.
+) -> list[tuple]:
+    """Generate seed rows as 9-tuples.
 
     Each tuple is
     ``(original, target_lang, translated, source_lang, source,
-    context_snippet, session_id, created_at_iso)``.
+    context_snippet, session_id, created_at_iso, source_image)`` — the last is
+    the capture's photo bytes for image sessions, None for text / audio.
 
     A term's N copies are distributed round-robin across its scenario's
     capture sessions, so a frequent term naturally lands in several
@@ -265,7 +302,10 @@ def generate_entries(
     (seed, now). Output order is shuffled to mimic real chronological mixing.
     """
     rng = random.Random(seed)
-    out: list[tuple[str, str, str, str, str, str, str, str]] = []
+    out: list[tuple] = []
+    # A capture's source photo is shared by all rows from that session (computed
+    # once), so a menu photo's items all point at the same image.
+    image_cache: dict[str, bytes] = {}
     if now is None:
         now = datetime.now()
 
@@ -304,6 +344,17 @@ def generate_entries(
                     # audio (their prompts emit no SCENE line in the real app).
                     context_snippet = session["gist"]
                     session_id = f"{slug}-{session['suffix']}"
+                    # Keep the capture's source image (image sessions only) as
+                    # recall material — one swatch per session, shared by its
+                    # rows. Real captures carry the device photo; this is the
+                    # demo placeholder.
+                    source_image = (
+                        image_cache.setdefault(
+                            session_id, _swatch_png(_session_color(session_id))
+                        )
+                        if session["source"] == "image"
+                        else None
+                    )
                     out.append(
                         (
                             original,
@@ -314,6 +365,7 @@ def generate_entries(
                             context_snippet,
                             session_id,
                             ts,
+                            source_image,
                         )
                     )
 
@@ -327,8 +379,8 @@ def seed_db(conn: sqlite3.Connection, seed: int = 42) -> int:
     conn.executemany(
         "INSERT INTO translations "
         "(original, target_lang, translated, source_lang, source, "
-        "context_snippet, session_id, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "context_snippet, session_id, created_at, source_image) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         entries,
     )
     conn.commit()

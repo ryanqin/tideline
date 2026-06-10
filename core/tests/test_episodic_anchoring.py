@@ -43,6 +43,7 @@ def test_translations_schema_has_episodic_columns(conn):
     assert "source" in cols
     assert "context_snippet" in cols
     assert "session_id" in cols
+    assert "source_image" in cols  # the kept capture photo (§3.2 recall material)
 
 
 def test_init_db_migrates_legacy_schema():
@@ -74,12 +75,14 @@ def test_init_db_migrates_legacy_schema():
     assert "source" in cols
     assert "context_snippet" in cols
     assert "session_id" in cols
+    assert "source_image" in cols
 
     # Legacy row survives, new columns NULL
     row = c.execute(
-        "SELECT original, source, context_snippet, session_id FROM translations"
+        "SELECT original, source, context_snippet, session_id, source_image "
+        "FROM translations"
     ).fetchone()
-    assert row == ("hello", None, None, None)
+    assert row == ("hello", None, None, None, None)
     c.close()
 
 

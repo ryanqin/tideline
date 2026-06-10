@@ -16,7 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -480,6 +480,33 @@ def create_app(
             return result
         finally:
             conn.close()
+
+    @app.get("/api/translations/{translation_id}/image")
+    def translation_image(translation_id: int) -> Response:
+        """Serve a capture's stored source image (a menu photo / sign) — recall
+        material kept on the translation row, never discarded once the VLM read
+        it (DESIGN §3.2). 404 when that row carries no image (a text / audio
+        capture, or an unknown id). The content type is sniffed from the bytes,
+        so the demo's PNGs and a device's JPEGs both serve correctly without a
+        stored mime column."""
+        conn = _connect(db)
+        try:
+            row = conn.execute(
+                "SELECT source_image FROM translations WHERE id = ?",
+                (translation_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None or row[0] is None:
+            raise HTTPException(status_code=404, detail="no image for this capture")
+        data = bytes(row[0])
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            media = "image/png"
+        elif data.startswith(b"\xff\xd8\xff"):
+            media = "image/jpeg"
+        else:
+            media = "application/octet-stream"
+        return Response(content=data, media_type=media)
 
     @app.post("/api/cards/promote")
     def promote_card(req: PromoteRequest) -> dict[str, int]:

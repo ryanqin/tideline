@@ -73,6 +73,32 @@ def test_session_id_follows_same_fallback_pattern(conn):
     assert row[0] == "tokyo-2026-04"
 
 
+def test_context_source_image_is_stored_as_recall_material(conn):
+    """A captured photo rides in via context (the image pipeline / Android shell
+    injects the bytes) — never through the LLM, which only produces the scene
+    gist. Kept on the row as recall material (§3.2), round-tripping as a BLOB."""
+    photo = b"\x89PNG\r\n\x1a\n" + b"fake-image-bytes"
+    AddTranslationTool().run(
+        {"original": "ラーメン", "source_lang": "ja",
+         "target_lang": "zh", "translated": "拉面"},
+        {"db": conn, "source": "image", "source_image": photo},
+    )
+    row = conn.execute("SELECT source, source_image FROM translations").fetchone()
+    assert row[0] == "image"
+    assert bytes(row[1]) == photo
+
+
+def test_source_image_null_when_capture_has_none(conn):
+    """A text / audio capture supplies no image — the column stays NULL (not an
+    empty blob), so the serving path can 404 honestly."""
+    AddTranslationTool().run(
+        {"original": "hello", "target_lang": "zh", "translated": "你好"},
+        {"db": conn, "source": "text"},
+    )
+    row = conn.execute("SELECT source_image FROM translations").fetchone()
+    assert row[0] is None
+
+
 def test_explicit_source_lang_is_stored_and_normalized(conn):
     """The translating model reports the source language; it lands on the row —
     the §3.3 direction tag, set the moment the translation is made (not deferred

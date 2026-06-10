@@ -146,6 +146,32 @@ def test_seed_each_capture_is_one_foreign_language_into_chinese(conn):
     assert mixed == [], mixed
 
 
+def test_seed_image_captures_keep_their_photo(conn):
+    """Image captures keep a source photo (recall material, §3.2); text / audio
+    captures carry none, and no photo is fabricated where there was none. Every
+    stored photo is valid image bytes."""
+    seed_db(conn)
+    image_with_photo = conn.execute(
+        "SELECT COUNT(*) FROM translations "
+        "WHERE source = 'image' AND source_image IS NOT NULL"
+    ).fetchone()[0]
+    image_without = conn.execute(
+        "SELECT COUNT(*) FROM translations "
+        "WHERE source = 'image' AND source_image IS NULL"
+    ).fetchone()[0]
+    nonimage_with = conn.execute(
+        "SELECT COUNT(*) FROM translations "
+        "WHERE source != 'image' AND source_image IS NOT NULL"
+    ).fetchone()[0]
+    assert image_with_photo > 0      # image captures kept their photo
+    assert image_without == 0        # every one of them, not just some
+    assert nonimage_with == 0        # text / audio never invented an image
+    blob = conn.execute(
+        "SELECT source_image FROM translations WHERE source_image IS NOT NULL LIMIT 1"
+    ).fetchone()[0]
+    assert bytes(blob).startswith(b"\x89PNG\r\n\x1a\n")
+
+
 # --- CLI ------------------------------------------------------------------
 
 

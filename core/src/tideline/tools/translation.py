@@ -35,6 +35,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             source_lang TEXT,
             source TEXT,
             context_snippet TEXT,
+            source_image BLOB,
             session_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -48,6 +49,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         ("source", "ALTER TABLE translations ADD COLUMN source TEXT"),
         ("context_snippet", "ALTER TABLE translations ADD COLUMN context_snippet TEXT"),
         ("session_id", "ALTER TABLE translations ADD COLUMN session_id TEXT"),
+        # The captured source image (a menu photo / sign), kept as recall
+        # material — never discarded after the VLM reads it (§3.2).
+        ("source_image", "ALTER TABLE translations ADD COLUMN source_image BLOB"),
     ):
         if column not in existing:
             conn.execute(ddl)
@@ -90,6 +94,12 @@ class AddTranslationTool(Tool):
         # LLM to reason about which input modality fired.
         source = args.get("source") or context.get("source")
         session_id = args.get("session_id") or context.get("session_id")
+        # The captured image bytes (a menu photo / sign) ride in via context from
+        # the capture client (the image pipeline / Android shell), NEVER through
+        # the LLM — the model produces the scene gist (context_snippet), not the
+        # photo, and the tool schema stays text-only. Kept as recall material;
+        # None for text / audio captures. (DESIGN §3.2)
+        source_image = context.get("source_image")
         # The direction tag (source language → your first language) belongs ON
         # the translation, set the moment it's made: the model that just read and
         # translated the text knows its source language — with full context, so
@@ -105,8 +115,8 @@ class AddTranslationTool(Tool):
         cursor = conn.execute(
             "INSERT INTO translations "
             "(original, target_lang, translated, source_lang, source, "
-            "context_snippet, session_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "context_snippet, session_id, source_image) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 args["original"],
                 args["target_lang"],
@@ -115,6 +125,7 @@ class AddTranslationTool(Tool):
                 source,
                 args.get("context_snippet"),
                 session_id,
+                source_image,
             ),
         )
         conn.commit()
