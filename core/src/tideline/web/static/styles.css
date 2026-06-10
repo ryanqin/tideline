@@ -561,8 +561,12 @@ body.shore-open { overflow: hidden; }
 }
 .sheet-grip { display: block; width: 42px; height: 4px; border-radius: 999px; background: var(--border); }
 .sheet-content { overflow-y: auto; padding: 1.1rem 2.5rem 2.4rem; }
-/* the album cards/themes already sit inside a surface here — flatten their chrome */
-.sheet-content .cluster, .sheet-content .theme {
+/* the album cards/themes already sit inside a surface here — flatten their
+   chrome. The :hover leg matters: the album's hover lift (.theme:hover, same
+   specificity but later in the file) would otherwise win mid-sheet and paint
+   a card edge hugging the content on mouse-over. */
+.sheet-content .cluster, .sheet-content .theme,
+.sheet-content .cluster:hover, .sheet-content .theme:hover {
   background: none; box-shadow: none; border: none; padding: 0; margin: 0;
 }
 @media (prefers-reduced-motion: reduce) {
