@@ -75,4 +75,14 @@ dependencies {
   implementation(libs.play.services.tflite.java)
   implementation(libs.play.services.tflite.gpu)
   implementation(libs.play.services.tflite.support)
+
+  // Phase 5a live capture: in-app viewfinder + shutter (point at a menu,
+  // snap, translate) instead of bouncing through the system photo picker.
+  implementation(libs.androidx.camera.core)
+  implementation(libs.androidx.camera.camera2)
+  implementation(libs.androidx.camera.lifecycle)
+  implementation(libs.androidx.camera.view)
+  // Gallery-picked photos carry EXIF orientation that BitmapFactory ignores;
+  // needed so persisted recall photos aren't stored sideways.
+  implementation(libs.androidx.exifinterface)
 }

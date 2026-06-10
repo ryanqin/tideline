@@ -28,6 +28,8 @@ import com.google.ai.edge.litertlm.SamplerConfig
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.media.exifRotationDegrees
+import com.ryanqin.tideline.media.prepareCaptureImage
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -170,31 +172,21 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   }
 
   /*
-   * Image translation — Phase 5a probe.
+   * Image translation — Phase 5a.
    *
-   * Reads the picked image's bytes off the main thread, then sends them next to
-   * a translate instruction through the SAME multimodal Content path the text
-   * flow uses. The open question this exercises: does the sideloaded E2B bundle
-   * actually carry a vision tower? Capabilities can't report it (only
-   * hasSpeculativeDecodingSupport exists), so a real run is the only oracle.
+   * Two entrances, one body: the system photo picker (probe-era path, kept)
+   * and the in-app viewfinder (live capture). Both prepare the image the same
+   * way off the main thread — rotated upright (EXIF for picked photos, the
+   * ImageProxy rotation for captures), longest edge capped, re-encoded — then
+   * send it through the SAME multimodal Content path the text flow uses.
    *
-   * Episodic anchoring (Phase 5a follow-up, now wired): the drawer row stores
-   * original="[image …]" and contextSnippet = the VLM's scene gist (parsed from
-   * the SCENE: line) — the "where/what was this moment" signal that feeds Tier-B
-   * episodic titles. The picked image's bytes/thumbnail are still NOT persisted
-   * (a path back to the photo is a further follow-up, tracked against principle #2).
+   * Episodic anchoring: the drawer row stores original="[image …]" and
+   * contextSnippet = the VLM's scene gist (parsed from the SCENE: line). The
+   * prepared photo itself persists as source_image — recall material, never
+   * discarded once the VLM has read it (mirrors Python core §3.2).
    */
   fun translateImage(uri: Uri) {
-    val state = _ui.value
-    if (state.engineState != EngineState.READY) return
-    val lang = state.targetLang
-
-    _ui.value = state.copy(
-      engineState = EngineState.INFERRING,
-      translation = "",
-      errorMessage = null,
-    )
-
+    if (!beginImageInference()) return
     viewModelScope.launch(Dispatchers.IO) {
       val bytes = try {
         getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -209,28 +201,62 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         )
         return@launch
       }
-      // Gemma 3n's multimodal format expects the image BEFORE the text question —
-      // image-then-text grounds the instruction on the visual tokens. (First pass
-      // had text-then-image and the model collapsed to a single "。".)
-      //
-      // Two-line ask in ONE inference (a second image pass would double the ~7s
-      // on-device latency): the translation AND a short scene gist. The gist
-      // becomes the episodic context_snippet — the "where/what was this moment"
-      // signal that was always null before. Engineering stays load-bearing
-      // (session_id / timestamp / modality); this gist is the point-of-light
-      // warmth layer, and being VLM-produced it is honest to store (unlike the
-      // narrated scene prose the product could never actually capture).
-      val prompt =
-        "Look at this image and reply in exactly two lines:\n" +
-          "TRANSLATION: all visible text translated to $lang (write NONE if there is no text)\n" +
-          "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects"
-      dispatchInference(
-        contents = Contents.of(listOf(Content.ImageBytes(bytes), Content.Text(prompt))),
-        originalLabel = "[image ${bytes.size} B]",
-        source = "image",
-        lang = lang,
-      )
+      runImageInference(bytes, exifRotationDegrees(bytes))
     }
+  }
+
+  /** In-app viewfinder shutter → raw JPEG + CameraX rotation. */
+  fun translateCapturedImage(bytes: ByteArray, rotationDegrees: Int) {
+    if (!beginImageInference()) return
+    viewModelScope.launch(Dispatchers.IO) {
+      runImageInference(bytes, rotationDegrees)
+    }
+  }
+
+  /** Flip the UI into INFERRING for an image run; false when engine not ready. */
+  private fun beginImageInference(): Boolean {
+    val state = _ui.value
+    if (state.engineState != EngineState.READY) return false
+    _ui.value = state.copy(
+      engineState = EngineState.INFERRING,
+      translation = "",
+      errorMessage = null,
+    )
+    return true
+  }
+
+  // Gemma 3n's multimodal format expects the image BEFORE the text question —
+  // image-then-text grounds the instruction on the visual tokens. (First pass
+  // had text-then-image and the model collapsed to a single "。".)
+  //
+  // Two-line ask in ONE inference (a second image pass would double the ~7s
+  // on-device latency): the translation AND a short scene gist. The gist
+  // becomes the episodic context_snippet — the "where/what was this moment"
+  // signal that was always null before. Engineering stays load-bearing
+  // (session_id / timestamp / modality); this gist is the point-of-light
+  // warmth layer, and being VLM-produced it is honest to store (unlike the
+  // narrated scene prose the product could never actually capture).
+  private fun runImageInference(rawBytes: ByteArray, rotationDegrees: Int) {
+    val lang = _ui.value.targetLang
+    val prepared = prepareCaptureImage(rawBytes, rotationDegrees)
+    if (prepared == null) {
+      _ui.value = _ui.value.copy(
+        engineState = EngineState.ERROR,
+        errorMessage = "Couldn't decode the image",
+      )
+      return
+    }
+    val prompt =
+      "Look at this image and reply in exactly two lines:\n" +
+        "TRANSLATION: all visible text translated to $lang (write NONE if there is no text)\n" +
+        "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects"
+    dispatchInference(
+      contents = Contents.of(listOf(Content.ImageBytes(prepared), Content.Text(prompt))),
+      originalLabel = "[image ${prepared.size} B]",
+      source = "image",
+      lang = lang,
+      sourceImage = prepared,
+    )
   }
 
   /*
@@ -274,6 +300,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     originalLabel: String,
     source: String,
     lang: String,
+    sourceImage: ByteArray? = null,
   ) {
     val conv = conversation ?: run {
       _ui.value = _ui.value.copy(
@@ -344,6 +371,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                       source = source,
                       contextSnippet = sceneGist,
                       sessionId = sessionId,
+                      sourceImage = sourceImage,
                     )
                   )
                 } catch (t: Throwable) {

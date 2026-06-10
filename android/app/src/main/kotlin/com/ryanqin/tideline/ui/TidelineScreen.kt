@@ -8,6 +8,8 @@
 
 package com.ryanqin.tideline.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,10 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ryanqin.tideline.data.TranslationEntity
 import java.text.SimpleDateFormat
@@ -53,6 +60,7 @@ import java.util.Locale
 fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
   val state by viewModel.ui.collectAsState()
   val history by viewModel.history.collectAsState()
+  val context = LocalContext.current
 
   // Kick off engine load on first composition.
   LaunchedEffect(Unit) { viewModel.initEngine() }
@@ -62,6 +70,24 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
   val pickImage = rememberLauncherForActivityResult(
     ActivityResultContracts.PickVisualMedia()
   ) { uri -> if (uri != null) viewModel.translateImage(uri) }
+
+  // Phase 5a live capture: in-app viewfinder over this screen. Permission is
+  // asked lazily on the first tap; a grant opens the camera right away.
+  var showCamera by remember { mutableStateOf(false) }
+  val requestCamera = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { granted -> if (granted) showCamera = true }
+
+  if (showCamera) {
+    CameraCaptureScreen(
+      onCaptured = { bytes, rotation ->
+        showCamera = false
+        viewModel.translateCapturedImage(bytes, rotation)
+      },
+      onClose = { showCamera = false },
+    )
+    return
+  }
 
   Scaffold { innerPadding ->
     Column(
@@ -106,6 +132,19 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         enabled = state.engineState == EngineState.READY && state.sourceText.isNotBlank(),
       ) {
         Text("Translate to ${state.targetLang}")
+      }
+
+      OutlinedButton(
+        onClick = {
+          val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+          ) == PackageManager.PERMISSION_GRANTED
+          if (granted) showCamera = true else requestCamera.launch(Manifest.permission.CAMERA)
+        },
+        modifier = Modifier.fillMaxWidth(),
+        enabled = state.engineState == EngineState.READY,
+      ) {
+        Text("拍照翻译 → ${state.targetLang}")
       }
 
       OutlinedButton(

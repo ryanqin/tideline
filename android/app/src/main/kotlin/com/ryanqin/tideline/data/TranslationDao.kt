@@ -21,8 +21,18 @@ interface TranslationDao {
   @Insert
   suspend fun insert(entity: TranslationEntity): Long
 
-  @Query("SELECT * FROM translations ORDER BY id DESC LIMIT $LATEST_LIMIT")
+  // NULL out source_image in the list the UI observes: the history view only
+  // renders text, and 50 rows x a few hundred KB of JPEG per emission is real
+  // memory. Fetch a row's photo on demand instead when a detail view needs it.
+  @Query(
+    "SELECT id, original, target_lang, translated, source, context_snippet, " +
+      "session_id, NULL AS source_image, created_at " +
+      "FROM translations ORDER BY id DESC LIMIT $LATEST_LIMIT"
+  )
   fun observeLatest(): Flow<List<TranslationEntity>>
+
+  @Query("SELECT source_image FROM translations WHERE id = :id")
+  suspend fun imageFor(id: Long): ByteArray?
 
   @Query("SELECT COUNT(*) FROM translations")
   suspend fun count(): Int
