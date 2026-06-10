@@ -33,15 +33,20 @@
   const srcGlyph = (s) => SRC_GLYPH[s] || SRC_GLYPH.text;
   const srcLabel = (s) => { const k = { image: "src_image", audio: "src_audio", text: "src_text" }[s]; return k ? t(k) : ""; };
 
-  // One lived moment in the stack behind a card (DESIGN §3.2). A moment with a
-  // captured scene leads with it; a silent one keeps only its quiet when/how on
-  // one compact line, so a card of silent moments stays a tidy log.
+  // One lived moment in the stack behind a card (DESIGN §3.2). A moment with
+  // captured material leads with it — the photo it was read from, then the
+  // scene line; a silent one keeps only its quiet when/how on one compact
+  // line, so a card of silent moments stays a tidy log.
+  const capturePhoto = (m, cls) => (m.has_image && m.id != null)
+    ? `<img class="${cls}" src="/api/translations/${Number(m.id)}/image" alt="" loading="lazy">`
+    : "";
   function momentRow(m) {
     const meta = [humanTime(m.at), srcLabel(m.source)].filter(Boolean).map(esc).join('<span class="dot">·</span>');
-    if (!m.context) {
+    const photo = capturePhoto(m, "moment-photo");
+    if (!m.context && !photo) {
       return `<div class="moment moment--compact"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-meta">${meta || esc(t("no_context"))}</span></div>`;
     }
-    return `<div class="moment"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-body"><span class="moment-context">${esc(m.context)}</span>${meta ? `<span class="moment-meta">${meta}</span>` : ""}</span></div>`;
+    return `<div class="moment"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-body">${photo}${m.context ? `<span class="moment-context">${esc(m.context)}</span>` : ""}${meta ? `<span class="moment-meta">${meta}</span>` : ""}</span></div>`;
   }
 
   // glass → a card: the word, the direction, and the stack of lived moments it
@@ -141,8 +146,15 @@
           <button type="button" class="grade-got" data-session-id="${esc(c.session_id)}">${esc(t("review_got"))}</button>
         </div>`
       : "";
+    // The scene's own photo (when the capture kept one) leads the recall —
+    // you see the place again and reach for its words, instead of recalling
+    // against a bare list. One photo stands for the occasion; the per-word
+    // moment stacks still hold each capture's own.
+    const photoMember = (c.members || []).find((m) => m.has_image && m.id != null);
+    const scenePhoto = photoMember ? capturePhoto(photoMember, "theme-photo") : "";
     return `<div class="theme">
         <h2>${esc(c.title || "")}</h2>
+        ${scenePhoto}
         <div class="theme-tools"><button type="button" class="reveal-all">${esc(t("reveal_all"))}</button></div>
         <div class="members">${rows}</div>
         ${grade}

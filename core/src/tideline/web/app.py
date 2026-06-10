@@ -239,7 +239,7 @@ def _fetch_clusters(
         members = conn.execute(
             """
             SELECT t.original, t.translated, t.context_snippet, t.source_lang,
-                   t.session_id
+                   t.session_id, t.id, t.source_image IS NOT NULL
             FROM cluster_members cm
             JOIN translations t ON t.id = cm.translation_id
             WHERE cm.cluster_id = ?
@@ -257,9 +257,12 @@ def _fetch_clusters(
             "title": title,
             "session_id": next(iter(session_ids)) if len(session_ids) == 1 else None,
             "members": [
+                # `id`/`has_image` point recall back at the captured material
+                # (the photo behind /api/translations/{id}/image), so opening
+                # a scene can show what was actually lived, not just words.
                 {"original": o, "translated": tr, "context": ctx or "",
-                 "source_lang": sl}
-                for o, tr, ctx, sl, _sid in members
+                 "source_lang": sl, "id": tid, "has_image": bool(img)}
+                for o, tr, ctx, sl, _sid, tid, img in members
             ],
         })
     return result
@@ -452,7 +455,8 @@ def create_app(
                  strength, due_at, source_lang) in rows:
                 moments = conn.execute(
                     """
-                    SELECT t.translated, t.source, t.context_snippet, t.created_at
+                    SELECT t.translated, t.source, t.context_snippet, t.created_at,
+                           t.id, t.source_image IS NOT NULL
                     FROM candidate_evidence ce
                     JOIN translations t ON t.id = ce.translation_id
                     WHERE ce.candidate_id = ?
@@ -472,9 +476,14 @@ def create_app(
                     # both (it shows the whole deck).
                     "strength": strength,
                     "due": due_at is None or due_at <= now_iso,
+                    # Each moment carries its translation id + whether that
+                    # capture kept a photo, so the sheet can show the lived
+                    # material itself (/api/translations/{id}/image), not just
+                    # describe it (§3.2 — the moment is recall material).
                     "moments": [
-                        {"translated": m_tr, "source": m_src or "", "context": m_ctx or "", "at": m_at}
-                        for m_tr, m_src, m_ctx, m_at in moments
+                        {"translated": m_tr, "source": m_src or "", "context": m_ctx or "",
+                         "at": m_at, "id": m_id, "has_image": bool(m_img)}
+                        for m_tr, m_src, m_ctx, m_at, m_id, m_img in moments
                     ],
                 })
             return result

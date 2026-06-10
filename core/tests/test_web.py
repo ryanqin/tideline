@@ -891,3 +891,48 @@ def test_translation_image_is_served_as_recall_material(tmp_path):
     assert c.get(f"/api/translations/{txt_id}/image").status_code == 404
     # An unknown translation id → 404.
     assert c.get("/api/translations/999999/image").status_code == 404
+
+
+def test_card_moments_point_back_at_their_captured_material(tmp_path):
+    """Recall shows the lived material itself: every moment carries its
+    translation id plus whether that capture kept a photo, so the sheet can
+    render /api/translations/{id}/image for image moments and stay quiet for
+    text/audio ones."""
+    from tideline.seed import seed_db
+    from tideline.tools import init_all_tables
+
+    db = str(tmp_path / "m.db")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    seed_db(conn)
+    conn.close()
+
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    moments = [m for card in c.get("/api/cards").json() for m in card["moments"]]
+    assert moments and all("id" in m and "has_image" in m for m in moments)
+    with_photo = next(m for m in moments if m["source"] == "image")
+    assert with_photo["has_image"] is True
+    # The pointer resolves to servable bytes, not just a flag.
+    assert c.get(f"/api/translations/{with_photo['id']}/image").status_code == 200
+    silent = next(m for m in moments if m["source"] != "image")
+    assert silent["has_image"] is False
+
+
+def test_theme_members_point_back_at_their_captured_material(tmp_path):
+    """A scene's members carry the same capture pointers, so opening a theme
+    can lead with the photo of the occasion — see the place again, then reach
+    for its words."""
+    from tideline.seed import seed_db
+    from tideline.tools import init_all_tables
+
+    db = str(tmp_path / "th.db")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    seed_db(conn)
+    conn.close()
+
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    members = [m for th in c.get("/api/themes").json() for m in th["members"]]
+    assert members and all("id" in m and "has_image" in m for m in members)
+    photo_id = next(m["id"] for m in members if m["has_image"])
+    assert c.get(f"/api/translations/{photo_id}/image").status_code == 200
