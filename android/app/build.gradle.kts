@@ -86,5 +86,11 @@ dependencies {
   // needed so persisted recall photos aren't stored sideways.
   implementation(libs.androidx.exifinterface)
 
+  // Geometry source for photo-word masks (annotation overlays): on-device
+  // OCR supplies the pixel boxes of words the LLM has already read and
+  // translated - ML Kit owns WHERE, the model owns WHAT (engineering
+  // carries, model garnishes). Latin recognizer only for now.
+  implementation(libs.mlkit.text.recognition)
+
   testImplementation(libs.junit)
 }

@@ -16,11 +16,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
+import androidx.lifecycle.ViewModelProvider
 import com.ryanqin.tideline.ui.TidelineScreen
+import com.ryanqin.tideline.ui.TidelineTranslateViewModel
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    // Dev loop (debug builds): a file name in the app's external files dir,
+    // passed as an intent extra, runs through the image→translation pipeline
+    // once the engine is ready — drives image-path iteration over adb without
+    // anyone pointing a camera:
+    //   adb shell am start -n com.ryanqin.tideline/.MainActivity \
+    //     --es tideline.debug_image tideline_test.jpg
+    val debuggable =
+      (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    if (debuggable) {
+      intent?.getStringExtra("tideline.debug_image")?.let { name ->
+        // Same ViewModelStoreOwner as the composable's viewModel() — one VM.
+        ViewModelProvider(this)[TidelineTranslateViewModel::class.java]
+          .queueDebugImage(name)
+      }
+    }
     setContent {
       val ctx = LocalContext.current
       val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

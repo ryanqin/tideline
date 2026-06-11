@@ -25,13 +25,21 @@ import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.SamplerConfig
+import android.graphics.BitmapFactory
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.intelligence.ImageReply
 import com.ryanqin.tideline.intelligence.parseImageReply
 import com.ryanqin.tideline.media.exifRotationDegrees
+import com.ryanqin.tideline.media.matchTermBoxes
+import com.ryanqin.tideline.media.ocrWords
 import com.ryanqin.tideline.media.prepareCaptureImage
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -101,6 +109,33 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   private var engine: Engine? = null
   private var conversation: Conversation? = null
 
+  // Geometry source for photo-word masks: OCR owns WHERE a word sits in the
+  // capture (the VLM's self-reported boxes probe as spatial hallucination),
+  // the LLM keeps owning WHAT it says and means.
+  private val textRecognizer by lazy {
+    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+  }
+
+  /** OCR the prepared capture and log each term's normalized box (comparison
+   * phase: geometry is logged, not yet stored — storage lands once the
+   * source is settled). */
+  private suspend fun logTermGeometry(prepared: ByteArray, terms: List<ImageReply.Term>) {
+    try {
+      val bitmap = BitmapFactory.decodeByteArray(prepared, 0, prepared.size) ?: return
+      val words = ocrWords(textRecognizer, bitmap)
+      val boxes = matchTermBoxes(terms.map { it.original }, words, bitmap.width, bitmap.height)
+      val json = JSONObject()
+      boxes.forEach { (term, box) -> json.put(term, JSONArray(box)) }
+      Log.i(
+        TAG,
+        "BENCH ocr_words=${words.size} matched=${boxes.size}/${terms.size} boxes=$json"
+      )
+      bitmap.recycle()
+    } catch (t: Throwable) {
+      Log.e(TAG, "Term geometry failed", t)
+    }
+  }
+
   fun initEngine() {
     if (_ui.value.engineState != EngineState.IDLE) return
     _ui.value = _ui.value.copy(engineState = EngineState.INITIALIZING, errorMessage = null)
@@ -145,6 +180,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         conversation = c
         Log.d(TAG, "Engine ready")
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
+        maybeRunDebugImage()
       } catch (t: Throwable) {
         Log.e(TAG, "Engine init failed", t)
         _ui.value = _ui.value.copy(
@@ -219,6 +255,39 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     if (!beginImageInference()) return
     viewModelScope.launch(Dispatchers.IO) {
       runImageInference(bytes, rotationDegrees)
+    }
+  }
+
+  /*
+   * Dev loop: a fixed image in the app's external files dir runs through the
+   * EXACT image→translation pipeline as soon as the engine is ready — so the
+   * image path can be iterated over adb without anyone pointing a camera
+   * (the camera→translation leg is already verified; what iterates now is
+   * image→translation). Queued because the intent arrives before init ends.
+   */
+  private var pendingDebugImage: String? = null
+
+  fun queueDebugImage(fileName: String) {
+    pendingDebugImage = fileName
+    maybeRunDebugImage()
+  }
+
+  private fun maybeRunDebugImage() {
+    val name = pendingDebugImage ?: return
+    if (_ui.value.engineState != EngineState.READY) return
+    pendingDebugImage = null
+    if (!beginImageInference()) return
+    viewModelScope.launch(Dispatchers.IO) {
+      val file = java.io.File(getApplication<Application>().getExternalFilesDir(null), name)
+      val bytes = try {
+        file.readBytes()
+      } catch (t: Throwable) {
+        Log.e(TAG, "Debug image unreadable: $file", t)
+        _ui.value = _ui.value.copy(engineState = EngineState.READY)
+        return@launch
+      }
+      Log.i(TAG, "BENCH debug_image=$name size=${bytes.size}")
+      runImageInference(bytes, exifRotationDegrees(bytes))
     }
   }
 
@@ -321,6 +390,99 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
    * triple (start / first_token / done), and persists the finished row tagged
    * with `source`. Keeping one body means text and image stay strictly in sync.
    */
+  /*
+   * Format-compliance retry, engineering-style: when an image pass reads the
+   * text fine but skips the TERM lines (single-shot compliance on this quant
+   * is photo-dependent — one capture went 2/2 with terms, another 0/3), ask
+   * ONCE more in the same conversation. The image is already in context, so
+   * the follow-up is text-only (~2 s, no re-encode) and single-task, which
+   * complies far better than the three-part ask. Fail-soft: no terms after
+   * the retry → the plain summary row sediments as before.
+   */
+  private fun dispatchTermsRetry(
+    translated: String,
+    sceneGist: String?,
+    originalLabel: String,
+    lang: String,
+    sourceImage: ByteArray,
+  ) {
+    val conv = conversation ?: run { finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList()); return }
+    val acc = StringBuilder()
+    val prompt =
+      "Now list 1-6 key words you can see in that image, each on its own " +
+        "line exactly like this example:\nTERM: Exit = $lang translation of Exit"
+    try {
+      conv.sendMessageAsync(
+        Contents.of(listOf(Content.Text(prompt))),
+        object : MessageCallback {
+          override fun onMessage(message: Message) { acc.append(message.toString()) }
+          override fun onDone() {
+            val terms = parseImageReply(acc.toString().trim()).terms
+            Log.i(TAG, "BENCH terms_retry got=${terms.size}")
+            finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, terms)
+          }
+          override fun onError(throwable: Throwable) {
+            Log.e(TAG, "Terms retry failed", throwable)
+            finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList())
+          }
+        },
+        emptyMap(),
+      )
+    } catch (t: Throwable) {
+      Log.e(TAG, "Terms retry send failed", t)
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList())
+    }
+  }
+
+  /** Final leg of an image pass: flip READY, sediment rows, log geometry. */
+  private fun finishImagePersist(
+    translated: String,
+    sceneGist: String?,
+    originalLabel: String,
+    lang: String,
+    sourceImage: ByteArray?,
+    terms: List<ImageReply.Term>,
+  ) {
+    _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
+    val rows = if (terms.isNotEmpty()) {
+      terms.map { term ->
+        TranslationEntity(
+          original = term.original,
+          targetLang = lang,
+          translated = term.translated,
+          source = "image",
+          contextSnippet = sceneGist,
+          sessionId = sessionId,
+          sourceImage = sourceImage,
+        )
+      }
+    } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
+      listOf(
+        TranslationEntity(
+          original = originalLabel,
+          targetLang = lang,
+          translated = translated,
+          source = "image",
+          contextSnippet = sceneGist,
+          sessionId = sessionId,
+          sourceImage = sourceImage,
+        )
+      )
+    } else emptyList()
+    if (rows.isNotEmpty()) {
+      viewModelScope.launch(Dispatchers.IO) {
+        try {
+          rows.forEach { dao.insert(it) }
+        } catch (t: Throwable) {
+          Log.e(TAG, "Persist translation failed", t)
+        }
+        if (sourceImage != null && terms.isNotEmpty()) {
+          logTermGeometry(sourceImage, terms)
+        }
+      }
+    }
+  }
+
   private fun dispatchInference(
     contents: Contents,
     originalLabel: String,
@@ -370,7 +532,6 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             // (gist null, no terms).
             val reply = parseImageReply(raw)
             val translated = reply.translated
-            _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
             Log.i(TAG, "BENCH scene_gist=\"${reply.sceneGist}\" terms=${reply.terms.size}")
             val tDone = System.currentTimeMillis()
             val total = tDone - tStart
@@ -382,45 +543,38 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
               "BENCH done total_ms=$total gen_ms=$genMs out_chars=$outChars " +
                 "approx_tok_per_s=${"%.2f".format(tokPerSec)} out=\"$translated\""
             )
-            // The words are the sediment: with parsed TERMS each pair lands as
-            // its own row — original = the foreign word actually met — every
-            // row carrying the scene gist AND the photo (the per-word recall
-            // material the museum's moment stacks render). Without terms, fall
-            // back to the single summary row so nothing regresses.
-            val rows = if (reply.terms.isNotEmpty()) {
-              reply.terms.map { term ->
-                TranslationEntity(
-                  original = term.original,
-                  targetLang = lang,
-                  translated = term.translated,
-                  source = source,
-                  contextSnippet = reply.sceneGist,
-                  sessionId = sessionId,
-                  sourceImage = sourceImage,
-                )
+            // The words are the sediment. An image pass that read text but
+            // skipped the TERM lines gets ONE text-only follow-up in the same
+            // conversation (the image is still in context) before settling for
+            // the summary row; the translation is already on screen while the
+            // retry runs. Text/audio keep the original single-row path.
+            if (source == "image" && sourceImage != null) {
+              if (reply.terms.isEmpty() &&
+                translated.isNotEmpty() && !translated.equals("NONE", ignoreCase = true)
+              ) {
+                _ui.value = _ui.value.copy(translation = translated)
+                dispatchTermsRetry(translated, reply.sceneGist, originalLabel, lang, sourceImage)
+              } else {
+                finishImagePersist(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.terms)
               }
-            } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
-              // The length gate keeps a degeneration loop (the model repeating
-              // itself for thousands of characters) out of the drawer — a real
-              // translation of a photographed sign/menu fits well within it.
-              listOf(
-                TranslationEntity(
-                  original = originalLabel,
-                  targetLang = lang,
-                  translated = translated,
-                  source = source,
-                  contextSnippet = reply.sceneGist,
-                  sessionId = sessionId,
-                  sourceImage = sourceImage,
-                )
-              )
-            } else emptyList()
-            if (rows.isNotEmpty()) {
-              viewModelScope.launch(Dispatchers.IO) {
-                try {
-                  rows.forEach { dao.insert(it) }
-                } catch (t: Throwable) {
-                  Log.e(TAG, "Persist translation failed", t)
+            } else {
+              _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
+              if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
+                viewModelScope.launch(Dispatchers.IO) {
+                  try {
+                    dao.insert(
+                      TranslationEntity(
+                        original = originalLabel,
+                        targetLang = lang,
+                        translated = translated,
+                        source = source,
+                        contextSnippet = reply.sceneGist,
+                        sessionId = sessionId,
+                      )
+                    )
+                  } catch (t: Throwable) {
+                    Log.e(TAG, "Persist translation failed", t)
+                  }
                 }
               }
             }
@@ -448,6 +602,9 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   override fun onCleared() {
     try {
       conversation?.close()
+    } catch (_: Throwable) {}
+    try {
+      textRecognizer.close()
     } catch (_: Throwable) {}
     conversation = null
     engine = null
