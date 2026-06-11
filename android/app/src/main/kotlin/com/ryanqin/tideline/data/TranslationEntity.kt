@@ -31,5 +31,9 @@ data class TranslationEntity(
   // (§3.2); null for text/audio captures.
   @ColumnInfo(name = "source_image", typeAffinity = ColumnInfo.BLOB)
   val sourceImage: ByteArray? = null,
+  // WHERE this word sits in its photo: JSON "[x0,y0,x1,y1]" normalized to
+  // the stored image (OCR-matched). Feeds the toggleable photo-word mask;
+  // null when OCR couldn't find the word (mask just has nothing to anchor).
+  @ColumnInfo(name = "source_region") val sourceRegion: String? = null,
   @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
 )

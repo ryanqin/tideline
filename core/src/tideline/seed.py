@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import random
 import sqlite3
 import struct
@@ -283,6 +284,19 @@ def _session_color(session_id: str) -> tuple[int, int, int]:
     return (150 + h[0] % 95, 110 + h[1] % 90, 80 + h[2] % 80)
 
 
+def _pseudo_region(session_id: str, original: str) -> str:
+    """Deterministic normalized [x0,y0,x1,y1] box for a seed word — stands in
+    for the device OCR's real geometry so the mask UI is demoable offline."""
+    h = hashlib.sha1(f"{session_id}:{original}".encode()).digest()
+    x0 = 0.06 + (h[0] / 255) * 0.40
+    y0 = 0.10 + (h[1] / 255) * 0.55
+    w = 0.28 + (h[2] / 255) * 0.22
+    hgt = 0.08 + (h[3] / 255) * 0.05
+    return json.dumps(
+        [round(x0, 4), round(y0, 4), round(min(x0 + w, 0.94), 4), round(min(y0 + hgt, 0.94), 4)]
+    )
+
+
 def generate_entries(
     seed: int = 42,
     now: datetime | None = None,
@@ -291,8 +305,9 @@ def generate_entries(
 
     Each tuple is
     ``(original, target_lang, translated, source_lang, source,
-    context_snippet, session_id, created_at_iso, source_image)`` — the last is
-    the capture's photo bytes for image sessions, None for text / audio.
+    context_snippet, session_id, created_at_iso, source_image,
+    source_region)`` — the photo bytes and the word's normalized
+    [x0,y0,x1,y1] box in it for image sessions, None for text / audio.
 
     A term's N copies are distributed round-robin across its scenario's
     capture sessions, so a frequent term naturally lands in several
@@ -355,6 +370,14 @@ def generate_entries(
                         if session["source"] == "image"
                         else None
                     )
+                    # Where the word sits in its photo (real captures: device
+                    # OCR; here a deterministic pseudo-box on the swatch) —
+                    # anchors the toggleable photo-word mask in the UI.
+                    source_region = (
+                        _pseudo_region(session_id, original)
+                        if session["source"] == "image"
+                        else None
+                    )
                     out.append(
                         (
                             original,
@@ -366,6 +389,7 @@ def generate_entries(
                             session_id,
                             ts,
                             source_image,
+                            source_region,
                         )
                     )
 
@@ -379,8 +403,8 @@ def seed_db(conn: sqlite3.Connection, seed: int = 42) -> int:
     conn.executemany(
         "INSERT INTO translations "
         "(original, target_lang, translated, source_lang, source, "
-        "context_snippet, session_id, created_at, source_image) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "context_snippet, session_id, created_at, source_image, source_region) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         entries,
     )
     conn.commit()

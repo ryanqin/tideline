@@ -116,23 +116,27 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
   }
 
-  /** OCR the prepared capture and log each term's normalized box (comparison
-   * phase: geometry is logged, not yet stored — storage lands once the
-   * source is settled). */
-  private suspend fun logTermGeometry(prepared: ByteArray, terms: List<ImageReply.Term>) {
-    try {
-      val bitmap = BitmapFactory.decodeByteArray(prepared, 0, prepared.size) ?: return
+  /** OCR the prepared capture and return each term's normalized box as the
+   * JSON string the drawer stores ("[x0,y0,x1,y1]"); terms the OCR never saw
+   * are absent. Fail-soft: any error means no geometry, never no row. */
+  private suspend fun termGeometry(
+    prepared: ByteArray,
+    terms: List<ImageReply.Term>,
+  ): Map<String, String> {
+    return try {
+      val bitmap = BitmapFactory.decodeByteArray(prepared, 0, prepared.size) ?: return emptyMap()
       val words = ocrWords(textRecognizer, bitmap)
       val boxes = matchTermBoxes(terms.map { it.original }, words, bitmap.width, bitmap.height)
-      val json = JSONObject()
-      boxes.forEach { (term, box) -> json.put(term, JSONArray(box)) }
       Log.i(
         TAG,
-        "BENCH ocr_words=${words.size} matched=${boxes.size}/${terms.size} boxes=$json"
+        "BENCH ocr_words=${words.size} matched=${boxes.size}/${terms.size} " +
+          "boxes=${JSONObject(boxes.mapValues { JSONArray(it.value) })}"
       )
       bitmap.recycle()
+      boxes.mapValues { JSONArray(it.value).toString() }
     } catch (t: Throwable) {
       Log.e(TAG, "Term geometry failed", t)
+      emptyMap()
     }
   }
 
@@ -444,41 +448,42 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     terms: List<ImageReply.Term>,
   ) {
     _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
-    val rows = if (terms.isNotEmpty()) {
-      terms.map { term ->
-        TranslationEntity(
-          original = term.original,
-          targetLang = lang,
-          translated = term.translated,
-          source = "image",
-          contextSnippet = sceneGist,
-          sessionId = sessionId,
-          sourceImage = sourceImage,
-        )
-      }
-    } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
-      listOf(
-        TranslationEntity(
-          original = originalLabel,
-          targetLang = lang,
-          translated = translated,
-          source = "image",
-          contextSnippet = sceneGist,
-          sessionId = sessionId,
-          sourceImage = sourceImage,
-        )
-      )
-    } else emptyList()
-    if (rows.isNotEmpty()) {
-      viewModelScope.launch(Dispatchers.IO) {
-        try {
-          rows.forEach { dao.insert(it) }
-        } catch (t: Throwable) {
-          Log.e(TAG, "Persist translation failed", t)
+    viewModelScope.launch(Dispatchers.IO) {
+      // Geometry first, so each vocabulary row carries WHERE its word sits in
+      // the photo (the toggleable mask's anchor) alongside the photo itself.
+      val regions = if (sourceImage != null && terms.isNotEmpty()) {
+        termGeometry(sourceImage, terms)
+      } else emptyMap()
+      val rows = if (terms.isNotEmpty()) {
+        terms.map { term ->
+          TranslationEntity(
+            original = term.original,
+            targetLang = lang,
+            translated = term.translated,
+            source = "image",
+            contextSnippet = sceneGist,
+            sessionId = sessionId,
+            sourceImage = sourceImage,
+            sourceRegion = regions[term.original],
+          )
         }
-        if (sourceImage != null && terms.isNotEmpty()) {
-          logTermGeometry(sourceImage, terms)
-        }
+      } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
+        listOf(
+          TranslationEntity(
+            original = originalLabel,
+            targetLang = lang,
+            translated = translated,
+            source = "image",
+            contextSnippet = sceneGist,
+            sessionId = sessionId,
+            sourceImage = sourceImage,
+          )
+        )
+      } else emptyList()
+      try {
+        rows.forEach { dao.insert(it) }
+      } catch (t: Throwable) {
+        Log.e(TAG, "Persist translation failed", t)
       }
     }
   }

@@ -914,8 +914,12 @@ def test_card_moments_point_back_at_their_captured_material(tmp_path):
     assert with_photo["has_image"] is True
     # The pointer resolves to servable bytes, not just a flag.
     assert c.get(f"/api/translations/{with_photo['id']}/image").status_code == 200
+    # The word's box in its photo (mask anchor): four normalized floats.
+    assert isinstance(with_photo["region"], list) and len(with_photo["region"]) == 4
+    assert all(0.0 <= v <= 1.0 for v in with_photo["region"])
     silent = next(m for m in moments if m["source"] != "image")
     assert silent["has_image"] is False
+    assert silent["region"] is None
 
 
 def test_theme_members_point_back_at_their_captured_material(tmp_path):
@@ -936,3 +940,5 @@ def test_theme_members_point_back_at_their_captured_material(tmp_path):
     assert members and all("id" in m and "has_image" in m for m in members)
     photo_id = next(m["id"] for m in members if m["has_image"])
     assert c.get(f"/api/translations/{photo_id}/image").status_code == 200
+    with_photo = next(m for m in members if m["has_image"])
+    assert isinstance(with_photo["region"], list) and len(with_photo["region"]) == 4

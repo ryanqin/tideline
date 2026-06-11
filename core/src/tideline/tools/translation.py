@@ -36,6 +36,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             source TEXT,
             context_snippet TEXT,
             source_image BLOB,
+            source_region TEXT,
             session_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -52,6 +53,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         # The captured source image (a menu photo / sign), kept as recall
         # material — never discarded after the VLM reads it (§3.2).
         ("source_image", "ALTER TABLE translations ADD COLUMN source_image BLOB"),
+        # Where the word sits in its photo: JSON "[x0,y0,x1,y1]" normalized to
+        # the stored image (device OCR fills it). Anchors the photo-word mask.
+        ("source_region", "ALTER TABLE translations ADD COLUMN source_region TEXT"),
     ):
         if column not in existing:
             conn.execute(ddl)

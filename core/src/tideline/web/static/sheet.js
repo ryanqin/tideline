@@ -40,9 +40,27 @@
   const capturePhoto = (m, cls) => (m.has_image && m.id != null)
     ? `<img class="${cls}" src="/api/translations/${Number(m.id)}/image" alt="" loading="lazy">`
     : "";
+
+  // A photo that knows WHERE its word sits gets a mask over that spot — the
+  // full form of recall-by-photo: see the place, the word itself covered,
+  // reach for it, tap to reveal. The corner chip hides the masks entirely
+  // (plain photo), so the annotation is there when wanted, gone when not.
+  function photoFigure(m, cls) {
+    const photo = capturePhoto(m, cls);
+    if (!photo) return "";
+    const r = Array.isArray(m.region) && m.region.length === 4 ? m.region.map(Number) : null;
+    if (!r || r.some(isNaN)) return photo;
+    const pct = (v) => (Math.max(0, Math.min(1, v)) * 100).toFixed(2) + "%";
+    const mask = `<button type="button" class="photo-mask" aria-label="Reveal the word in the photo"
+        style="left:${pct(r[0])};top:${pct(r[1])};width:${pct(r[2] - r[0])};height:${pct(r[3] - r[1])}"
+        title="${esc(t("tap_reveal"))}"></button>`;
+    const chip = `<button type="button" class="mask-toggle" aria-label="Toggle photo masks">${esc(t("photo_mask"))}</button>`;
+    return `<span class="photo-frame">${photo}${mask}${chip}</span>`;
+  }
+
   function momentRow(m) {
     const meta = [humanTime(m.at), srcLabel(m.source)].filter(Boolean).map(esc).join('<span class="dot">·</span>');
-    const photo = capturePhoto(m, "moment-photo");
+    const photo = photoFigure(m, "moment-photo");
     if (!m.context && !photo) {
       return `<div class="moment moment--compact"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-meta">${meta || esc(t("no_context"))}</span></div>`;
     }
@@ -228,6 +246,16 @@
           close();
           if (onReview) onReview(reviewed);   // the tide reschedules it away
         } catch (err) { grade.disabled = false; }
+        return;
+      }
+      const photoMask = e.target.closest(".photo-mask");
+      if (photoMask) {
+        photoMask.classList.toggle("revealed");
+        return;
+      }
+      const maskToggle = e.target.closest(".mask-toggle");
+      if (maskToggle) {
+        maskToggle.closest(".photo-frame").classList.toggle("masks-off");
         return;
       }
       const revealAll = e.target.closest(".reveal-all");

@@ -9,6 +9,7 @@ async runtime.
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -222,6 +223,23 @@ def _fetch_candidates(
     ]
 
 
+def _parse_region(raw: str | None) -> list[float] | None:
+    """A stored word box ("[x0,y0,x1,y1]" normalized) as a list, or None —
+    malformed JSON degrades to no mask, never to an error."""
+    if not raw:
+        return None
+    try:
+        box = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(box, list) and len(box) == 4:
+        try:
+            return [float(v) for v in box]
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def _fetch_clusters(
     conn: sqlite3.Connection, vote_type: str
 ) -> list[dict[str, Any]]:
@@ -239,7 +257,7 @@ def _fetch_clusters(
         members = conn.execute(
             """
             SELECT t.original, t.translated, t.context_snippet, t.source_lang,
-                   t.session_id, t.id, t.source_image IS NOT NULL
+                   t.session_id, t.id, t.source_image IS NOT NULL, t.source_region
             FROM cluster_members cm
             JOIN translations t ON t.id = cm.translation_id
             WHERE cm.cluster_id = ?
@@ -261,8 +279,9 @@ def _fetch_clusters(
                 # (the photo behind /api/translations/{id}/image), so opening
                 # a scene can show what was actually lived, not just words.
                 {"original": o, "translated": tr, "context": ctx or "",
-                 "source_lang": sl, "id": tid, "has_image": bool(img)}
-                for o, tr, ctx, sl, _sid, tid, img in members
+                 "source_lang": sl, "id": tid, "has_image": bool(img),
+                 "region": _parse_region(region)}
+                for o, tr, ctx, sl, _sid, tid, img, region in members
             ],
         })
     return result
@@ -456,7 +475,7 @@ def create_app(
                 moments = conn.execute(
                     """
                     SELECT t.translated, t.source, t.context_snippet, t.created_at,
-                           t.id, t.source_image IS NOT NULL
+                           t.id, t.source_image IS NOT NULL, t.source_region
                     FROM candidate_evidence ce
                     JOIN translations t ON t.id = ce.translation_id
                     WHERE ce.candidate_id = ?
@@ -482,8 +501,9 @@ def create_app(
                     # describe it (§3.2 — the moment is recall material).
                     "moments": [
                         {"translated": m_tr, "source": m_src or "", "context": m_ctx or "",
-                         "at": m_at, "id": m_id, "has_image": bool(m_img)}
-                        for m_tr, m_src, m_ctx, m_at, m_id, m_img in moments
+                         "at": m_at, "id": m_id, "has_image": bool(m_img),
+                         "region": _parse_region(m_region)}
+                        for m_tr, m_src, m_ctx, m_at, m_id, m_img, m_region in moments
                     ],
                 })
             return result

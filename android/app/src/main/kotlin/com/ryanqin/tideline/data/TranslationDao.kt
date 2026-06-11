@@ -26,7 +26,7 @@ interface TranslationDao {
   // memory. Fetch a row's photo on demand instead when a detail view needs it.
   @Query(
     "SELECT id, original, target_lang, translated, source, context_snippet, " +
-      "session_id, NULL AS source_image, created_at " +
+      "session_id, NULL AS source_image, source_region, created_at " +
       "FROM translations ORDER BY id DESC LIMIT $LATEST_LIMIT"
   )
   fun observeLatest(): Flow<List<TranslationEntity>>

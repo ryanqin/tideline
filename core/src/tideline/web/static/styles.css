@@ -700,6 +700,52 @@ body.shore-open { overflow: hidden; }
   margin-bottom: 0.55rem;
 }
 
+/* A photo that knows where its word sits: the frame anchors a mask over that
+   spot (recall-by-photo, the word itself covered) and a corner chip that
+   hides the masks for a plain look. Uncropped — the mask's normalized box
+   must map 1:1 onto displayed pixels, so no object-fit here. */
+.photo-frame {
+  position: relative;
+  display: block;
+  margin-bottom: 0.55rem;
+}
+.photo-frame .moment-photo {
+  max-height: none;
+  object-fit: unset;
+  margin-bottom: 0;
+}
+.photo-mask {
+  position: absolute;
+  background: var(--surface-sink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(60, 36, 20, 0.18);
+  padding: 0;
+  cursor: pointer;
+}
+.photo-mask:hover { border-color: var(--accent); transform: none; background: var(--surface-sink); }
+.photo-mask.revealed {
+  background: transparent;
+  box-shadow: none;
+  border: 2px dashed var(--accent-soft);
+}
+.photo-mask.revealed:hover { border-color: var(--accent); }
+.mask-toggle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(255, 250, 240, 0.88);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: none;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.mask-toggle:hover { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
+.photo-frame.masks-off .photo-mask { display: none; }
+
 /* A small warm mark for how the moment was caught: seen / heard / looked up. */
 .moment-glyph {
   flex: none;
