@@ -68,6 +68,35 @@ class ImageReplyTest {
   }
 
   @Test
+  fun `line-per-term shape parses and stays out of the translation`() {
+    val reply = parseImageReply(
+      "TRANSLATION: 高级酒精消毒湿巾\n" +
+        "SCENE: 酒精湿巾包装\n" +
+        "TERM: ALCOHOL = 酒精\n" +
+        "TERM: HAND SANITIZING WIPES = 手部消毒湿巾"
+    )
+    assertEquals("高级酒精消毒湿巾", reply.translated)
+    assertEquals("酒精湿巾包装", reply.sceneGist)
+    assertEquals(
+      listOf(
+        ImageReply.Term("ALCOHOL", "酒精"),
+        ImageReply.Term("HAND SANITIZING WIPES", "手部消毒湿巾"),
+      ),
+      reply.terms,
+    )
+  }
+
+  @Test
+  fun `term lines without a scene marker do not pollute the translation`() {
+    val reply = parseImageReply(
+      "TRANSLATION: 出口在右边\nTERM: Exit = 出口"
+    )
+    assertEquals("出口在右边", reply.translated)
+    assertNull(reply.sceneGist)
+    assertEquals(listOf(ImageReply.Term("Exit", "出口")), reply.terms)
+  }
+
+  @Test
   fun `echoed format spec is rejected, not stored as a term`() {
     val reply = parseImageReply(
       "TRANSLATION: x\nSCENE: y\nTERMS: original=translation | 駅=车站 | the original word=译文"

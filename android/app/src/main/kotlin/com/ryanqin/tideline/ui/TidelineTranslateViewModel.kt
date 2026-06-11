@@ -62,6 +62,10 @@ private const val DEFAULT_TOP_P = 0.95
 private const val DEFAULT_TEMPERATURE = 1.0
 private const val DEFAULT_MAX_TOKENS = 4000
 
+// A fallback summary row longer than this is a degeneration loop, not a
+// translation — don't let it sediment.
+private const val MAX_PERSIST_CHARS = 800
+
 enum class EngineState { IDLE, INITIALIZING, READY, INFERRING, ERROR }
 
 data class TidelineUiState(
@@ -251,17 +255,27 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
       )
       return
     }
-    // Third line TERMS = the emergence loop's feed: each original=translation
-    // pair becomes its own drawer row (the shape promotion/clustering reads),
-    // instead of one unpromotable "[image N B]" placeholder. TERMS comes LAST
-    // so a partial/garbled tail degrades the vocabulary, never the
-    // translation the user is waiting on.
+    // TERM lines = the emergence loop's feed: each original=translation pair
+    // becomes its own drawer row (the shape promotion/clustering reads),
+    // instead of one unpromotable "[image N B]" placeholder. They come LAST so
+    // a garbled tail degrades the vocabulary, never the translation the user
+    // is waiting on. One TERM per line, deliberately NO "|" separator: the
+    // |-spec bled into TRANSLATION ("x | y | z" lists) and that rhythm is a
+    // repetition attractor on litertlm E2B — it looped the same words for
+    // ~5400 chars / 189 s and never reached SCENE (probe: terms_prompt_probe,
+    // line shape 5/5 with natural-sentence translations, |-shape degenerated).
+    // The literal example line matters: the on-device quant dropped the
+    // "TERM:" prefix and the "= translation" half when given only a format
+    // description (it answered bare word lines) — a concrete sample anchors
+    // the shape far harder than a spec for a small model.
     val prompt =
-      "Look at this image and reply in exactly three lines:\n" +
-        "TRANSLATION: all visible text translated to $lang (write NONE if there is no text)\n" +
+      "Look at this image and reply with these lines:\n" +
+        "TRANSLATION: all visible text translated to $lang, as one natural " +
+        "sentence or phrase (write NONE if there is no text)\n" +
         "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects\n" +
-        "TERMS: the 1-6 most useful words or short phrases from the image, " +
-        "each as original=translation, separated by | (write NONE if there is no text)"
+        "Then 1-6 key words from the image, each on its own line exactly like " +
+        "this example:\n" +
+        "TERM: Exit = 出口"
     dispatchInference(
       contents = Contents.of(listOf(Content.ImageBytes(prepared), Content.Text(prompt))),
       originalLabel = "[image ${prepared.size} B]",
@@ -347,6 +361,10 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
           override fun onDone() {
             val raw = acc.toString().trim()
+            // The raw reply is the only way to see HOW the on-device model
+            // deviates from the format (the Mac probe passes where the device
+            // fails, so the divergence lives in this exact string).
+            Log.i(TAG, "BENCH raw=\"${raw.replace("\n", "\\n").take(600)}\"")
             // Image prompt returns marked TRANSLATION / SCENE / TERMS lines;
             // text/audio replies carry no markers and pass through unchanged
             // (gist null, no terms).
@@ -381,7 +399,10 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                   sourceImage = sourceImage,
                 )
               }
-            } else if (translated.isNotEmpty()) {
+            } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
+              // The length gate keeps a degeneration loop (the model repeating
+              // itself for thousands of characters) out of the drawer — a real
+              // translation of a photographed sign/menu fits well within it.
               listOf(
                 TranslationEntity(
                   original = originalLabel,

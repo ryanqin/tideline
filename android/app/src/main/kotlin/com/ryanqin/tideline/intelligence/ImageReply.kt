@@ -28,12 +28,32 @@ data class ImageReply(
   data class Term(val original: String, val translated: String)
 }
 
+/** One "original = translation" pair → a Term, or null when malformed. */
+private fun termFromPair(segment: String): ImageReply.Term? {
+  val parts = segment.split('=', '→', limit = 2)
+  if (parts.size != 2) return null
+  val orig = parts[0].trim()
+  val trans = parts[1].trim()
+  return when {
+    orig.isEmpty() || trans.isEmpty() -> null
+    orig.length > MAX_TERM_LENGTH || trans.length > MAX_TERM_LENGTH -> null
+    // A weak model sometimes echoes the format spec itself
+    // ("original=translation") instead of filling it in — that must not
+    // become a vocabulary row.
+    orig.contains("original", ignoreCase = true) ||
+      trans.contains("translation", ignoreCase = true) -> null
+    else -> ImageReply.Term(orig, trans)
+  }
+}
+
 fun parseImageReply(raw: String): ImageReply {
   val text = raw.trim()
   val sceneIdx = text.indexOf("SCENE:", ignoreCase = true)
   val termsIdx = text.indexOf("TERMS:", ignoreCase = true)
+  val firstTermIdx = Regex("(?im)^\\s*TERM:").find(text)?.range?.first ?: -1
 
-  val cutIdx = listOf(sceneIdx, termsIdx).filter { it >= 0 }.minOrNull() ?: text.length
+  val cutIdx = listOf(sceneIdx, termsIdx, firstTermIdx)
+    .filter { it >= 0 }.minOrNull() ?: text.length
   val translated = text.substring(0, cutIdx)
     .replace(Regex("(?i)TRANSLATION:\\s*"), "")
     .trim()
@@ -42,35 +62,33 @@ fun parseImageReply(raw: String): ImageReply {
     text.substring(sceneIdx + "SCENE:".length)
       .lineSequence().firstOrNull()
       ?.let { line ->
-        // Defensive: a model that crams TERMS onto the scene line shouldn't
-        // leak the pairs into the gist.
-        val t = line.indexOf("TERMS:", ignoreCase = true)
+        // Defensive: a model that crams TERMS / a TERM pair onto the scene
+        // line shouldn't leak the pairs into the gist.
+        val t = Regex("(?i)TERMS?:").find(line)?.range?.first ?: -1
         (if (t >= 0) line.substring(0, t) else line).trim().ifBlank { null }
       }
   } else null
 
-  val terms = if (termsIdx >= 0) {
+  // Preferred shape: one "TERM: original = translation" per line. The earlier
+  // |-separated single-line spec bled into TRANSLATION (the model answered
+  // everything as "x | y | z" lists) and that rhythm is a repetition
+  // attractor on-device — litertlm E2B looped the same words for thousands
+  // of characters and never reached SCENE/TERMS.
+  val lineTerms = Regex("(?im)^\\s*TERM:\\s*(.+)$").findAll(text)
+    .mapNotNull { m -> termFromPair(m.groupValues[1]) }
+    .toList()
+
+  // Legacy fallback: a single "TERMS: a=b | c=d" line.
+  val inlineTerms = if (termsIdx >= 0) {
     val line = text.substring(termsIdx + "TERMS:".length)
       .lineSequence().firstOrNull()?.trim().orEmpty()
     if (line.equals("NONE", ignoreCase = true)) emptyList()
-    else line.split('|', ';')
-      .mapNotNull { seg ->
-        val parts = seg.split('=', '→', limit = 2)
-        if (parts.size != 2) return@mapNotNull null
-        val orig = parts[0].trim()
-        val trans = parts[1].trim()
-        if (orig.isEmpty() || trans.isEmpty()) null
-        else if (orig.length > MAX_TERM_LENGTH || trans.length > MAX_TERM_LENGTH) null
-        // A weak model sometimes echoes the format spec itself
-        // ("original=translation") instead of filling it in — that must not
-        // become a vocabulary row.
-        else if (orig.contains("original", ignoreCase = true) ||
-          trans.contains("translation", ignoreCase = true)) null
-        else ImageReply.Term(orig, trans)
-      }
-      .distinctBy { it.original }
-      .take(MAX_TERMS)
+    else line.split('|', ';').mapNotNull { termFromPair(it) }
   } else emptyList()
+
+  val terms = lineTerms.ifEmpty { inlineTerms }
+    .distinctBy { it.original }
+    .take(MAX_TERMS)
 
   return ImageReply(translated = translated, sceneGist = sceneGist, terms = terms)
 }

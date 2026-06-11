@@ -52,6 +52,18 @@ PROMPTS = {
         "TERMS: 1-6 key words EXACTLY as written in the image, each with its "
         f"{LANG} translation, like: ramen=拉面 | Exit=出口 (write NONE if there is no text)"
     ),
+    # One TERM per line — no "|" separator. The on-device run showed the
+    # |-spec bleeding into TRANSLATION (it came out as a "x | y | z" list)
+    # and that rhythm is a repetition attractor: litertlm E2B looped the
+    # same words for 5441 chars / 189 s and never reached SCENE/TERMS.
+    "p3_line_terms": (
+        "Look at this image and reply with these lines:\n"
+        f"TRANSLATION: all visible text translated to {LANG}, as one natural "
+        "sentence or phrase (write NONE if there is no text)\n"
+        "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects\n"
+        "Then 1-6 key words from the image, each on its own line:\n"
+        f"TERM: the original word = its {LANG} translation"
+    ),
     # Spell out both sides of the pair explicitly.
     "p2_explicit": (
         "Look at this image and reply in exactly three lines:\n"
@@ -85,7 +97,19 @@ def parse_image_reply(raw: str) -> dict:
         gist = (line[:t] if t >= 0 else line).strip() or None
 
     terms: list[tuple[str, str]] = []
-    if terms_idx >= 0:
+    # line-per-term shape: every "TERM: a = b" line anywhere in the answer
+    for m in re.finditer(r"(?im)^\s*TERM:\s*(.+)$", text):
+        parts = re.split(r"[=→]", m.group(1), maxsplit=1)
+        if len(parts) != 2:
+            continue
+        orig, trans = parts[0].strip(), parts[1].strip()
+        if (orig and trans and len(orig) <= MAX_TERM_LENGTH and len(trans) <= MAX_TERM_LENGTH
+                and "original" not in orig.lower() and "translation" not in trans.lower()
+                and orig not in {t[0] for t in terms}):
+            terms.append((orig, trans))
+        if len(terms) >= MAX_TERMS:
+            break
+    if not terms and terms_idx >= 0:
         seg = text[terms_idx + 6 :]
         line = seg.splitlines()[0].strip() if seg else ""
         if line.upper() != "NONE":
@@ -123,7 +147,9 @@ def find_bin() -> str:
     return cand
 
 
-def run_one(bin_path: str, image: Path, prompt: str, temp: float) -> tuple[str, float]:
+def run_one(
+    bin_path: str, image: Path, prompt: str, temp: float, sys_prompt: str | None = None
+) -> tuple[str, float]:
     cmd = [
         bin_path,
         "-m", str(LM),
@@ -135,6 +161,8 @@ def run_one(bin_path: str, image: Path, prompt: str, temp: float) -> tuple[str, 
         "--temp", str(temp),
         "-n", "1024",
     ]
+    if sys_prompt:
+        cmd += ["-sys", sys_prompt]
     t0 = time.time()
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     out = proc.stdout.strip()
@@ -148,6 +176,10 @@ def main() -> int:
     ap.add_argument("--image", nargs="+", required=True)
     ap.add_argument("--temps", default="0.2,1.0")
     ap.add_argument("--prompts", default=",".join(PROMPTS))
+    # The APK's translator systemInstruction ("only the translation, no
+    # preamble, no explanation") conflicts with the three-line format ask —
+    # pass --device-sys to reproduce the on-device conversation faithfully.
+    ap.add_argument("--device-sys", action="store_true")
     args = ap.parse_args()
 
     bin_path = find_bin()
@@ -157,7 +189,11 @@ def main() -> int:
     for img in args.image:
         for key in keys:
             for temp in temps:
-                out, dt = run_one(bin_path, Path(img), PROMPTS[key], temp)
+                sys_prompt = (
+                    "You are a precise translator. Respond with only the "
+                    "translation — no preamble, no explanation, no quotation marks."
+                ) if args.device_sys else None
+                out, dt = run_one(bin_path, Path(img), PROMPTS[key], temp, sys_prompt)
                 # llama.cpp's jinja path surfaces Gemma's THOUGHT channel, and
                 # at low temp the thought restates the instruction markers
                 # verbatim — poisoning a first-marker parse. The device runtime
