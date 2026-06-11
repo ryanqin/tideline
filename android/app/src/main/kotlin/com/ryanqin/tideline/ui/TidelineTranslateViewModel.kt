@@ -11,6 +11,7 @@ package com.ryanqin.tideline.ui
 
 import android.app.Application
 import android.net.Uri
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -108,6 +109,39 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
   private var engine: Engine? = null
   private var conversation: Conversation? = null
+
+  // Standard pronunciation — the platform TTS speaks a row's original in its
+  // own language, regenerated from text on demand (never stored). The same
+  // split as the web: the RECORDING is material, the standard voice is free.
+  private var ttsReady = false
+  private val tts: TextToSpeech by lazy {
+    TextToSpeech(getApplication()) { status -> ttsReady = status == TextToSpeech.SUCCESS }
+  }
+
+  fun speak(text: String, langName: String?) {
+    if (text.isBlank()) return
+    val t = tts
+    if (!ttsReady) return
+    val locale = when (langName) {
+      "Japanese" -> java.util.Locale.JAPANESE
+      "Korean" -> java.util.Locale.KOREAN
+      "French" -> java.util.Locale.FRENCH
+      "German" -> java.util.Locale.GERMAN
+      "Italian" -> java.util.Locale.ITALIAN
+      "Spanish" -> java.util.Locale("es")
+      "Chinese" -> java.util.Locale.CHINESE
+      "English" -> java.util.Locale.ENGLISH
+      // No reliable label: honest script sniff, then English.
+      else -> when (detectScriptLanguage(text)) {
+        "Japanese" -> java.util.Locale.JAPANESE
+        "Korean" -> java.util.Locale.KOREAN
+        else -> if (text.any { it.code in 0x4E00..0x9FFF }) java.util.Locale.CHINESE
+        else java.util.Locale.ENGLISH
+      }
+    }
+    t.language = locale
+    t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tideline-speak")
+  }
 
   // Geometry source for photo-word masks: OCR owns WHERE a word sits in the
   // capture (the VLM's self-reported boxes probe as spatial hallucination),
@@ -681,6 +715,9 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     } catch (_: Throwable) {}
     try {
       if (recorder.isRecording) recorder.stop()
+    } catch (_: Throwable) {}
+    try {
+      if (ttsReady) tts.shutdown()
     } catch (_: Throwable) {}
     conversation = null
     engine = null

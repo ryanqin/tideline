@@ -125,9 +125,11 @@
     const word = reviewable
       ? `<span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(c.original)}</span>`
       : esc(c.original);
-    // Standard pronunciation belongs to browsing; in review the word is
-    // masked and speaking it would answer the quiz out loud.
-    const sayWord = reviewable ? "" : speakBtn(c.original, c.source_lang);
+    // Dictation order: in review the standard pronunciation is rendered but
+    // stays hidden until the word is revealed (CSS gate) — the recording in
+    // the moments is the cue, the standard voice is the AFTER-recall
+    // comparison; speaking earlier would answer the quiz out loud.
+    const sayWord = speakBtn(c.original, c.source_lang);
     const grade = reviewable
       ? `<div class="review-grade">
           <button type="button" class="grade-missed" data-card-id="${c.id}">${esc(t("review_missed"))}</button>

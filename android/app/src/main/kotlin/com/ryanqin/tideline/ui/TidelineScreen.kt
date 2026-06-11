@@ -21,10 +21,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -191,7 +193,9 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
           style = MaterialTheme.typography.titleSmall,
           fontWeight = FontWeight.SemiBold,
         )
-        history.forEach { row -> HistoryRow(row) }
+        history.forEach { row ->
+          HistoryRow(row, onSpeak = { viewModel.speak(row.original, row.sourceLang) })
+        }
       }
     }
   }
@@ -239,7 +243,7 @@ private fun TranslationCard(text: String, streaming: Boolean) {
 }
 
 @Composable
-private fun HistoryRow(row: TranslationEntity) {
+private fun HistoryRow(row: TranslationEntity, onSpeak: () -> Unit) {
   Card(
     modifier = Modifier.fillMaxWidth(),
     colors = CardDefaults.cardColors(
@@ -247,11 +251,24 @@ private fun HistoryRow(row: TranslationEntity) {
     ),
   ) {
     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Text(
-        text = row.original,
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.Medium,
-      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+      ) {
+        Text(
+          text = row.original,
+          style = MaterialTheme.typography.bodyMedium,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier.weight(1f, fill = false),
+        )
+        IconButton(onClick = onSpeak, modifier = Modifier.size(24.dp)) {
+          Icon(
+            Icons.AutoMirrored.Filled.VolumeUp,
+            contentDescription = "Standard pronunciation",
+            tint = MaterialTheme.colorScheme.primary,
+          )
+        }
+      }
       Text(
         text = "→ ${row.translated}",
         style = MaterialTheme.typography.bodyMedium,

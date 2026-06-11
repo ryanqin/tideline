@@ -773,6 +773,11 @@ body.shore-open { overflow: hidden; }
 .moment-meta .play-btn { width: 1.35rem; height: 1.35rem; }
 .moment--compact .play-btn { margin-left: auto; }
 
+/* Dictation order (review): the standard pronunciation waits until the
+   masked word is revealed — play the recording, reach for the word, reveal,
+   THEN compare against the standard voice. */
+.card-head h2 .masked:not(.revealed) ~ .speak-btn { visibility: hidden; }
+
 /* A small warm mark for how the moment was caught: seen / heard / looked up. */
 .moment-glyph {
   flex: none;
