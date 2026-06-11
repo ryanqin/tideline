@@ -29,9 +29,14 @@ data class ImageReply(
 }
 
 /** A speech reply: what was said (foreign text — the drawer's `original`,
- * which is what lets a heard phrase enter the emergence loop) and what it
- * means. Markerless replies pass through as translation-only. */
-data class AudioReply(val transcript: String?, val translated: String)
+ * which is what lets a heard phrase enter the emergence loop), what it means,
+ * and which language it was spoken in (picks the TTS voice for the standard
+ * pronunciation). Markerless replies pass through as translation-only. */
+data class AudioReply(
+  val transcript: String?,
+  val translated: String,
+  val language: String? = null,
+)
 
 fun parseAudioReply(raw: String): AudioReply {
   val text = raw.trim()
@@ -55,7 +60,15 @@ fun parseAudioReply(raw: String): AudioReply {
   } else null
   val translated = text.substring(translationIdx + "TRANSLATION:".length)
     .lineSequence().firstOrNull()?.trim().orEmpty()
-  return AudioReply(transcript = transcript, translated = translated)
+  val langIdx = text.indexOf("LANGUAGE:", ignoreCase = true)
+  val language = if (langIdx >= 0) {
+    text.substring(langIdx + "LANGUAGE:".length)
+      .lineSequence().firstOrNull()?.trim()
+      // a single capitalized word like "English"/"Japanese"; anything
+      // chattier than that is the model rambling, not a language name
+      ?.takeIf { it.isNotEmpty() && it.length <= 20 && !it.contains(' ') }
+  } else null
+  return AudioReply(transcript = transcript, translated = translated, language = language)
 }
 
 /** One "original = translation" pair → a Term, or null when malformed. */

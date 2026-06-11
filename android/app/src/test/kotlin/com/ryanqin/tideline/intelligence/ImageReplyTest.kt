@@ -127,6 +127,32 @@ class ImageReplyTest {
   }
 
   @Test
+  fun `audio reply carries the reported language`() {
+    val reply = parseAudioReply(
+      "TRANSCRIPT: Where is the station?\nTRANSLATION: 车站在哪里?\nLANGUAGE: English"
+    )
+    assertEquals("English", reply.language)
+    assertEquals("车站在哪里?", reply.translated)
+  }
+
+  @Test
+  fun `rambling language line is rejected`() {
+    val reply = parseAudioReply(
+      "TRANSCRIPT: x\nTRANSLATION: y\nLANGUAGE: The speaker is using English"
+    )
+    assertNull(reply.language)
+  }
+
+  @Test
+  fun `script detection answers only unambiguous scripts`() {
+    assertEquals("Japanese", detectScriptLanguage("ラーメン"))
+    assertEquals("Japanese", detectScriptLanguage("駅はどこ"))
+    assertEquals("Korean", detectScriptLanguage("안녕하세요"))
+    assertNull(detectScriptLanguage("ALCOHOL"))
+    assertNull(detectScriptLanguage("拉面"))
+  }
+
+  @Test
   fun `audio reply honors the natural 翻译-separator deviation`() {
     val reply = parseAudioReply(
       "Where is the nearest train station?\n翻译：最近的火车站在哪里?"

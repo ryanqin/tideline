@@ -297,6 +297,27 @@ def _pseudo_region(session_id: str, original: str) -> str:
     )
 
 
+def _beep_wav(session_id: str) -> bytes:
+    """A short sine-tone WAV (16 kHz mono PCM16) standing in for a real
+    captured recording — pitch keyed to the session so demo "recordings"
+    are tellable apart. Real captures carry the device mic's WAV."""
+    import math
+
+    rate, seconds = 16_000, 1.2
+    freq = 392 + (int(hashlib.sha1(session_id.encode()).hexdigest(), 16) % 5) * 66
+    n = int(rate * seconds)
+    pcm = bytearray()
+    for i in range(n):
+        # gentle fade in/out so the placeholder doesn't click
+        env = min(1.0, i / 800, (n - i) / 800)
+        v = int(12_000 * env * math.sin(2 * math.pi * freq * i / rate))
+        pcm += struct.pack("<h", v)
+    hdr = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVE"
+    hdr += b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    hdr += b"data" + struct.pack("<I", len(pcm))
+    return hdr + bytes(pcm)
+
+
 def generate_entries(
     seed: int = 42,
     now: datetime | None = None,
@@ -306,8 +327,9 @@ def generate_entries(
     Each tuple is
     ``(original, target_lang, translated, source_lang, source,
     context_snippet, session_id, created_at_iso, source_image,
-    source_region)`` — the photo bytes and the word's normalized
-    [x0,y0,x1,y1] box in it for image sessions, None for text / audio.
+    source_region, source_audio)`` — the photo bytes + the word's normalized
+    [x0,y0,x1,y1] box for image sessions, the recording's WAV bytes for
+    audio sessions, None elsewhere.
 
     A term's N copies are distributed round-robin across its scenario's
     capture sessions, so a frequent term naturally lands in several
@@ -321,6 +343,7 @@ def generate_entries(
     # A capture's source photo is shared by all rows from that session (computed
     # once), so a menu photo's items all point at the same image.
     image_cache: dict[str, bytes] = {}
+    audio_cache: dict[str, bytes] = {}
     if now is None:
         now = datetime.now()
 
@@ -378,6 +401,13 @@ def generate_entries(
                         if session["source"] == "image"
                         else None
                     )
+                    # A heard session keeps its "recording" (placeholder tone;
+                    # real captures carry the mic WAV) — dictation material.
+                    source_audio = (
+                        audio_cache.setdefault(session_id, _beep_wav(session_id))
+                        if session["source"] == "audio"
+                        else None
+                    )
                     out.append(
                         (
                             original,
@@ -390,6 +420,7 @@ def generate_entries(
                             ts,
                             source_image,
                             source_region,
+                            source_audio,
                         )
                     )
 
@@ -403,8 +434,9 @@ def seed_db(conn: sqlite3.Connection, seed: int = 42) -> int:
     conn.executemany(
         "INSERT INTO translations "
         "(original, target_lang, translated, source_lang, source, "
-        "context_snippet, session_id, created_at, source_image, source_region) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "context_snippet, session_id, created_at, source_image, source_region, "
+        "source_audio) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         entries,
     )
     conn.commit()

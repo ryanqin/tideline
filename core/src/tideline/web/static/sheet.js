@@ -23,6 +23,44 @@
   // two-letter code in en — so neither locale leaks the other's script).
   const annot = (src, tgt) => `<span class="langtag">(${langShort(src)}→${langShort(tgt)})</span>`;
 
+  // --- pronunciation -------------------------------------------------------
+  // Two kinds of sound, two sources: the CAPTURED recording (dictation
+  // material — what the moment actually sounded like, served from the drawer)
+  // and the STANDARD pronunciation (never stored — the browser's own TTS
+  // regenerates it from text, the same way every translation app does).
+  const TTS_LANG = {
+    Japanese: "ja-JP", English: "en-US", French: "fr-FR", Spanish: "es-ES",
+    German: "de-DE", Italian: "it-IT", Korean: "ko-KR", Chinese: "zh-CN",
+  };
+  function speak(text, langName) {
+    if (!("speechSynthesis" in window) || !text) return;
+    let code = TTS_LANG[langName];
+    if (!code) {
+      // honest fallback: sniff the script when the row has no language
+      if (/[぀-ヿ]/.test(text)) code = "ja-JP";
+      else if (/[가-힯]/.test(text)) code = "ko-KR";
+      else if (/[一-鿿]/.test(text)) code = "zh-CN";
+      else code = "en-US";
+    }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = code;
+    u.rate = 0.92;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+
+  const SPEAKER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+  const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.5v13l11-6.5z"/></svg>';
+
+  // Standard pronunciation of a word/phrase, in its own language (TTS).
+  const speakBtn = (text, lang) => text
+    ? `<button type="button" class="speak-btn" data-speak="${esc(text)}" data-speak-lang="${esc(lang || "")}" aria-label="Standard pronunciation" title="${esc(t("speak_standard"))}">${SPEAKER_SVG}</button>`
+    : "";
+  // The captured recording behind a heard moment.
+  const playBtn = (m) => (m.has_audio && m.id != null)
+    ? `<button type="button" class="play-btn" data-audio-id="${Number(m.id)}" aria-label="Play the recording" title="${esc(t("play_capture"))}">${PLAY_SVG}</button>`
+    : "";
+
   // How a moment was caught, drawn small and warm: a photo seen, a voice heard,
   // a phrase looked up. Monochrome inline SVG (inherits currentColor).
   const SRC_GLYPH = {
@@ -61,10 +99,11 @@
   function momentRow(m) {
     const meta = [humanTime(m.at), srcLabel(m.source)].filter(Boolean).map(esc).join('<span class="dot">·</span>');
     const photo = photoFigure(m, "moment-photo");
+    const play = playBtn(m);
     if (!m.context && !photo) {
-      return `<div class="moment moment--compact"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-meta">${meta || esc(t("no_context"))}</span></div>`;
+      return `<div class="moment moment--compact"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-meta">${meta || esc(t("no_context"))}</span>${play}</div>`;
     }
-    return `<div class="moment"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-body">${photo}${m.context ? `<span class="moment-context">${esc(m.context)}</span>` : ""}${meta ? `<span class="moment-meta">${meta}</span>` : ""}</span></div>`;
+    return `<div class="moment"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-body">${photo}${m.context ? `<span class="moment-context">${esc(m.context)}</span>` : ""}${meta || play ? `<span class="moment-meta">${meta}${play ? `<span class="dot">·</span>${play}` : ""}</span>` : ""}</span></div>`;
   }
 
   // glass → a card: the word, the direction, and the stack of lived moments it
@@ -86,6 +125,9 @@
     const word = reviewable
       ? `<span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(c.original)}</span>`
       : esc(c.original);
+    // Standard pronunciation belongs to browsing; in review the word is
+    // masked and speaking it would answer the quiz out loud.
+    const sayWord = reviewable ? "" : speakBtn(c.original, c.source_lang);
     const grade = reviewable
       ? `<div class="review-grade">
           <button type="button" class="grade-missed" data-card-id="${c.id}">${esc(t("review_missed"))}</button>
@@ -94,7 +136,7 @@
       : "";
     return `<div class="cluster card">
         <div class="card-head">
-          <h2>${word} → ${esc(c.translated)} ${annot(c.source_lang, c.target_lang)}</h2>
+          <h2>${word} → ${esc(c.translated)} ${annot(c.source_lang, c.target_lang)}${sayWord}</h2>
           ${sink}
         </div>
         ${body}
@@ -115,7 +157,7 @@
       const moments = `<div class="moments">${(c.moments || []).map(momentRow).join("")}</div>`;
       return `<div class="group-word">
           <div class="card-head">
-            <h3>${esc(c.original)}</h3>
+            <h3>${esc(c.original)}${speakBtn(c.original, c.source_lang || g.source_lang)}</h3>
             <button type="button" class="sink-btn" data-card-id="${c.id}" title="${esc(t("sink_title"))}">${esc(t("sink"))}</button>
           </div>
           ${moments}
@@ -246,6 +288,18 @@
           close();
           if (onReview) onReview(reviewed);   // the tide reschedules it away
         } catch (err) { grade.disabled = false; }
+        return;
+      }
+      const playB = e.target.closest(".play-btn");
+      if (playB) {
+        try {
+          new Audio(`/api/translations/${Number(playB.dataset.audioId)}/audio`).play();
+        } catch (err) {}
+        return;
+      }
+      const speakB = e.target.closest(".speak-btn");
+      if (speakB) {
+        speak(speakB.dataset.speak, speakB.dataset.speakLang || null);
         return;
       }
       const photoMask = e.target.closest(".photo-mask");

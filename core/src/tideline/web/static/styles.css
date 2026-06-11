@@ -746,6 +746,33 @@ body.shore-open { overflow: hidden; }
 .mask-toggle:hover { background: var(--accent-soft); color: var(--accent-deep); transform: none; }
 .photo-frame.masks-off .photo-mask { display: none; }
 
+/* Sound, two sources: the captured recording (play) and the standard
+   pronunciation (speak, browser TTS). Small warm ghost buttons that never
+   compete with the words they voice. */
+.speak-btn, .play-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: none;
+  cursor: pointer;
+}
+.speak-btn svg, .play-btn svg { width: 13px; height: 13px; }
+.speak-btn:hover, .play-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  transform: none;
+}
+.moment-meta .play-btn { width: 1.35rem; height: 1.35rem; }
+.moment--compact .play-btn { margin-left: auto; }
+
 /* A small warm mark for how the moment was caught: seen / heard / looked up. */
 .moment-glyph {
   flex: none;

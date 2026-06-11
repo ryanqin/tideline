@@ -893,6 +893,41 @@ def test_translation_image_is_served_as_recall_material(tmp_path):
     assert c.get("/api/translations/999999/image").status_code == 404
 
 
+def test_translation_audio_is_served_as_dictation_material(tmp_path):
+    """A heard capture's recording is kept and served back (dictation: play
+    what the moment sounded like); rows without one 404. The standard
+    pronunciation is never stored — client TTS regenerates it from text."""
+    from tideline.seed import seed_db
+    from tideline.tools import init_all_tables
+
+    db = str(tmp_path / "ears.db")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    seed_db(conn)
+    aud_id = conn.execute(
+        "SELECT id FROM translations WHERE source = 'audio' "
+        "AND source_audio IS NOT NULL ORDER BY id LIMIT 1"
+    ).fetchone()[0]
+    silent_id = conn.execute(
+        "SELECT id FROM translations WHERE source_audio IS NULL ORDER BY id LIMIT 1"
+    ).fetchone()[0]
+    conn.close()
+
+    c = TestClient(create_app(runtime_name="mock", db_path=db))
+    r = c.get(f"/api/translations/{aud_id}/audio")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "audio/wav"
+    assert r.content.startswith(b"RIFF")
+    assert c.get(f"/api/translations/{silent_id}/audio").status_code == 404
+
+    # Moments carry the pointer, like has_image for photos.
+    moments = [m for card in c.get("/api/cards").json() for m in card["moments"]]
+    heard = next(m for m in moments if m["source"] == "audio")
+    assert heard["has_audio"] is True
+    seen = next(m for m in moments if m["source"] == "image")
+    assert seen["has_audio"] is False
+
+
 def test_card_moments_point_back_at_their_captured_material(tmp_path):
     """Recall shows the lived material itself: every moment carries its
     translation id plus whether that capture kept a photo, so the sheet can

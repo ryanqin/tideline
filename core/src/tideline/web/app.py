@@ -475,7 +475,8 @@ def create_app(
                 moments = conn.execute(
                     """
                     SELECT t.translated, t.source, t.context_snippet, t.created_at,
-                           t.id, t.source_image IS NOT NULL, t.source_region
+                           t.id, t.source_image IS NOT NULL, t.source_region,
+                           t.source_audio IS NOT NULL
                     FROM candidate_evidence ce
                     JOIN translations t ON t.id = ce.translation_id
                     WHERE ce.candidate_id = ?
@@ -502,8 +503,8 @@ def create_app(
                     "moments": [
                         {"translated": m_tr, "source": m_src or "", "context": m_ctx or "",
                          "at": m_at, "id": m_id, "has_image": bool(m_img),
-                         "region": _parse_region(m_region)}
-                        for m_tr, m_src, m_ctx, m_at, m_id, m_img, m_region in moments
+                         "region": _parse_region(m_region), "has_audio": bool(m_aud)}
+                        for m_tr, m_src, m_ctx, m_at, m_id, m_img, m_region, m_aud in moments
                     ],
                 })
             return result
@@ -536,6 +537,24 @@ def create_app(
         else:
             media = "application/octet-stream"
         return Response(content=data, media_type=media)
+
+    @app.get("/api/translations/{translation_id}/audio")
+    def translation_audio(translation_id: int) -> Response:
+        """Serve a heard capture's stored recording — dictation material: play
+        what the moment actually sounded like, recall it, then compare against
+        the standard pronunciation (client-side TTS, never stored). 404 when
+        the row carries no recording."""
+        conn = _connect(db)
+        try:
+            row = conn.execute(
+                "SELECT source_audio FROM translations WHERE id = ?",
+                (translation_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None or row[0] is None:
+            raise HTTPException(status_code=404, detail="no recording for this capture")
+        return Response(content=bytes(row[0]), media_type="audio/wav")
 
     @app.post("/api/cards/promote")
     def promote_card(req: PromoteRequest) -> dict[str, int]:

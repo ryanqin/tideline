@@ -35,5 +35,13 @@ data class TranslationEntity(
   // the stored image (OCR-matched). Feeds the toggleable photo-word mask;
   // null when OCR couldn't find the word (mask just has nothing to anchor).
   @ColumnInfo(name = "source_region") val sourceRegion: String? = null,
+  // The captured recording (16 kHz mono WAV) — dictation material, kept
+  // after the model transcribes it. The standard pronunciation is never
+  // stored (TTS regenerates it from text). Mirrors Python core.
+  @ColumnInfo(name = "source_audio", typeAffinity = ColumnInfo.BLOB)
+  val sourceAudio: ByteArray? = null,
+  // The speech/word's own language (model-reported for audio, script-detected
+  // elsewhere; null when honest detection can't tell). Picks the TTS voice.
+  @ColumnInfo(name = "source_lang") val sourceLang: String? = null,
   @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
 )

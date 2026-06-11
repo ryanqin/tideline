@@ -32,6 +32,7 @@ import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
 import com.ryanqin.tideline.intelligence.ImageReply
+import com.ryanqin.tideline.intelligence.detectScriptLanguage
 import com.ryanqin.tideline.intelligence.parseAudioReply
 import com.ryanqin.tideline.intelligence.parseImageReply
 import com.ryanqin.tideline.media.exifRotationDegrees
@@ -422,17 +423,19 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   private fun runAudioInference(wav: ByteArray, seconds: Int) {
     val lang = _ui.value.targetLang
     val prompt =
-      "Listen to this audio and reply with exactly two lines like this " +
+      "Listen to this audio and reply with exactly three lines like this " +
         "example:\n" +
         "TRANSCRIPT: How much is this?\n" +
         "TRANSLATION: 这个多少钱?\n" +
+        "LANGUAGE: English\n" +
         "TRANSCRIPT is the speech exactly as spoken, in its own language; " +
-        "TRANSLATION is that speech in $lang."
+        "TRANSLATION is that speech in $lang; LANGUAGE is the language spoken."
     dispatchInference(
       contents = Contents.of(listOf(Content.AudioBytes(wav), Content.Text(prompt))),
       originalLabel = "[audio ${seconds}s]",
       source = "audio",
       lang = lang,
+      sourceAudio = wav,
     )
   }
 
@@ -513,6 +516,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             sessionId = sessionId,
             sourceImage = sourceImage,
             sourceRegion = regions[term.original],
+            sourceLang = detectScriptLanguage(term.original),
           )
         }
       } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
@@ -542,6 +546,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     source: String,
     lang: String,
     sourceImage: ByteArray? = null,
+    sourceAudio: ByteArray? = null,
   ) {
     val conv = conversation ?: run {
       _ui.value = _ui.value.copy(
@@ -617,8 +622,12 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
               val audio = if (source == "audio") parseAudioReply(raw) else null
               val rowTranslated = audio?.translated ?: translated
               val rowOriginal = audio?.transcript ?: originalLabel
+              // The speech's own language: the model's report first, honest
+              // script detection as fallback (kana/hangul only — Latin and
+              // pure Han stay null rather than guess).
+              val rowLang = audio?.language ?: detectScriptLanguage(rowOriginal)
               if (audio != null) {
-                Log.i(TAG, "BENCH audio transcript=\"${audio.transcript?.take(80)}\"")
+                Log.i(TAG, "BENCH audio transcript=\"${audio.transcript?.take(80)}\" lang=$rowLang")
               }
               _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = rowTranslated)
               if (rowTranslated.isNotEmpty() && rowTranslated.length <= MAX_PERSIST_CHARS) {
@@ -632,6 +641,8 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                         source = source,
                         contextSnippet = reply.sceneGist,
                         sessionId = sessionId,
+                        sourceAudio = if (source == "audio") sourceAudio else null,
+                        sourceLang = rowLang,
                       )
                     )
                   } catch (t: Throwable) {

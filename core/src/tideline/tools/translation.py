@@ -37,6 +37,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             context_snippet TEXT,
             source_image BLOB,
             source_region TEXT,
+            source_audio BLOB,
             session_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -56,6 +57,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         # Where the word sits in its photo: JSON "[x0,y0,x1,y1]" normalized to
         # the stored image (device OCR fills it). Anchors the photo-word mask.
         ("source_region", "ALTER TABLE translations ADD COLUMN source_region TEXT"),
+        # The captured recording itself (a heard phrase's WAV) — dictation
+        # material, kept after the model transcribes it; the standard
+        # pronunciation is NOT stored (TTS regenerates it from text).
+        ("source_audio", "ALTER TABLE translations ADD COLUMN source_audio BLOB"),
     ):
         if column not in existing:
             conn.execute(ddl)
