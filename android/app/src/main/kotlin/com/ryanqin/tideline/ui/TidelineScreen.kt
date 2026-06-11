@@ -78,6 +78,12 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
     ActivityResultContracts.RequestPermission()
   ) { granted -> if (granted) showCamera = true }
 
+  // Phase 5b live mic: permission asked lazily on the first tap; a grant
+  // starts recording right away (same pattern as the camera).
+  val requestMic = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { granted -> if (granted) viewModel.toggleRecording() }
+
   if (showCamera) {
     CameraCaptureScreen(
       onCaptured = { bytes, rotation ->
@@ -160,11 +166,17 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
       }
 
       OutlinedButton(
-        onClick = viewModel::translateAudioProbe,
+        onClick = {
+          val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+          ) == PackageManager.PERMISSION_GRANTED
+          if (granted) viewModel.toggleRecording()
+          else requestMic.launch(Manifest.permission.RECORD_AUDIO)
+        },
         modifier = Modifier.fillMaxWidth(),
-        enabled = state.engineState == EngineState.READY,
+        enabled = state.engineState == EngineState.READY || state.recording,
       ) {
-        Text("翻译测试音频(probe) → ${state.targetLang}")
+        Text(if (state.recording) "停止录音并翻译 ●" else "录音翻译 → ${state.targetLang}")
       }
 
       if (state.translation.isNotEmpty() || state.engineState == EngineState.INFERRING) {

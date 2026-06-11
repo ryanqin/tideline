@@ -32,8 +32,10 @@ import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
 import com.ryanqin.tideline.intelligence.ImageReply
+import com.ryanqin.tideline.intelligence.parseAudioReply
 import com.ryanqin.tideline.intelligence.parseImageReply
 import com.ryanqin.tideline.media.exifRotationDegrees
+import com.ryanqin.tideline.media.WavRecorder
 import com.ryanqin.tideline.media.matchTermBoxes
 import com.ryanqin.tideline.media.ocrWords
 import com.ryanqin.tideline.media.prepareCaptureImage
@@ -52,11 +54,6 @@ private const val TAG = "TidelineTranslateVM"
 // Sideload path. Push the model with:
 //   adb push gemma-4-E2B-it.litertlm /data/local/tmp/
 private const val MODEL_PATH = "/data/local/tmp/gemma-4-E2B-it.litertlm"
-
-// Phase 5b audio probe: a known-good 16 kHz mono WAV pushed to the device, so we can
-// verify the audio→translation path AND the expected format before building live mic
-// capture. Push with: adb push tideline_probe.wav /data/local/tmp/
-private const val AUDIO_PROBE_PATH = "/data/local/tmp/tideline_probe.wav"
 
 // Mirrors tideline/core/src/tideline/bench/atoms/a1_word_translation.py and a2_sentence_translation.py.
 // Same prompt is used by Tideline's Python core in production — keep them in sync.
@@ -86,6 +83,8 @@ data class TidelineUiState(
   val targetLang: String = "Chinese",
   val translation: String = "",
   val errorMessage: String? = null,
+  // Live mic capture in progress (Phase 5b) — drives the record button label.
+  val recording: Boolean = false,
 )
 
 @OptIn(ExperimentalApi::class)
@@ -184,7 +183,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         conversation = c
         Log.d(TAG, "Engine ready")
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
-        maybeRunDebugImage()
+        maybeRunDebugCapture()
       } catch (t: Throwable) {
         Log.e(TAG, "Engine init failed", t)
         _ui.value = _ui.value.copy(
@@ -270,28 +269,44 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
    * image→translation). Queued because the intent arrives before init ends.
    */
   private var pendingDebugImage: String? = null
+  private var pendingDebugAudio: String? = null
 
   fun queueDebugImage(fileName: String) {
     pendingDebugImage = fileName
-    maybeRunDebugImage()
+    maybeRunDebugCapture()
   }
 
-  private fun maybeRunDebugImage() {
-    val name = pendingDebugImage ?: return
+  /** Same dev loop for the audio path: a WAV in the external files dir runs
+   * through the exact mic→translation pipeline (sans mic). */
+  fun queueDebugAudio(fileName: String) {
+    pendingDebugAudio = fileName
+    maybeRunDebugCapture()
+  }
+
+  private fun maybeRunDebugCapture() {
     if (_ui.value.engineState != EngineState.READY) return
+    val imageName = pendingDebugImage
+    val audioName = pendingDebugAudio
     pendingDebugImage = null
+    pendingDebugAudio = null
+    if (imageName == null && audioName == null) return
     if (!beginImageInference()) return
     viewModelScope.launch(Dispatchers.IO) {
+      val name = imageName ?: audioName!!
       val file = java.io.File(getApplication<Application>().getExternalFilesDir(null), name)
       val bytes = try {
         file.readBytes()
       } catch (t: Throwable) {
-        Log.e(TAG, "Debug image unreadable: $file", t)
+        Log.e(TAG, "Debug capture unreadable: $file", t)
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
         return@launch
       }
-      Log.i(TAG, "BENCH debug_image=$name size=${bytes.size}")
-      runImageInference(bytes, exifRotationDegrees(bytes))
+      Log.i(TAG, "BENCH debug_capture=$name size=${bytes.size}")
+      if (imageName != null) {
+        runImageInference(bytes, exifRotationDegrees(bytes))
+      } else {
+        runAudioInference(bytes, seconds = bytes.size / 32_000)
+      }
     }
   }
 
@@ -359,30 +374,63 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   }
 
   /*
-   * Audio translation — Phase 5b probe.
+   * Audio translation — Phase 5b live mic.
    *
-   * Reads a known-good 16 kHz mono WAV pushed to the device. Content.AudioFile lets
-   * the native engine open the /data/local/tmp path the same way it opens the model,
-   * so no app-side file IO and no mic permission. Verifies two things at once before
-   * any mic plumbing: (a) does the model do speech→translation end to end, and (b)
-   * does this audio format work. Conformer audio encoder is in the bundle; audioBackend
-   * is set to CPU in initEngine. Audio precedes text, mirroring the image path.
+   * Tap to record (16 kHz mono WAV, the format the probe verified against
+   * the bundled Conformer encoder), tap again to stop and translate: the
+   * bytes go straight to the LLM via Content.AudioBytes — no third-party
+   * ASR. The reply's TRANSCRIPT line (what was actually said, in the
+   * speaker's language) becomes the drawer row's `original`, which is what
+   * lets a heard phrase enter the emergence loop; fail-soft to an
+   * "[audio Ns]" label when the model skips the marker. Audio precedes text
+   * in the contents, mirroring the image path.
    */
-  fun translateAudioProbe() {
-    val state = _ui.value
-    if (state.engineState != EngineState.READY) return
-    val lang = state.targetLang
+  private val recorder = WavRecorder()
 
-    _ui.value = state.copy(
-      engineState = EngineState.INFERRING,
-      translation = "",
-      errorMessage = null,
-    )
+  fun toggleRecording() {
+    if (recorder.isRecording) {
+      val seconds = recorder.seconds()
+      val wav = try {
+        recorder.stop()
+      } catch (t: Throwable) {
+        Log.e(TAG, "Mic stop failed", t)
+        _ui.value = _ui.value.copy(recording = false, errorMessage = "Recording failed")
+        return
+      }
+      _ui.value = _ui.value.copy(recording = false)
+      translateAudio(wav, seconds)
+    } else {
+      if (_ui.value.engineState != EngineState.READY) return
+      try {
+        recorder.start()
+        _ui.value = _ui.value.copy(recording = true, errorMessage = null)
+      } catch (t: Throwable) {
+        Log.e(TAG, "Mic start failed", t)
+        _ui.value = _ui.value.copy(recording = false, errorMessage = "Mic unavailable")
+      }
+    }
+  }
 
-    val prompt = "Translate the speech in this audio to $lang."
+  private fun translateAudio(wav: ByteArray, seconds: Int) {
+    if (!beginImageInference()) return
+    runAudioInference(wav, seconds)
+  }
+
+  // The literal example anchors the two-line shape (the 5a lesson: a format
+  // description alone gets ignored — the first live take came back as
+  // "<transcript> 翻译：<chinese>" with no markers at all).
+  private fun runAudioInference(wav: ByteArray, seconds: Int) {
+    val lang = _ui.value.targetLang
+    val prompt =
+      "Listen to this audio and reply with exactly two lines like this " +
+        "example:\n" +
+        "TRANSCRIPT: How much is this?\n" +
+        "TRANSLATION: 这个多少钱?\n" +
+        "TRANSCRIPT is the speech exactly as spoken, in its own language; " +
+        "TRANSLATION is that speech in $lang."
     dispatchInference(
-      contents = Contents.of(listOf(Content.AudioFile(AUDIO_PROBE_PATH), Content.Text(prompt))),
-      originalLabel = "[audio probe]",
+      contents = Contents.of(listOf(Content.AudioBytes(wav), Content.Text(prompt))),
+      originalLabel = "[audio ${seconds}s]",
       source = "audio",
       lang = lang,
     )
@@ -563,15 +611,24 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                 finishImagePersist(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.terms)
               }
             } else {
-              _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
-              if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
+              // Audio: the transcript (what was actually said, in its own
+              // language) is the row's original — that's what lets a heard
+              // phrase enter the emergence loop. Text keeps its typed input.
+              val audio = if (source == "audio") parseAudioReply(raw) else null
+              val rowTranslated = audio?.translated ?: translated
+              val rowOriginal = audio?.transcript ?: originalLabel
+              if (audio != null) {
+                Log.i(TAG, "BENCH audio transcript=\"${audio.transcript?.take(80)}\"")
+              }
+              _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = rowTranslated)
+              if (rowTranslated.isNotEmpty() && rowTranslated.length <= MAX_PERSIST_CHARS) {
                 viewModelScope.launch(Dispatchers.IO) {
                   try {
                     dao.insert(
                       TranslationEntity(
-                        original = originalLabel,
+                        original = rowOriginal,
                         targetLang = lang,
-                        translated = translated,
+                        translated = rowTranslated,
                         source = source,
                         contextSnippet = reply.sceneGist,
                         sessionId = sessionId,
@@ -610,6 +667,9 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     } catch (_: Throwable) {}
     try {
       textRecognizer.close()
+    } catch (_: Throwable) {}
+    try {
+      if (recorder.isRecording) recorder.stop()
     } catch (_: Throwable) {}
     conversation = null
     engine = null

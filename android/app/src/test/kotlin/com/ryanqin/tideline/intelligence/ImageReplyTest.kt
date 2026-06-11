@@ -111,6 +111,38 @@ class ImageReplyTest {
   }
 
   @Test
+  fun `audio reply parses transcript and translation`() {
+    val reply = parseAudioReply(
+      "TRANSCRIPT: Where is the station?\nTRANSLATION: 车站在哪里?"
+    )
+    assertEquals("Where is the station?", reply.transcript)
+    assertEquals("车站在哪里?", reply.translated)
+  }
+
+  @Test
+  fun `audio reply without markers is translation-only`() {
+    val reply = parseAudioReply("车站在哪里?")
+    assertNull(reply.transcript)
+    assertEquals("车站在哪里?", reply.translated)
+  }
+
+  @Test
+  fun `audio reply honors the natural 翻译-separator deviation`() {
+    val reply = parseAudioReply(
+      "Where is the nearest train station?\n翻译：最近的火车站在哪里?"
+    )
+    assertEquals("Where is the nearest train station?", reply.transcript)
+    assertEquals("最近的火车站在哪里?", reply.translated)
+  }
+
+  @Test
+  fun `audio reply with translation marker only keeps null transcript`() {
+    val reply = parseAudioReply("TRANSLATION: 你好")
+    assertNull(reply.transcript)
+    assertEquals("你好", reply.translated)
+  }
+
+  @Test
   fun `translation survives a garbled terms tail`() {
     val reply = parseImageReply(
       "TRANSLATION: 完整的翻译内容\nSCENE: 居酒屋\nTERMS: 焼き鳥="

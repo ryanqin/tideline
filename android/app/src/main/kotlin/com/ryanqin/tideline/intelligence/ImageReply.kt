@@ -28,6 +28,36 @@ data class ImageReply(
   data class Term(val original: String, val translated: String)
 }
 
+/** A speech reply: what was said (foreign text — the drawer's `original`,
+ * which is what lets a heard phrase enter the emergence loop) and what it
+ * means. Markerless replies pass through as translation-only. */
+data class AudioReply(val transcript: String?, val translated: String)
+
+fun parseAudioReply(raw: String): AudioReply {
+  val text = raw.trim()
+  val transcriptIdx = text.indexOf("TRANSCRIPT:", ignoreCase = true)
+  val translationIdx = text.indexOf("TRANSLATION:", ignoreCase = true)
+  if (translationIdx < 0) {
+    // The model's most natural deviation (seen on the first live take):
+    // "<transcript> 翻译：<chinese>" with no markers. Honor it.
+    val zh = Regex("(?:翻译|译文)\\s*[:：]").find(text)
+    if (zh != null) {
+      val transcript = text.substring(0, zh.range.first).trim().ifBlank { null }
+      val translated = text.substring(zh.range.last + 1).trim()
+      if (translated.isNotEmpty()) return AudioReply(transcript, translated)
+    }
+    // No markers at all — the whole reply is the translation (probe shape).
+    return AudioReply(transcript = null, translated = text)
+  }
+  val transcript = if (transcriptIdx >= 0 && transcriptIdx < translationIdx) {
+    text.substring(transcriptIdx + "TRANSCRIPT:".length, translationIdx)
+      .trim().ifBlank { null }
+  } else null
+  val translated = text.substring(translationIdx + "TRANSLATION:".length)
+    .lineSequence().firstOrNull()?.trim().orEmpty()
+  return AudioReply(transcript = transcript, translated = translated)
+}
+
 /** One "original = translation" pair → a Term, or null when malformed. */
 private fun termFromPair(segment: String): ImageReply.Term? {
   val parts = segment.split('=', '→', limit = 2)

@@ -6,6 +6,11 @@
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
+  <!-- Phase 5b: live mic capture → on-device speech translation. Optional
+       hardware for the same reason as the camera. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
   <application
     android:label="Tideline"
     android:supportsRtl="true"

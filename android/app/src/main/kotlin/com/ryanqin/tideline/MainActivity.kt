@@ -32,11 +32,10 @@ class MainActivity : ComponentActivity() {
     val debuggable =
       (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     if (debuggable) {
-      intent?.getStringExtra("tideline.debug_image")?.let { name ->
-        // Same ViewModelStoreOwner as the composable's viewModel() — one VM.
-        ViewModelProvider(this)[TidelineTranslateViewModel::class.java]
-          .queueDebugImage(name)
-      }
+      val vm = ViewModelProvider(this)[TidelineTranslateViewModel::class.java]
+      // Same ViewModelStoreOwner as the composable's viewModel() — one VM.
+      intent?.getStringExtra("tideline.debug_image")?.let { vm.queueDebugImage(it) }
+      intent?.getStringExtra("tideline.debug_audio")?.let { vm.queueDebugAudio(it) }
     }
     setContent {
       val ctx = LocalContext.current
