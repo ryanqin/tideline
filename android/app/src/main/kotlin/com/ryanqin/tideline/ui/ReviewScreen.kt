@@ -216,38 +216,37 @@ private fun hashFrac(key: String, salt: Int): Float {
   return ((h ushr 8) % 1000) / 1000f
 }
 
-/** The near-sand band, the web's renderCreatures fitted to a portrait hand:
- * creatures scatter below the surf line down toward your feet, even columns
- * with a gentle jitter, near-big far-small (a real perspective, not a flat
- * scatter), each tilted a few degrees and wearing its name in the shore's
- * own ink. */
+/* Hand-laid anchor spots in the near-sand band — staggered like driftage,
+ * never a row (even columns turned into a lineup on a narrow portrait
+ * screen). Each item adds its own small hash jitter and tilt on top, and
+ * SIZE follows NEARNESS (lower on the sand = closer = bigger), so the
+ * perspective stays honest whatever washes up. */
+private val SHORE_SPOTS = listOf(
+  0.27f to 0.710f,
+  0.71f to 0.748f,
+  0.21f to 0.806f,
+  0.64f to 0.838f,
+  0.40f to 0.888f,
+)
+
 @Composable
 private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     val w = maxWidth
     val h = maxHeight
     val minSide = if (w < h) w else h
-    val n = items.size.coerceAtLeast(1)
-    // below the surf, down toward your feet (portrait gives the band a
-    // little more room than the web's landscape clamp)
-    val top = 0.70f
-    val bottom = 0.90f
-    val mx = 0.12f
-    val capMax = (w * 0.9f * (1f - 2 * mx)) / n
     items.forEachIndexed { i, item ->
       val id = itemKey(item)
-      val depth = hashFrac(id, 2) // 0 = far (up, small), 1 = near (down, big)
-      val glyphSize = minSide * (0.11f + depth * 0.15f)
-      var xF = mx + ((i + 0.5f) / n) * (1f - 2 * mx) +
-        (hashFrac(id, 1) - 0.5f) * (0.5f / n)
-      val half = (glyphSize / 2) / w
-      xF = xF.coerceIn(half + 0.015f, 1f - half - 0.015f)
-      val yF = top + depth * (bottom - top)
+      val spot = SHORE_SPOTS[i % SHORE_SPOTS.size]
+      val xF = (spot.first + (hashFrac(id, 1) - 0.5f) * 0.07f).coerceIn(0.12f, 0.88f)
+      val yF = (spot.second + (hashFrac(id, 2) - 0.5f) * 0.025f).coerceIn(0.70f, 0.90f)
+      val nearness = (yF - 0.70f) / 0.20f
+      val glyphSize = minSide * (0.11f + nearness * 0.15f)
       Creature(
         item = item,
         rot = (hashFrac(id, 3) - 0.5f) * 26f,
         glyphSize = glyphSize,
-        capMax = if (capMax > 72.dp) capMax else 72.dp,
+        capMax = 132.dp,
         modifier = Modifier.offset(
           x = w * xF - glyphSize / 2,
           y = h * yF - glyphSize / 2,

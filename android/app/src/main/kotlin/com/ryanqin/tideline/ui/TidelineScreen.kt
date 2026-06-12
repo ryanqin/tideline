@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -36,16 +37,18 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -143,23 +146,40 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
 
       EngineStatusBar(state.engineState, state.errorMessage)
 
-      OutlinedTextField(
-        value = state.sourceText,
-        onValueChange = viewModel::onSourceTextChange,
+      // The web translator: the question as its own quiet line, then a
+      // sun-warmed card with no chrome — never a framed form field.
+      Text("想翻译什么?", style = MaterialTheme.typography.titleMedium)
+      Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("想翻译什么?") },
-        placeholder = { Text("输入文字,粘贴一行菜单,丢进一句话……") },
-        minLines = 2,
-        maxLines = 6,
-        enabled = state.engineState != EngineState.INFERRING,
-        trailingIcon = if (state.sourceText.isNotEmpty()) {
-          {
-            IconButton(onClick = { viewModel.onSourceTextChange("") }) {
-              Icon(Icons.Default.Clear, contentDescription = "Clear")
+      ) {
+        TextField(
+          value = state.sourceText,
+          onValueChange = viewModel::onSourceTextChange,
+          modifier = Modifier.fillMaxWidth(),
+          placeholder = { Text("输入文字,粘贴一行菜单,丢进一句话……") },
+          minLines = 2,
+          maxLines = 6,
+          enabled = state.engineState != EngineState.INFERRING,
+          trailingIcon = if (state.sourceText.isNotEmpty()) {
+            {
+              IconButton(onClick = { viewModel.onSourceTextChange("") }) {
+                Icon(Icons.Default.Clear, contentDescription = "Clear")
+              }
             }
-          }
-        } else null,
-      )
+          } else null,
+          colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+          ),
+        )
+      }
 
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -179,12 +199,13 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         }
       }
 
-      // The phone's own ways of meeting words — the capture row.
+      // The phone's own ways of meeting words — soft tonal pills, never a
+      // row of outlined chrome.
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
       ) {
-        OutlinedButton(
+        FilledTonalButton(
           onClick = {
             val granted = ContextCompat.checkSelfPermission(
               context, Manifest.permission.CAMERA
@@ -194,7 +215,7 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
           modifier = Modifier.weight(1f),
           enabled = state.engineState == EngineState.READY,
         ) { Text("拍照") }
-        OutlinedButton(
+        FilledTonalButton(
           onClick = {
             pickImage.launch(
               PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -203,7 +224,7 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
           modifier = Modifier.weight(1f),
           enabled = state.engineState == EngineState.READY,
         ) { Text("相册") }
-        OutlinedButton(
+        FilledTonalButton(
           onClick = {
             val granted = ContextCompat.checkSelfPermission(
               context, Manifest.permission.RECORD_AUDIO
