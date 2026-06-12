@@ -1,13 +1,17 @@
 /*
- * Phase 5c — the review deck, on the phone.
+ * Phase 5c — the shore, on the phone.
  *
- * The shore's job in a quiet screen: due items surface one at a time. The
- * review direction IS the translation direction (§3.3): the foreign word —
- * the form you'll meet again in the world — is the question, shown whole
- * with its captured material (the photo as you saw it, the recording as you
- * heard it, the standard pronunciation on tap); the MEANING is what you
- * reach for, masked until reveal. Then self-grade; the outcome walks the
- * same Leitner ladder as the web (data layer mirrors core).
+ * Not a deck: a beach. What's due washes up as creatures on the sand — a
+ * word card is a piece of sea glass, a whole occasion a crab — a calm few
+ * at a time, each wearing its name. Pick one up and a sheet rises with the
+ * recall; self-grade and it leaves the shore, the next one washes in; when
+ * the sand is clear, the tide is out. (The web shore's gesture, mirrored:
+ * reviewing is beachcombing, not flashcards.)
+ *
+ * The review direction IS the translation direction (§3.3): the foreign
+ * word — the form you'll meet again in the world — is the question, shown
+ * whole with its captured material; the MEANING is what you reach for,
+ * masked until reveal. The outcome walks the same Leitner ladder as the web.
  *
  * Restraint rules carry over (DESIGN §3.1/§10.3): no due counts, no streaks,
  * no notifications — the entry is a plain button that's always there.
@@ -17,12 +21,14 @@ package com.ryanqin.tideline.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,8 +36,10 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -40,9 +48,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -50,58 +60,104 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ryanqin.tideline.data.CardEntity
 import com.ryanqin.tideline.data.ThemeGroup
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.ui.theme.Amber
+import com.ryanqin.tideline.ui.theme.AmberSoft
+import com.ryanqin.tideline.ui.theme.Coral
+import com.ryanqin.tideline.ui.theme.CoralSoft
+import com.ryanqin.tideline.ui.theme.SandSink
+import com.ryanqin.tideline.ui.theme.SunWhite
+import com.ryanqin.tideline.ui.theme.Taupe
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// A calm few wash up at a time — never a wall (DESIGN §10.5). Grading one
+// lets the next wash in.
+private const val ASHORE = 5
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
   var deck by remember { mutableStateOf<List<ReviewItem>?>(null) }
-  var index by remember { mutableIntStateOf(0) }
+  var open by remember { mutableStateOf<ReviewItem?>(null) }
 
   LaunchedEffect(Unit) { deck = viewModel.reviewDeck() }
 
+  val dismiss = { item: ReviewItem ->
+    deck = deck?.minus(item)
+    open = null
+  }
+
   ShoreBackdrop {
   Scaffold(containerColor = Color.Transparent) { innerPadding ->
-    Column(
+    Box(
       modifier = Modifier
         .fillMaxSize()
-        .padding(innerPadding)
-        .padding(horizontal = 24.dp, vertical = 8.dp),
+        .padding(innerPadding),
     ) {
-      IconButton(onClick = onClose) {
+      IconButton(onClick = onClose, modifier = Modifier.padding(12.dp)) {
         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
       }
       val items = deck
       when {
         items == null -> {}
-        index >= items.size -> RestingShore(onClose)
-        else -> when (val item = items[index]) {
+        items.isEmpty() -> RestingShore(onClose)
+        else -> {
+          // Both kinds share the sand: words get a guaranteed share, scenes
+          // fill the rest (the web shore's mix, simplified). Each grade
+          // re-deals, so the next thing washes in.
+          val words = items.filterIsInstance<ReviewItem.Word>()
+          val scenes = items.filterIsInstance<ReviewItem.Scene>()
+          val ashoreWords = words.take(if (scenes.isEmpty()) ASHORE else 3)
+          val ashore = ashoreWords + scenes.take(ASHORE - ashoreWords.size)
+          Beach(ashore, onPick = { open = it })
+        }
+      }
+    }
+  }
+  }
+
+  open?.let { item ->
+    ModalBottomSheet(
+      onDismissRequest = { open = null },
+      containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+      Column(
+        modifier = Modifier
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 24.dp)
+          .padding(bottom = 32.dp),
+      ) {
+        when (item) {
           is ReviewItem.Word -> ReviewCard(
             card = item.card,
             viewModel = viewModel,
             onGraded = { remembered ->
               viewModel.reviewCard(item.card.id, remembered)
-              index += 1
+              dismiss(item)
             },
             onSink = {
               viewModel.sinkCard(item.card.id)
-              index += 1
+              dismiss(item)
             },
           )
           is ReviewItem.Scene -> SceneCard(
@@ -109,13 +165,148 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
             viewModel = viewModel,
             onGraded = { remembered ->
               viewModel.reviewTheme(item.group.sessionId, remembered)
-              index += 1
+              dismiss(item)
             },
           )
         }
       }
     }
   }
+}
+
+// --- the beach ---------------------------------------------------------------
+
+private fun itemKey(item: ReviewItem): String = when (item) {
+  is ReviewItem.Word -> "w${item.card.id}"
+  is ReviewItem.Scene -> "s${item.group.sessionId}"
+}
+
+private fun itemLabel(item: ReviewItem): String = when (item) {
+  is ReviewItem.Word -> item.card.original
+  is ReviewItem.Scene ->
+    item.group.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
+      ?: SimpleDateFormat("M月d日", Locale.getDefault()).format(Date(item.group.latestAt)) + "的场合"
+}
+
+/** The sand with what washed up on it: each due item a creature at its own
+ * stable spot (hashed, so the beach doesn't reshuffle underfoot), wearing
+ * its name. Two loose columns, a little scatter — driftage, not a grid. */
+@Composable
+private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
+  BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    val w = maxWidth
+    val h = maxHeight
+    items.forEachIndexed { i, item ->
+      val hash = itemKey(item).hashCode()
+      val col = i % 2
+      val row = i / 2
+      val xFrac = (if (col == 0) 0.10f else 0.52f) + ((hash ushr 4) % 100) / 100f * 0.08f
+      val yFrac = 0.16f + row * 0.20f + ((hash ushr 12) % 100) / 100f * 0.05f
+      Creature(
+        item = item,
+        hash = hash,
+        modifier = Modifier.offset(x = w * xFrac, y = h * yFrac),
+        onPick = onPick,
+      )
+    }
+  }
+}
+
+@Composable
+private fun Creature(
+  item: ReviewItem,
+  hash: Int,
+  modifier: Modifier,
+  onPick: (ReviewItem) -> Unit,
+) {
+  Column(
+    modifier = modifier
+      .width(150.dp)
+      .clickable { onPick(item) }
+      .padding(6.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    when (item) {
+      is ReviewItem.Word -> SeaGlassGlyph(hash, Modifier.size(58.dp))
+      is ReviewItem.Scene -> CrabGlyph(Modifier.size(64.dp))
+    }
+    Spacer(Modifier.height(6.dp))
+    Text(
+      itemLabel(item),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurface,
+      textAlign = TextAlign.Center,
+      maxLines = 2,
+    )
+  }
+}
+
+/** A piece of sea glass — a word card washed smooth. Its tint comes from the
+ * word itself (hash), so each keeps its colour between tides. */
+@Composable
+private fun SeaGlassGlyph(hash: Int, modifier: Modifier) {
+  val (fill, edge) = when ((hash ushr 8) % 3) {
+    0 -> AmberSoft to Amber
+    1 -> CoralSoft to Coral
+    else -> SandSink to Taupe
+  }
+  Canvas(modifier) {
+    val w = size.width
+    val h = size.height
+    val lean = ((hash % 7) - 3) / 60f
+    // a worn, slightly leaning pebble of glass
+    val pebble = Path().apply {
+      moveTo(w * 0.50f, h * 0.06f)
+      cubicTo(w * (0.86f + lean), h * 0.10f, w * 0.96f, h * 0.46f, w * 0.84f, h * 0.76f)
+      cubicTo(w * 0.72f, h * 0.97f, w * 0.30f, h * 0.97f, w * 0.17f, h * 0.78f)
+      cubicTo(w * (0.03f - lean), h * 0.56f, w * 0.13f, h * 0.13f, w * 0.50f, h * 0.06f)
+      close()
+    }
+    drawPath(pebble, color = fill)
+    drawPath(pebble, color = edge.copy(alpha = 0.7f), style = Stroke(width = 3f))
+    // the sea's polish — one soft highlight
+    drawOval(
+      color = SunWhite.copy(alpha = 0.55f),
+      topLeft = Offset(w * 0.26f, h * 0.18f),
+      size = androidx.compose.ui.geometry.Size(w * 0.30f, h * 0.18f),
+    )
+  }
+}
+
+/** A small crab — a whole occasion sidling ashore. */
+@Composable
+private fun CrabGlyph(modifier: Modifier) {
+  Canvas(modifier) {
+    val w = size.width
+    val h = size.height
+    val body = Coral.copy(alpha = 0.85f)
+    // legs — three a side, reaching down to the sand
+    val legStroke = Stroke(width = 3.5f, cap = StrokeCap.Round)
+    for (side in listOf(-1f, 1f)) {
+      for (li in 0..2) {
+        val sx = w * 0.5f + side * w * 0.30f
+        val sy = h * (0.52f + li * 0.07f)
+        drawPath(
+          Path().apply {
+            moveTo(sx, sy)
+            quadraticTo(sx + side * w * 0.14f, sy + h * 0.05f, sx + side * w * 0.17f, sy + h * 0.16f)
+          },
+          color = body, style = legStroke,
+        )
+      }
+    }
+    // claws — two small fists raised
+    drawCircle(body, radius = w * 0.09f, center = Offset(w * 0.22f, h * 0.30f))
+    drawCircle(body, radius = w * 0.09f, center = Offset(w * 0.78f, h * 0.30f))
+    // the shell
+    drawOval(
+      color = body,
+      topLeft = Offset(w * 0.20f, h * 0.34f),
+      size = androidx.compose.ui.geometry.Size(w * 0.60f, h * 0.42f),
+    )
+    // eyes
+    drawCircle(SunWhite, radius = w * 0.035f, center = Offset(w * 0.40f, h * 0.45f))
+    drawCircle(SunWhite, radius = w * 0.035f, center = Offset(w * 0.60f, h * 0.45f))
   }
 }
 
@@ -156,9 +347,7 @@ private fun ReviewCard(
   val audioMoments = moments.filter { it.sourceAudio != null }
 
   Column(
-    modifier = Modifier
-      .fillMaxSize()
-      .verticalScroll(rememberScrollState()),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     // The word as met is the question — the form you'll meet again in the
@@ -284,9 +473,7 @@ private fun SceneCard(
   }
 
   Column(
-    modifier = Modifier
-      .fillMaxSize()
-      .verticalScroll(rememberScrollState()),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     // The occasion is the question.
