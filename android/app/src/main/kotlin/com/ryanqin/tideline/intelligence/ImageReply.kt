@@ -24,6 +24,12 @@ data class ImageReply(
   val translated: String,
   val sceneGist: String?,
   val terms: List<Term>,
+  // Structurally sound pairs whose rendering failed the script guard
+  // ("Premium = 高 premium"): the word was READ fine, only its translation
+  // came back half-borrowed. Worth one single-task follow-up ask each — the
+  // bare word translates cleanly ("Premium" → 高级); the half-borrowing is
+  // list-context laziness, not ability.
+  val retryWorthy: List<String> = emptyList(),
 ) {
   data class Term(val original: String, val translated: String)
 }
@@ -78,35 +84,45 @@ fun parseAudioReply(raw: String): AudioReply {
  * a non-meaning. Same failure family as the core gloss's script-consistency
  * guard: rather wrong-by-absence than wrong-by-content. For a Chinese target:
  * at least one CJK char and zero Latin letters. Targets without a rule pass
- * (honest: no rule, no claim). */
-private fun rendersInTargetScript(translated: String, targetLang: String): Boolean {
+ * (honest: no rule, no claim). Internal so the word-fix follow-up holds its
+ * answers to the same bar. */
+internal fun rendersInTargetScript(translated: String, targetLang: String): Boolean {
   if (!targetLang.equals("Chinese", ignoreCase = true)) return true
   val hasCjk = translated.any { it.code in 0x4E00..0x9FFF }
   val hasLatin = translated.any { it in 'a'..'z' || it in 'A'..'Z' }
   return hasCjk && !hasLatin
 }
 
-/** One "original = translation" pair → a Term, or null when malformed. */
-private fun termFromPair(segment: String, targetLang: String): ImageReply.Term? {
+/** How one "original = translation" segment parsed. */
+private sealed interface PairParse {
+  data class Ok(val term: ImageReply.Term) : PairParse
+  /** Structurally fine, but the rendering failed the script guard — the
+   * word itself is worth a single-task follow-up ask. */
+  data class HalfTranslated(val original: String) : PairParse
+  data object Bad : PairParse
+}
+
+private fun parsePair(segment: String, targetLang: String): PairParse {
   val parts = segment.split('=', '→', limit = 2)
-  if (parts.size != 2) return null
+  if (parts.size != 2) return PairParse.Bad
   val orig = parts[0].trim()
   val trans = parts[1].trim()
   return when {
-    orig.isEmpty() || trans.isEmpty() -> null
-    orig.length > MAX_TERM_LENGTH || trans.length > MAX_TERM_LENGTH -> null
+    orig.isEmpty() || trans.isEmpty() -> PairParse.Bad
+    orig.length > MAX_TERM_LENGTH || trans.length > MAX_TERM_LENGTH -> PairParse.Bad
     // A vocabulary card teaches a WORD: bare numbers / percentages /
     // punctuation ("75%", "99.9%") carry no language to learn — require at
     // least one letter (any script). "75% ALCOHOL" still passes.
-    orig.none { it.isLetter() } -> null
+    orig.none { it.isLetter() } -> PairParse.Bad
     // A weak model sometimes echoes the format spec itself
     // ("original=translation") instead of filling it in — that must not
     // become a vocabulary row.
     orig.contains("original", ignoreCase = true) ||
-      trans.contains("translation", ignoreCase = true) -> null
-    // Half-translations don't sediment (fail-soft: the other terms still do).
-    !rendersInTargetScript(trans, targetLang) -> null
-    else -> ImageReply.Term(orig, trans)
+      trans.contains("translation", ignoreCase = true) -> PairParse.Bad
+    // Half-translations don't sediment — but the word is real; flag it for
+    // the follow-up instead of dropping it on the sand.
+    !rendersInTargetScript(trans, targetLang) -> PairParse.HalfTranslated(orig)
+    else -> PairParse.Ok(ImageReply.Term(orig, trans))
   }
 }
 
@@ -138,21 +154,31 @@ fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
   // everything as "x | y | z" lists) and that rhythm is a repetition
   // attractor on-device — litertlm E2B looped the same words for thousands
   // of characters and never reached SCENE/TERMS.
-  val lineTerms = Regex("(?im)^\\s*TERM:\\s*(.+)$").findAll(text)
-    .mapNotNull { m -> termFromPair(m.groupValues[1], targetLang) }
+  val lineParses = Regex("(?im)^\\s*TERM:\\s*(.+)$").findAll(text)
+    .map { m -> parsePair(m.groupValues[1], targetLang) }
     .toList()
 
   // Legacy fallback: a single "TERMS: a=b | c=d" line.
-  val inlineTerms = if (termsIdx >= 0) {
+  val inlineParses = if (termsIdx >= 0) {
     val line = text.substring(termsIdx + "TERMS:".length)
       .lineSequence().firstOrNull()?.trim().orEmpty()
     if (line.equals("NONE", ignoreCase = true)) emptyList()
-    else line.split('|', ';').mapNotNull { termFromPair(it, targetLang) }
+    else line.split('|', ';').map { parsePair(it, targetLang) }
   } else emptyList()
 
-  val terms = lineTerms.ifEmpty { inlineTerms }
+  // Per-line TERM rows win when they carry anything real (a half-translated
+  // row counts: the format WAS followed, only the rendering needs the fix).
+  val chosen = if (lineParses.any { it !is PairParse.Bad }) lineParses else inlineParses
+  val terms = chosen.filterIsInstance<PairParse.Ok>().map { it.term }
     .distinctBy { it.original }
     .take(MAX_TERMS)
+  val retryWorthy = chosen.filterIsInstance<PairParse.HalfTranslated>().map { it.original }
+    .distinct()
+    .filter { o -> terms.none { it.original == o } }
+    .take(MAX_TERMS)
 
-  return ImageReply(translated = translated, sceneGist = sceneGist, terms = terms)
+  return ImageReply(
+    translated = translated, sceneGist = sceneGist,
+    terms = terms, retryWorthy = retryWorthy,
+  )
 }

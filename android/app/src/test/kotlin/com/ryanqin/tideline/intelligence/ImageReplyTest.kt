@@ -61,7 +61,8 @@ class ImageReplyTest {
   @Test
   fun `a half-translation never sediments — the rendering must live in the target script`() {
     // The live failure: E2B rendered "Premium" as 高 premium — a borrowed
-    // word inside the "meaning". CJK-only renderings pass; mixed ones don't.
+    // word inside the "meaning". CJK-only renderings pass; mixed ones are
+    // flagged for the single-task word fix instead of sedimenting.
     val reply = parseImageReply(
       "TRANSLATION: 杀菌湿巾\nSCENE: 包装\n" +
         "TERM: Premium = 高 premium\n" +
@@ -70,6 +71,18 @@ class ImageReplyTest {
         "TERM: 75% ALCOHOL = 75%酒精"
     )
     assertEquals(listOf("Alcohol", "75% ALCOHOL"), reply.terms.map { it.original })
+    assertEquals(listOf("Premium", "Wipes"), reply.retryWorthy)
+  }
+
+  @Test
+  fun `a row whose word already sedimented cleanly is not retried`() {
+    // The same word twice, one clean one half-borrowed: the clean rendering
+    // wins, no follow-up needed.
+    val reply = parseImageReply(
+      "TRANSLATION: x\nTERM: Premium = 优质\nTERM: Premium = 高 premium"
+    )
+    assertEquals(listOf(ImageReply.Term("Premium", "优质")), reply.terms)
+    assertEquals(emptyList<String>(), reply.retryWorthy)
   }
 
   @Test

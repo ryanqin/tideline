@@ -85,6 +85,18 @@ fun emergenceSweep(db: SupportSQLiteDatabase, nowMs: Long = System.currentTimeMi
       FROM candidates
       """
     )
+    // A card is the candidate's projection, not a snapshot: when a later
+    // capture (or a word-fix retry) improves the rendering, the card's
+    // meaning follows. Without this a card frozen at creation keeps quizzing
+    // an old translation after the drawer has moved on.
+    db.execSQL(
+      """
+      UPDATE cards SET translated =
+          (SELECT translated FROM candidates WHERE candidates.id = cards.candidate_id)
+      WHERE translated <>
+          (SELECT translated FROM candidates WHERE candidates.id = cards.candidate_id)
+      """
+    )
     db.setTransactionSuccessful()
   } finally {
     db.endTransaction()

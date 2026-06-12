@@ -134,6 +134,25 @@ def test_auto_promote_cards_is_idempotent() -> None:
     assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 1
 
 
+def test_card_meaning_follows_the_candidate_after_a_better_rendering() -> None:
+    # A card is the candidate's projection, not a creation-time snapshot:
+    # when a later capture improves the rendering (the candidate keeps the
+    # latest — the word-fix path repairs half-translations this way), the
+    # card's meaning follows. Its STATE stays the user's.
+    conn = _conn()
+    for _ in range(3):
+        _add(conn, "premium", "高 premium")
+    promote_candidates(conn, threshold=3)
+    auto_promote_cards(conn)
+
+    _add(conn, "premium", "高级")          # the fixed rendering arrives
+    promote_candidates(conn, threshold=3)  # the candidate refreshes to the latest
+    auto_promote_cards(conn)               # ...and the card follows
+
+    row = conn.execute("SELECT translated, state FROM cards").fetchone()
+    assert row == ("高级", "active")
+
+
 def test_sink_card_sets_state_sunk() -> None:
     conn = _conn()
     for _ in range(3):

@@ -148,11 +148,25 @@ def auto_promote_cards(conn: sqlite3.Connection) -> int:
     card stays sunk" hold: a card the user already sank (or any card that
     already exists) is left untouched, so a later sweep never resurfaces it.
     Returns the number of new cards created.
+
+    A card's STATE is the user's (sunk stays sunk), but its meaning is the
+    candidate's projection, not a creation-time snapshot: when a later
+    capture improves the rendering (the candidate keeps the latest), the
+    card's translated follows. Without this a card frozen at creation keeps
+    quizzing an old translation after the drawer has moved on.
     """
     cur = conn.execute(
         """
         INSERT OR IGNORE INTO cards (candidate_id, original, target_lang, translated)
         SELECT id, original, target_lang, translated FROM candidates
+        """
+    )
+    conn.execute(
+        """
+        UPDATE cards SET translated =
+            (SELECT translated FROM candidates WHERE candidates.id = cards.candidate_id)
+        WHERE translated <>
+            (SELECT translated FROM candidates WHERE candidates.id = cards.candidate_id)
         """
     )
     conn.commit()
