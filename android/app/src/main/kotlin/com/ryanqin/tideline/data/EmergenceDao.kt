@@ -13,10 +13,17 @@ import androidx.room.Query
 @Dao
 interface EmergenceDao {
 
+  // New cards (NULL due) first, then most overdue; among equally-new cards
+  // the words met most often come first — without the tiebreak the order
+  // degraded to GROUP BY's alphabetical accident ("75%" sorting before
+  // ALCOHOL on a wipes package).
   @Query(
-    "SELECT * FROM cards WHERE state = 'active' " +
-      "AND (due_at IS NULL OR due_at <= :nowMs) " +
-      "ORDER BY due_at IS NULL DESC, due_at ASC LIMIT :limit"
+    "SELECT cards.* FROM cards " +
+      "JOIN candidates ON candidates.id = cards.candidate_id " +
+      "WHERE cards.state = 'active' " +
+      "AND (cards.due_at IS NULL OR cards.due_at <= :nowMs) " +
+      "ORDER BY cards.due_at IS NULL DESC, cards.due_at ASC, " +
+      "candidates.occurrence_count DESC, cards.id DESC LIMIT :limit"
   )
   suspend fun dueCards(nowMs: Long, limit: Int = 20): List<CardEntity>
 

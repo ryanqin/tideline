@@ -126,6 +126,9 @@ def parse_image_reply(raw: str) -> dict:
                 # Mirror ImageReply.kt: an echoed format spec is not vocabulary.
                 if "original" in orig.lower() or "translation" in trans.lower():
                     continue
+                # Mirror ImageReply.kt: bare numbers/symbols are not vocabulary.
+                if not any(c.isalpha() for c in orig):
+                    continue
                 if orig in seen:
                     continue
                 seen.add(orig)

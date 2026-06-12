@@ -97,6 +97,21 @@ class ImageReplyTest {
   }
 
   @Test
+  fun `bare numbers and symbols are not vocabulary`() {
+    val reply = parseImageReply(
+      "TRANSLATION: x\nSCENE: y\n" +
+        "TERM: 75% = 75%\nTERM: 99.9% = 99.9%\nTERM: 75% ALCOHOL = 75%酒精\nTERM: 駅 = 车站"
+    )
+    assertEquals(
+      listOf(
+        ImageReply.Term("75% ALCOHOL", "75%酒精"),
+        ImageReply.Term("駅", "车站"),
+      ),
+      reply.terms,
+    )
+  }
+
+  @Test
   fun `echoed format spec is rejected, not stored as a term`() {
     val reply = parseImageReply(
       "TRANSLATION: x\nSCENE: y\nTERMS: original=translation | 駅=车站 | the original word=译文"

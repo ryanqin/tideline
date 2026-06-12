@@ -80,6 +80,10 @@ private fun termFromPair(segment: String): ImageReply.Term? {
   return when {
     orig.isEmpty() || trans.isEmpty() -> null
     orig.length > MAX_TERM_LENGTH || trans.length > MAX_TERM_LENGTH -> null
+    // A vocabulary card teaches a WORD: bare numbers / percentages /
+    // punctuation ("75%", "99.9%") carry no language to learn — require at
+    // least one letter (any script). "75% ALCOHOL" still passes.
+    orig.none { it.isLetter() } -> null
     // A weak model sometimes echoes the format spec itself
     // ("original=translation") instead of filling it in — that must not
     // become a vocabulary row.

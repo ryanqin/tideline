@@ -44,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -101,6 +102,10 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
             viewModel.reviewCard(cards[index].id, remembered)
             index += 1
           },
+          onSink = {
+            viewModel.sinkCard(cards[index].id)
+            index += 1
+          },
         )
       }
     }
@@ -132,6 +137,7 @@ private fun ReviewCard(
   card: CardEntity,
   viewModel: TidelineTranslateViewModel,
   onGraded: (Boolean) -> Unit,
+  onSink: () -> Unit,
 ) {
   var moments by remember(card.id) { mutableStateOf<List<TranslationEntity>>(emptyList()) }
   var revealed by remember(card.id) { mutableStateOf(false) }
@@ -201,6 +207,18 @@ private fun ReviewCard(
         Button(onClick = { onGraded(true) }, modifier = Modifier.weight(1f)) {
           Text("想起来了")
         }
+      }
+      // The opt-out: a quiet way to say "this one isn't worth keeping" —
+      // sunk cards never resurface (the user curates by subtraction).
+      TextButton(
+        onClick = onSink,
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+      ) {
+        Text(
+          "这个词不用记 — 沉底",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
       }
     }
     Spacer(Modifier.height(24.dp))
