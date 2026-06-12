@@ -21,9 +21,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -49,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ryanqin.tideline.data.CardGroup
 import com.ryanqin.tideline.data.LangBucket
@@ -56,12 +58,6 @@ import com.ryanqin.tideline.data.MuseumCard
 import com.ryanqin.tideline.data.MuseumData
 import com.ryanqin.tideline.data.ThemeGroup
 import com.ryanqin.tideline.data.TranslationEntity
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-private val DAY_FMT = SimpleDateFormat("M月d日", Locale.getDefault())
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MuseumScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
@@ -72,6 +68,10 @@ fun MuseumScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
   var reloadKey by remember { mutableIntStateOf(0) }
 
   LaunchedEffect(reloadKey) { data = viewModel.museum() }
+
+  // The system back walks down the dune, back to the desk — never out of
+  // the app (the museum is a state, not an activity).
+  androidx.activity.compose.BackHandler(onBack = onClose)
 
   Scaffold { innerPadding ->
     Column(
@@ -90,19 +90,27 @@ fun MuseumScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
           fontWeight = FontWeight.SemiBold,
         )
       }
+      Text(
+        "冲上岸的一切,陈列在沙丘的货架上。按卡片、语言或主题来逛——点开一件,看它收着什么。",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+      )
       val d = data ?: return@Column
       TabRow(selectedTabIndex = lens, containerColor = MaterialTheme.colorScheme.background) {
         listOf("卡片", "语言", "主题").forEachIndexed { i, label ->
           Tab(selected = lens == i, onClick = { lens = i }, text = { Text(label) })
         }
       }
-      Spacer(Modifier.height(12.dp))
-      when (lens) {
-        0 -> CardsLens(d.cardGroups) { openGroup = it }
-        1 -> LanguagesLens(d.langBuckets) { cardId ->
-          openGroup = d.cardGroups.find { g -> g.cards.any { it.card.id == cardId } }
+      Spacer(Modifier.height(16.dp))
+      Column(Modifier.verticalScroll(rememberScrollState())) {
+        when (lens) {
+          0 -> CardsLens(d.cardGroups) { openGroup = it }
+          1 -> LanguagesLens(d.langBuckets) { cardId ->
+            openGroup = d.cardGroups.find { g -> g.cards.any { it.card.id == cardId } }
+          }
+          else -> ThemesLens(d.scenes) { openScene = it }
         }
-        else -> ThemesLens(d.scenes) { openScene = it }
       }
     }
   }
@@ -137,78 +145,98 @@ private fun EmptyShelf(text: String) {
   }
 }
 
+// --- the shelves --------------------------------------------------------------
+
+/** One shell on a shelf — the web's .shelf-shell, in Compose: the warm line
+ * glyph with its first-language label beneath, no chrome (the shell IS the
+ * line art on the sand). A dim shell is a word still maturing (no card yet). */
+@Composable
+private fun ShelfShell(
+  kind: GlyphKind,
+  seed: String,
+  cap: String,
+  dim: Boolean = false,
+  onClick: (() -> Unit)? = null,
+) {
+  Column(
+    modifier = Modifier
+      .width(96.dp)
+      .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+      .padding(vertical = 6.dp, horizontal = 2.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    CreatureGlyph(
+      kind, seed,
+      modifier = Modifier.size(62.dp),
+      ink = if (dim) ShellInk.copy(alpha = 0.45f) else ShellInk,
+    )
+    Spacer(Modifier.height(6.dp))
+    Text(
+      cap,
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dim) 0.6f else 1f),
+      textAlign = TextAlign.Center,
+      maxLines = 2,
+    )
+  }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShelfRow(content: @Composable () -> Unit) {
+  FlowRow(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    verticalArrangement = Arrangement.spacedBy(14.dp),
+  ) { content() }
+}
+
 // --- cards lens -------------------------------------------------------------
 
 @Composable
 private fun CardsLens(groups: List<CardGroup>, onOpen: (CardGroup) -> Unit) {
-  if (groups.isEmpty()) { EmptyShelf("还没有词卡 — 翻译累积后会自己浮现。"); return }
-  LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    items(groups, key = { it.translated + (it.sourceLang ?: "") }) { g ->
-      Surface(
+  if (groups.isEmpty()) {
+    EmptyShelf("还没有卡片——一个词反复出现得够多,卡片会自己浮现;你留下值得学的,把其余的沉回去。")
+    return
+  }
+  ShelfRow {
+    groups.forEach { g ->
+      ShelfShell(
+        kind = GlyphKind.Card,
+        seed = g.translated + (g.sourceLang ?: ""),
+        cap = g.translated,
         onClick = { onOpen(g) },
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
-      ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-          Text(
-            g.cards.joinToString(" / ") { it.card.original },
-            style = MaterialTheme.typography.titleMedium,
-          )
-          Text(
-            g.translated + (g.sourceLang?.let { "  ·  $it" } ?: ""),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-        }
-      }
+      )
     }
   }
 }
 
 // --- languages lens ---------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LanguagesLens(buckets: List<LangBucket>, onOpenCard: (Long) -> Unit) {
-  if (buckets.isEmpty()) { EmptyShelf("还没有遇到外语 — 去翻译点什么。"); return }
-  LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-    items(buckets, key = { it.lang ?: "?" }) { bucket ->
+  if (buckets.isEmpty()) {
+    EmptyShelf("还没有沉淀——翻译开始重复后,会在这里按原文语言归拢。")
+    return
+  }
+  Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    buckets.forEach { bucket ->
       Column {
         Text(
-          bucket.lang ?: "还认不出的语言",
+          if (bucket.lang == null) "还认不出的语言" else Lingo.langName(bucket.lang),
           style = MaterialTheme.typography.titleMedium,
           fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(8.dp))
-        FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Spacer(Modifier.height(10.dp))
+        ShelfRow {
           bucket.words.forEach { w ->
-            val matured = w.cardId != null
-            Surface(
-              shape = RoundedCornerShape(999.dp),
-              color = if (matured) MaterialTheme.colorScheme.surface
-                else MaterialTheme.colorScheme.surfaceVariant,
-              modifier = if (matured)
-                Modifier.clickable { onOpenCard(w.cardId!!) }
-              else Modifier,
-            ) {
-              Row(
-                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Text(w.original, style = MaterialTheme.typography.bodyMedium)
-                if (w.count > 1) {
-                  Text(
-                    "  ·${w.count}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  )
-                }
-              }
-            }
+            ShelfShell(
+              kind = GlyphKind.Card,
+              seed = w.original,
+              cap = w.original,
+              dim = w.cardId == null,
+              onClick = w.cardId?.let { id -> { onOpenCard(id) } },
+            )
           }
         }
       }
@@ -220,29 +248,19 @@ private fun LanguagesLens(buckets: List<LangBucket>, onOpenCard: (Long) -> Unit)
 
 @Composable
 private fun ThemesLens(scenes: List<ThemeGroup>, onOpen: (ThemeGroup) -> Unit) {
-  if (scenes.isEmpty()) { EmptyShelf("还没有成形的场合 — 一次出门多翻几个词,它们会聚在一起。"); return }
-  LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    items(scenes, key = { it.sessionId + (it.sourceLang ?: "") }) { s ->
+  if (scenes.isEmpty()) {
+    EmptyShelf("还没有主题——相关的词攒多了,会在这里悄悄聚成一段可以回访的记忆。")
+    return
+  }
+  ShelfRow {
+    scenes.forEach { s ->
       val gist = s.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
-      Surface(
+      ShelfShell(
+        kind = GlyphKind.Scene,
+        seed = s.sessionId,
+        cap = gist ?: "${Lingo.humanTime(s.latestAt)}的场合",
         onClick = { onOpen(s) },
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
-      ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-          Text(
-            gist ?: "${DAY_FMT.format(Date(s.latestAt))}的场合",
-            style = MaterialTheme.typography.titleMedium,
-          )
-          Text(
-            s.members.map { it.original }.distinct().joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-          )
-        }
-      }
+      )
     }
   }
 }
@@ -317,7 +335,7 @@ private fun WordBlock(
     }
     if (moments.isNotEmpty()) {
       Text(
-        "${moments.size} 次相遇 · 最近 ${DAY_FMT.format(Date(moments.last().createdAt))}",
+        "${moments.size} 次相遇 · 最近 ${Lingo.humanTime(moments.last().createdAt)}",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -345,7 +363,8 @@ private fun SceneBrowseSheet(scene: ThemeGroup, viewModel: TidelineTranslateView
       fontWeight = FontWeight.SemiBold,
     )
     Text(
-      DAY_FMT.format(Date(scene.latestAt)) + (scene.sourceLang?.let { " · $it" } ?: ""),
+      Lingo.humanTime(scene.latestAt) +
+        (scene.sourceLang?.let { " · ${Lingo.langName(it)}" } ?: ""),
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

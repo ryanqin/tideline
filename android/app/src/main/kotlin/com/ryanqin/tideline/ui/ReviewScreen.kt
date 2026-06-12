@@ -66,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -101,6 +102,10 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
   var open by remember { mutableStateOf<ReviewItem?>(null) }
 
   LaunchedEffect(Unit) { deck = viewModel.reviewDeck() }
+
+  // The system back walks off the shore, back to the desk — never out of
+  // the app (the shore is a state, not an activity).
+  androidx.activity.compose.BackHandler(onBack = onClose)
 
   val dismiss = { item: ReviewItem ->
     deck = deck?.minus(item)
@@ -219,6 +224,8 @@ private fun Creature(
   modifier: Modifier,
   onPick: (ReviewItem) -> Unit,
 ) {
+  // The web shore tilts each creature a few degrees — driftage, not a grid.
+  val rot = ((hash ushr 16) % 25 - 12).toFloat()
   Column(
     modifier = modifier
       .width(150.dp)
@@ -226,9 +233,10 @@ private fun Creature(
       .padding(6.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
+    val glyphMod = Modifier.size(62.dp).rotate(rot)
     when (item) {
-      is ReviewItem.Word -> SeaGlassGlyph(hash, Modifier.size(58.dp))
-      is ReviewItem.Scene -> CrabGlyph(Modifier.size(64.dp))
+      is ReviewItem.Word -> CreatureGlyph(GlyphKind.Card, item.card.original, glyphMod)
+      is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sessionId, glyphMod)
     }
     Spacer(Modifier.height(6.dp))
     Text(
@@ -238,75 +246,6 @@ private fun Creature(
       textAlign = TextAlign.Center,
       maxLines = 2,
     )
-  }
-}
-
-/** A piece of sea glass — a word card washed smooth. Its tint comes from the
- * word itself (hash), so each keeps its colour between tides. */
-@Composable
-private fun SeaGlassGlyph(hash: Int, modifier: Modifier) {
-  val (fill, edge) = when ((hash ushr 8) % 3) {
-    0 -> AmberSoft to Amber
-    1 -> CoralSoft to Coral
-    else -> SandSink to Taupe
-  }
-  Canvas(modifier) {
-    val w = size.width
-    val h = size.height
-    val lean = ((hash % 7) - 3) / 60f
-    // a worn, slightly leaning pebble of glass
-    val pebble = Path().apply {
-      moveTo(w * 0.50f, h * 0.06f)
-      cubicTo(w * (0.86f + lean), h * 0.10f, w * 0.96f, h * 0.46f, w * 0.84f, h * 0.76f)
-      cubicTo(w * 0.72f, h * 0.97f, w * 0.30f, h * 0.97f, w * 0.17f, h * 0.78f)
-      cubicTo(w * (0.03f - lean), h * 0.56f, w * 0.13f, h * 0.13f, w * 0.50f, h * 0.06f)
-      close()
-    }
-    drawPath(pebble, color = fill)
-    drawPath(pebble, color = edge.copy(alpha = 0.7f), style = Stroke(width = 3f))
-    // the sea's polish — one soft highlight
-    drawOval(
-      color = SunWhite.copy(alpha = 0.55f),
-      topLeft = Offset(w * 0.26f, h * 0.18f),
-      size = androidx.compose.ui.geometry.Size(w * 0.30f, h * 0.18f),
-    )
-  }
-}
-
-/** A small crab — a whole occasion sidling ashore. */
-@Composable
-private fun CrabGlyph(modifier: Modifier) {
-  Canvas(modifier) {
-    val w = size.width
-    val h = size.height
-    val body = Coral.copy(alpha = 0.85f)
-    // legs — three a side, reaching down to the sand
-    val legStroke = Stroke(width = 3.5f, cap = StrokeCap.Round)
-    for (side in listOf(-1f, 1f)) {
-      for (li in 0..2) {
-        val sx = w * 0.5f + side * w * 0.30f
-        val sy = h * (0.52f + li * 0.07f)
-        drawPath(
-          Path().apply {
-            moveTo(sx, sy)
-            quadraticTo(sx + side * w * 0.14f, sy + h * 0.05f, sx + side * w * 0.17f, sy + h * 0.16f)
-          },
-          color = body, style = legStroke,
-        )
-      }
-    }
-    // claws — two small fists raised
-    drawCircle(body, radius = w * 0.09f, center = Offset(w * 0.22f, h * 0.30f))
-    drawCircle(body, radius = w * 0.09f, center = Offset(w * 0.78f, h * 0.30f))
-    // the shell
-    drawOval(
-      color = body,
-      topLeft = Offset(w * 0.20f, h * 0.34f),
-      size = androidx.compose.ui.geometry.Size(w * 0.60f, h * 0.42f),
-    )
-    // eyes
-    drawCircle(SunWhite, radius = w * 0.035f, center = Offset(w * 0.40f, h * 0.45f))
-    drawCircle(SunWhite, radius = w * 0.035f, center = Offset(w * 0.60f, h * 0.45f))
   }
 }
 

@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -112,30 +116,36 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
 
   ShoreBackdrop {
   Scaffold(containerColor = Color.Transparent) { innerPadding ->
+    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
     Column(
       modifier = Modifier
         .fillMaxSize()
-        .padding(innerPadding)
         .padding(horizontal = 24.dp, vertical = 16.dp)
-        .verticalScroll(rememberScrollState()),
+        .verticalScroll(rememberScrollState())
+        .padding(bottom = 88.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Text(text = "Tideline", style = MaterialTheme.typography.displaySmall)
-      Text(
-        text = "本地翻译 · 涌现学习",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+      // The desk is the hub (DESIGN §10.7): the shelves are one tap here,
+      // the shore one tap on the handle below.
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(text = "Tideline", style = MaterialTheme.typography.displaySmall)
+        Spacer(modifier = Modifier.weight(1f))
+        TextButton(onClick = { showMuseum = true }) {
+          Text("陈列馆 ›", color = MaterialTheme.colorScheme.primary)
+        }
+      }
 
-      Spacer(modifier = Modifier.height(4.dp))
       EngineStatusBar(state.engineState, state.errorMessage)
 
       OutlinedTextField(
         value = state.sourceText,
         onValueChange = viewModel::onSourceTextChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("Source text") },
-        placeholder = { Text("e.g. 寿司") },
+        label = { Text("想翻译什么?") },
+        placeholder = { Text("输入文字,粘贴一行菜单,丢进一句话……") },
         minLines = 2,
         maxLines = 6,
         enabled = state.engineState != EngineState.INFERRING,
@@ -148,68 +158,70 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         } else null,
       )
 
-      Button(
-        onClick = viewModel::translate,
-        modifier = Modifier.fillMaxWidth(),
-        enabled = state.engineState == EngineState.READY && state.sourceText.isNotBlank(),
-      ) {
-        Text("Translate to ${state.targetLang}")
-      }
-
-      OutlinedButton(
-        onClick = {
-          val granted = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.CAMERA
-          ) == PackageManager.PERMISSION_GRANTED
-          if (granted) showCamera = true else requestCamera.launch(Manifest.permission.CAMERA)
-        },
-        modifier = Modifier.fillMaxWidth(),
-        enabled = state.engineState == EngineState.READY,
-      ) {
-        Text("拍照翻译 → ${state.targetLang}")
-      }
-
-      OutlinedButton(
-        onClick = {
-          pickImage.launch(
-            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-          )
-        },
-        modifier = Modifier.fillMaxWidth(),
-        enabled = state.engineState == EngineState.READY,
-      ) {
-        Text("从相册选图翻译 → ${state.targetLang}")
-      }
-
-      OutlinedButton(
-        onClick = {
-          val granted = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECORD_AUDIO
-          ) == PackageManager.PERMISSION_GRANTED
-          if (granted) viewModel.toggleRecording()
-          else requestMic.launch(Manifest.permission.RECORD_AUDIO)
-        },
-        modifier = Modifier.fillMaxWidth(),
-        enabled = state.engineState == EngineState.READY || state.recording,
-      ) {
-        Text(if (state.recording) "停止录音并翻译 ●" else "录音翻译 → ${state.targetLang}")
-      }
-
       Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        OutlinedButton(onClick = { showReview = true }, modifier = Modifier.weight(1f)) {
-          Text("去复习")
+        Text(
+          "译成你的第一语言 · 中文",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.weight(1f),
+        )
+        Button(
+          onClick = viewModel::translate,
+          enabled = state.engineState == EngineState.READY && state.sourceText.isNotBlank(),
+        ) {
+          Text("翻译")
         }
-        OutlinedButton(onClick = { showMuseum = true }, modifier = Modifier.weight(1f)) {
-          Text("陈列馆")
-        }
+      }
+
+      // The phone's own ways of meeting words — the capture row.
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        OutlinedButton(
+          onClick = {
+            val granted = ContextCompat.checkSelfPermission(
+              context, Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) showCamera = true else requestCamera.launch(Manifest.permission.CAMERA)
+          },
+          modifier = Modifier.weight(1f),
+          enabled = state.engineState == EngineState.READY,
+        ) { Text("拍照") }
+        OutlinedButton(
+          onClick = {
+            pickImage.launch(
+              PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+          },
+          modifier = Modifier.weight(1f),
+          enabled = state.engineState == EngineState.READY,
+        ) { Text("相册") }
+        OutlinedButton(
+          onClick = {
+            val granted = ContextCompat.checkSelfPermission(
+              context, Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) viewModel.toggleRecording()
+            else requestMic.launch(Manifest.permission.RECORD_AUDIO)
+          },
+          modifier = Modifier.weight(1f),
+          enabled = state.engineState == EngineState.READY || state.recording,
+        ) { Text(if (state.recording) "停止 ●" else "录音") }
       }
 
       if (state.translation.isNotEmpty() || state.engineState == EngineState.INFERRING) {
         TranslationCard(state.translation, streaming = state.engineState == EngineState.INFERRING)
       }
+
+      Text(
+        "你翻译的一切都只存在本地。等翻译攒得够多,涉水走进海岸,或去沙丘上的陈列馆,看那些悄悄成形的东西。",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
 
       if (history.isNotEmpty()) {
         Spacer(modifier = Modifier.height(8.dp))
@@ -223,6 +235,27 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
           HistoryRow(row, onSpeak = { viewModel.speak(row.original, row.sourceLang) })
         }
       }
+    }
+    // Wade into the shore — the web desk's swipe-up handle, as a quiet
+    // chevron resting on the tideline.
+    Column(
+      modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      IconButton(onClick = { showReview = true }) {
+        Icon(
+          Icons.Default.KeyboardArrowUp,
+          contentDescription = "涉水进海岸",
+          tint = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.size(32.dp),
+        )
+      }
+      Text(
+        "海岸",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
     }
   }
   }
@@ -312,7 +345,7 @@ private fun HistoryRow(row: TranslationEntity, onSpeak: () -> Unit) {
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-          text = TIME_FMT.format(Date(row.createdAt)),
+          text = Lingo.humanTime(row.createdAt),
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
