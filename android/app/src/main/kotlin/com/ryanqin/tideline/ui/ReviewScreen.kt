@@ -1,11 +1,13 @@
 /*
  * Phase 5c — the review deck, on the phone.
  *
- * The shore's job in a quiet screen: due cards surface one at a time — the
- * meaning shown, the word masked, the captured material as the cue (the
- * photo with the word's spot covered, the recording playable). Reveal, hear
- * the standard pronunciation if wanted, then self-grade; the outcome walks
- * the same Leitner ladder as the web (data layer mirrors core).
+ * The shore's job in a quiet screen: due items surface one at a time. The
+ * review direction IS the translation direction (§3.3): the foreign word —
+ * the form you'll meet again in the world — is the question, shown whole
+ * with its captured material (the photo as you saw it, the recording as you
+ * heard it, the standard pronunciation on tap); the MEANING is what you
+ * reach for, masked until reveal. Then self-grade; the outcome walks the
+ * same Leitner ladder as the web (data layer mirrors core).
  *
  * Restraint rules carry over (DESIGN §3.1/§10.3): no due counts, no streaks,
  * no notifications — the entry is a plain button that's always there.
@@ -21,7 +23,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,7 +30,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -65,22 +65,9 @@ import androidx.compose.ui.unit.dp
 import com.ryanqin.tideline.data.CardEntity
 import com.ryanqin.tideline.data.ThemeGroup
 import com.ryanqin.tideline.data.TranslationEntity
-import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-/** "[x0,y0,x1,y1]" normalized → floats, or null when absent/malformed. */
-private fun parseRegion(raw: String?): FloatArray? {
-  if (raw.isNullOrBlank()) return null
-  return try {
-    val arr = JSONArray(raw)
-    if (arr.length() != 4) null
-    else FloatArray(4) { arr.getDouble(it).toFloat() }
-  } catch (_: Throwable) {
-    null
-  }
-}
 
 @Composable
 fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
@@ -170,19 +157,27 @@ private fun ReviewCard(
       .verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    // The meaning is the question.
-    Text(
-      text = card.translated,
-      style = MaterialTheme.typography.headlineMedium,
-      fontWeight = FontWeight.SemiBold,
-    )
+    // The word as met is the question — the form you'll meet again in the
+    // world. Its standard pronunciation is part of the question, on tap.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(
+        text = card.original,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.weight(1f, fill = false),
+      )
+      IconButton(onClick = { viewModel.speak(card.original, photoMoment?.sourceLang ?: audioMoments.firstOrNull()?.sourceLang) }) {
+        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Standard pronunciation",
+          tint = MaterialTheme.colorScheme.primary)
+      }
+    }
 
-    // The lived material is the cue: the photo with the word's own spot
-    // covered until reveal; the recording playable from the start (听写).
+    // The lived material rounds out the question: the photo whole, as you
+    // saw it; the recording playable, as you heard it.
     photoMoment?.sourceImage?.let { bytes ->
       val bitmap = remember(card.id) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
       if (bitmap != null) {
-        CapturePhoto(bitmap, parseRegion(photoMoment.sourceRegion), masked = !revealed)
+        CapturePhoto(bitmap)
       }
     }
     audioMoments.take(2).forEach { m ->
@@ -202,20 +197,12 @@ private fun ReviewCard(
         Text("想起来了再揭开")
       }
     } else {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        // The revealed word wears coral — the web's --spark reveal reward.
-        Text(
-          text = card.original,
-          style = MaterialTheme.typography.headlineSmall,
-          color = MaterialTheme.colorScheme.tertiary,
-          modifier = Modifier.weight(1f, fill = false),
-        )
-        // The standard pronunciation, AFTER recall — the dictation order.
-        IconButton(onClick = { viewModel.speak(card.original, photoMoment?.sourceLang ?: audioMoments.firstOrNull()?.sourceLang) }) {
-          Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Standard pronunciation",
-            tint = MaterialTheme.colorScheme.primary)
-        }
-      }
+      // The meaning is the reveal, wearing coral — the web's --spark reward.
+      Text(
+        text = card.translated,
+        style = MaterialTheme.typography.headlineSmall,
+        color = MaterialTheme.colorScheme.tertiary,
+      )
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -254,9 +241,10 @@ private data class SceneLine(
   val lang: String?,
 )
 
-/** A whole occasion recalled as one: the scene gist (captured with it) is the
- * question, the photo is the cue, each meaning a masked word to reach for.
- * One self-grade for the night walks the shared Leitner ladder. */
+/** A whole occasion recalled as one: the scene gist (captured with it) and
+ * the photo set the stage, each foreign word shown as met — its meaning the
+ * masked thing to reach for. One self-grade for the night walks the shared
+ * Leitner ladder. */
 @Composable
 private fun SceneCard(
   group: ThemeGroup,
@@ -309,17 +297,8 @@ private fun SceneCard(
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    // The scene photo is the cue, whole and unmasked — look, then reach.
-    photo?.let { bitmap ->
-      Box(modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height)) {
-        Image(
-          bitmap = bitmap.asImageBitmap(),
-          contentDescription = null,
-          modifier = Modifier.fillMaxSize(),
-          contentScale = ContentScale.Fit,
-        )
-      }
-    }
+    // The scene photo, whole — the occasion as you saw it.
+    photo?.let { CapturePhoto(it) }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
       lines.forEach { line ->
@@ -347,9 +326,8 @@ private fun SceneCard(
   }
 }
 
-/** The meaning shown, the word a warm patch until tapped — then the standard
- * pronunciation (dictation order); the recording, when there is one, is a cue
- * playable from the start. */
+/** The foreign word shown as met (its pronunciation and recording on tap —
+ * they're part of the question), the MEANING a warm patch until tapped. */
 @Composable
 private fun SceneLineRow(
   line: SceneLine,
@@ -362,7 +340,7 @@ private fun SceneLineRow(
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Column(modifier = Modifier.weight(1f)) {
-      Text(line.translated, style = MaterialTheme.typography.titleMedium)
+      Text(line.originals.joinToString(" / "), style = MaterialTheme.typography.titleMedium)
       Box(
         modifier = Modifier
           .clip(RoundedCornerShape(6.dp))
@@ -378,10 +356,10 @@ private fun SceneLineRow(
           .clickable(enabled = !revealed, onClick = onReveal)
           .padding(horizontal = 6.dp, vertical = 2.dp),
       ) {
-        // Transparent until revealed: the patch keeps the word's own size.
-        // Revealed words wear coral — the web's --spark reveal reward.
+        // Transparent until revealed: the patch keeps the meaning's own size.
+        // The revealed meaning wears coral — the web's --spark reveal reward.
         Text(
-          text = line.originals.joinToString(" / "),
+          text = line.translated,
           style = MaterialTheme.typography.bodyLarge,
           color = if (revealed) MaterialTheme.colorScheme.tertiary else Color.Transparent,
         )
@@ -392,44 +370,29 @@ private fun SceneLineRow(
         Icon(Icons.Default.PlayArrow, contentDescription = "播放当时的原声")
       }
     }
-    if (revealed) {
-      IconButton(onClick = { viewModel.speak(line.originals.first(), line.lang) }) {
-        Icon(
-          Icons.AutoMirrored.Filled.VolumeUp,
-          contentDescription = "Standard pronunciation",
-          tint = MaterialTheme.colorScheme.primary,
-        )
-      }
+    IconButton(onClick = { viewModel.speak(line.originals.first(), line.lang) }) {
+      Icon(
+        Icons.AutoMirrored.Filled.VolumeUp,
+        contentDescription = "Standard pronunciation",
+        tint = MaterialTheme.colorScheme.primary,
+      )
     }
   }
 }
 
-/** The capture, uncropped (the normalized region must map 1:1), with a warm
- * patch over the word's own pixels until the reveal. */
+/** The capture, whole and uncropped — the scene exactly as it was met. (The
+ * photo-pixel word mask retired with the direction flip: the word is the
+ * shown question now, so there is nothing on the photo to hide. The OCR
+ * geometry in source_region stays — the web's browse-mode mask toggle still
+ * reads it.) */
 @Composable
-private fun CapturePhoto(bitmap: Bitmap, region: FloatArray?, masked: Boolean) {
-  BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-    val aspect = bitmap.width.toFloat() / bitmap.height.toFloat()
-    val w = maxWidth
-    val h = maxWidth / aspect
-    Box(modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {
-      Image(
-        bitmap = bitmap.asImageBitmap(),
-        contentDescription = null,
-        modifier = Modifier.fillMaxSize(),
-        contentScale = ContentScale.Fit,
-      )
-      if (masked && region != null) {
-        Box(
-          modifier = Modifier
-            .offset(x = w * region[0], y = h * region[1])
-            .size(width = w * (region[2] - region[0]), height = h * (region[3] - region[1]))
-            .background(
-              MaterialTheme.colorScheme.surfaceVariant,
-              RoundedCornerShape(6.dp),
-            ),
-        )
-      }
-    }
+private fun CapturePhoto(bitmap: Bitmap) {
+  Box(modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height)) {
+    Image(
+      bitmap = bitmap.asImageBitmap(),
+      contentDescription = null,
+      modifier = Modifier.fillMaxSize(),
+      contentScale = ContentScale.Fit,
+    )
   }
 }
