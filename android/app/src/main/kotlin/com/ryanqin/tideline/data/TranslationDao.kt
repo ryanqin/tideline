@@ -35,6 +35,9 @@ interface TranslationDao {
   @Query("SELECT source_image FROM translations WHERE id = :id")
   suspend fun imageFor(id: Long): ByteArray?
 
+  @Query("SELECT source_audio FROM translations WHERE id = :id")
+  suspend fun audioFor(id: Long): ByteArray?
+
   @Query("SELECT COUNT(*) FROM translations")
   suspend fun count(): Int
 }

@@ -17,6 +17,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,13 +55,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ryanqin.tideline.data.CardEntity
+import com.ryanqin.tideline.data.ThemeGroup
 import com.ryanqin.tideline.data.TranslationEntity
 import org.json.JSONArray
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** "[x0,y0,x1,y1]" normalized → floats, or null when absent/malformed. */
 private fun parseRegion(raw: String?): FloatArray? {
@@ -76,10 +83,10 @@ private fun parseRegion(raw: String?): FloatArray? {
 
 @Composable
 fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
-  var deck by remember { mutableStateOf<List<CardEntity>?>(null) }
+  var deck by remember { mutableStateOf<List<ReviewItem>?>(null) }
   var index by remember { mutableIntStateOf(0) }
 
-  LaunchedEffect(Unit) { deck = viewModel.dueCards() }
+  LaunchedEffect(Unit) { deck = viewModel.reviewDeck() }
 
   Scaffold { innerPadding ->
     Column(
@@ -91,22 +98,32 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
       IconButton(onClick = onClose) {
         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
       }
-      val cards = deck
+      val items = deck
       when {
-        cards == null -> {}
-        index >= cards.size -> RestingShore(onClose)
-        else -> ReviewCard(
-          card = cards[index],
-          viewModel = viewModel,
-          onGraded = { remembered ->
-            viewModel.reviewCard(cards[index].id, remembered)
-            index += 1
-          },
-          onSink = {
-            viewModel.sinkCard(cards[index].id)
-            index += 1
-          },
-        )
+        items == null -> {}
+        index >= items.size -> RestingShore(onClose)
+        else -> when (val item = items[index]) {
+          is ReviewItem.Word -> ReviewCard(
+            card = item.card,
+            viewModel = viewModel,
+            onGraded = { remembered ->
+              viewModel.reviewCard(item.card.id, remembered)
+              index += 1
+            },
+            onSink = {
+              viewModel.sinkCard(item.card.id)
+              index += 1
+            },
+          )
+          is ReviewItem.Scene -> SceneCard(
+            group = item.group,
+            viewModel = viewModel,
+            onGraded = { remembered ->
+              viewModel.reviewTheme(item.group.sessionId, remembered)
+              index += 1
+            },
+          )
+        }
       }
     }
   }
@@ -222,6 +239,160 @@ private fun ReviewCard(
       }
     }
     Spacer(Modifier.height(24.dp))
+  }
+}
+
+/** One concept inside a scene: synonyms folded onto one line (the scene is
+ * single-language, so same rendering = same concept — the web museum's
+ * grouping, mirrored). */
+private data class SceneLine(
+  val translated: String,
+  val originals: List<String>,
+  val audioId: Long?,
+  val lang: String?,
+)
+
+/** A whole occasion recalled as one: the scene gist (captured with it) is the
+ * question, the photo is the cue, each meaning a masked word to reach for.
+ * One self-grade for the night walks the shared Leitner ladder. */
+@Composable
+private fun SceneCard(
+  group: ThemeGroup,
+  viewModel: TidelineTranslateViewModel,
+  onGraded: (Boolean) -> Unit,
+) {
+  var photo by remember(group.sessionId) { mutableStateOf<Bitmap?>(null) }
+  var revealed by remember(group.sessionId) { mutableStateOf(setOf<String>()) }
+
+  val photoMember = group.members.firstOrNull { it.hasImage }
+  LaunchedEffect(group.sessionId) {
+    photo = photoMember?.let { m ->
+      viewModel.photoFor(m.id)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+    }
+  }
+
+  // The episodic title is the scene gist the model reported at capture time;
+  // a session without one falls back to its date. B6 naming waits for the
+  // night-watch model — the gist is the engineering that's already there.
+  val gist = group.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
+  val day = remember(group.sessionId) {
+    SimpleDateFormat("M月d日", Locale.getDefault()).format(Date(group.latestAt))
+  }
+  val lines = remember(group.sessionId) {
+    group.members.groupBy { it.translated }.map { (translated, ms) ->
+      SceneLine(
+        translated = translated,
+        originals = ms.map { it.original }.distinct(),
+        audioId = ms.firstOrNull { it.hasAudio }?.id,
+        lang = ms.firstNotNullOfOrNull { it.sourceLang },
+      )
+    }
+  }
+
+  Column(
+    modifier = Modifier
+      .fillMaxSize()
+      .verticalScroll(rememberScrollState()),
+    verticalArrangement = Arrangement.spacedBy(16.dp),
+  ) {
+    // The occasion is the question.
+    Text(
+      text = gist ?: "那一次的场合",
+      style = MaterialTheme.typography.headlineSmall,
+      fontWeight = FontWeight.SemiBold,
+    )
+    Text(
+      text = "$day · 那时遇到的词,还想得起来吗",
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    // The scene photo is the cue, whole and unmasked — look, then reach.
+    photo?.let { bitmap ->
+      Box(modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height)) {
+        Image(
+          bitmap = bitmap.asImageBitmap(),
+          contentDescription = null,
+          modifier = Modifier.fillMaxSize(),
+          contentScale = ContentScale.Fit,
+        )
+      }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      lines.forEach { line ->
+        SceneLineRow(
+          line = line,
+          revealed = line.translated in revealed,
+          onReveal = { revealed = revealed + line.translated },
+          viewModel = viewModel,
+        )
+      }
+    }
+
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      OutlinedButton(onClick = { onGraded(false) }, modifier = Modifier.weight(1f)) {
+        Text("没想起来")
+      }
+      Button(onClick = { onGraded(true) }, modifier = Modifier.weight(1f)) {
+        Text("想起来了")
+      }
+    }
+    Spacer(Modifier.height(24.dp))
+  }
+}
+
+/** The meaning shown, the word a warm patch until tapped — then the standard
+ * pronunciation (dictation order); the recording, when there is one, is a cue
+ * playable from the start. */
+@Composable
+private fun SceneLineRow(
+  line: SceneLine,
+  revealed: Boolean,
+  onReveal: () -> Unit,
+  viewModel: TidelineTranslateViewModel,
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(modifier = Modifier.weight(1f)) {
+      Text(line.translated, style = MaterialTheme.typography.titleMedium)
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(6.dp))
+          .background(
+            if (revealed) Color.Transparent
+            else MaterialTheme.colorScheme.surfaceVariant,
+          )
+          .clickable(enabled = !revealed, onClick = onReveal)
+          .padding(horizontal = 6.dp, vertical = 2.dp),
+      ) {
+        // Transparent until revealed: the patch keeps the word's own size.
+        Text(
+          text = line.originals.joinToString(" / "),
+          style = MaterialTheme.typography.bodyLarge,
+          color = if (revealed) MaterialTheme.colorScheme.primary else Color.Transparent,
+        )
+      }
+    }
+    line.audioId?.let { id ->
+      IconButton(onClick = { viewModel.playRecordingFor(id) }) {
+        Icon(Icons.Default.PlayArrow, contentDescription = "播放当时的原声")
+      }
+    }
+    if (revealed) {
+      IconButton(onClick = { viewModel.speak(line.originals.first(), line.lang) }) {
+        Icon(
+          Icons.AutoMirrored.Filled.VolumeUp,
+          contentDescription = "Standard pronunciation",
+          tint = MaterialTheme.colorScheme.primary,
+        )
+      }
+    }
   }
 }
 

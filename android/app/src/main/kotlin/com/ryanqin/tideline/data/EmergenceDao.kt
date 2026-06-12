@@ -8,6 +8,8 @@
 package com.ryanqin.tideline.data
 
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
 @Dao
@@ -48,4 +50,29 @@ interface EmergenceDao {
       "WHERE c.id = :cardId ORDER BY t.created_at"
   )
   suspend fun cardMoments(cardId: Long): List<TranslationEntity>
+
+  // --- the scene tier -------------------------------------------------------
+
+  /** Every row, blobs left behind — theme grouping reads the whole library
+   * (the concept partition is global), so photos/recordings are flagged and
+   * fetched on demand instead. */
+  @Query(
+    "SELECT id, original, target_lang AS targetLang, translated, source, " +
+      "context_snippet AS contextSnippet, session_id AS sessionId, " +
+      "source_region AS sourceRegion, source_lang AS sourceLang, " +
+      "created_at AS createdAt, " +
+      "source_image IS NOT NULL AS hasImage, " +
+      "source_audio IS NOT NULL AS hasAudio " +
+      "FROM translations"
+  )
+  suspend fun themeRows(): List<ThemeRow>
+
+  @Query("SELECT * FROM theme_reviews")
+  suspend fun themeReviewStates(): List<ThemeReviewEntity>
+
+  @Query("SELECT * FROM theme_reviews WHERE session_id = :sessionId")
+  suspend fun themeReview(sessionId: String): ThemeReviewEntity?
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertThemeReview(row: ThemeReviewEntity)
 }

@@ -30,12 +30,16 @@ import android.graphics.BitmapFactory
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.ryanqin.tideline.data.CardEntity
+import com.ryanqin.tideline.data.ThemeGroup
+import com.ryanqin.tideline.data.ThemeReviewEntity
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.data.dueThemes
 import com.ryanqin.tideline.data.emergenceSweep
 import com.ryanqin.tideline.data.liveSessionId
 import com.ryanqin.tideline.data.reschedule
+import com.ryanqin.tideline.data.themeGroups
 import com.ryanqin.tideline.intelligence.ImageReply
 import com.ryanqin.tideline.intelligence.detectScriptLanguage
 import com.ryanqin.tideline.intelligence.parseAudioReply
@@ -92,6 +96,12 @@ data class TidelineUiState(
   val recording: Boolean = false,
 )
 
+/** One thing the tide carried ashore: a word card, or a whole scene. */
+sealed interface ReviewItem {
+  data class Word(val card: CardEntity) : ReviewItem
+  data class Scene(val group: ThemeGroup, val strength: Int) : ReviewItem
+}
+
 @OptIn(ExperimentalApi::class)
 class TidelineTranslateViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -120,11 +130,55 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
   // --- review deck (the shore's job, on the phone) -------------------------
 
-  suspend fun dueCards(): List<CardEntity> =
-    emergence.dueCards(System.currentTimeMillis())
+  /** Everything due now: word cards first (the concrete drill), then whole
+   * scenes (the occasion recalled as one) — the same two review units the web
+   * shore surfaces, each weakest-first within its kind. */
+  suspend fun reviewDeck(): List<ReviewItem> {
+    val now = System.currentTimeMillis()
+    val words = emergence.dueCards(now).map { ReviewItem.Word(it) }
+    val states = emergence.themeReviewStates().associateBy { it.sessionId }
+    val scenes = dueThemes(themeGroups(emergence.themeRows()), states, now)
+      .map { ReviewItem.Scene(it.group, it.strength) }
+    return words + scenes
+  }
 
   suspend fun cardMoments(cardId: Long): List<TranslationEntity> =
     emergence.cardMoments(cardId)
+
+  /** A scene member's photo, fetched only when its card is on screen — the
+   * theme rows themselves travel without blobs. */
+  suspend fun photoFor(id: Long): ByteArray? = dao.imageFor(id)
+
+  fun playRecordingFor(id: Long) {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        dao.audioFor(id)?.let { playRecording(it) }
+      } catch (t: Throwable) {
+        Log.e(TAG, "Replay fetch failed", t)
+      }
+    }
+  }
+
+  fun reviewTheme(sessionId: String, remembered: Boolean) {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        val now = System.currentTimeMillis()
+        val state = emergence.themeReview(sessionId)
+        val (next, dueAt) = reschedule(state?.strength ?: 0, remembered, now)
+        emergence.upsertThemeReview(
+          ThemeReviewEntity(
+            sessionId = sessionId,
+            strength = next,
+            dueAt = dueAt,
+            lastReviewedAt = now,
+            reviews = (state?.reviews ?: 0) + 1,
+          )
+        )
+      } catch (t: Throwable) {
+        Log.e(TAG, "Theme review failed", t)
+      }
+    }
+  }
 
   fun reviewCard(cardId: Long, remembered: Boolean) {
     viewModelScope.launch(Dispatchers.IO) {

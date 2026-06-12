@@ -19,8 +19,9 @@ import androidx.room.RoomDatabase
     CandidateEntity::class,
     CandidateEvidenceEntity::class,
     CardEntity::class,
+    ThemeReviewEntity::class,
   ],
-  version = 5,
+  version = 6,
   exportSchema = false,
 )
 abstract class TidelineDatabase : RoomDatabase() {
