@@ -98,7 +98,13 @@
 
   function momentRow(m) {
     const meta = [humanTime(m.at), srcLabel(m.source)].filter(Boolean).map(esc).join('<span class="dot">·</span>');
-    const photo = photoFigure(m, "moment-photo");
+    // In review the photo comes whole: the word is the SHOWN question (the
+    // review direction is the translation direction, §3.3), so masking its
+    // pixels would fight the card. Browsing keeps the maskable figure — the
+    // look-at-the-place-and-reach game stays a museum pastime.
+    const photo = currentOpts.review
+      ? capturePhoto(m, "moment-photo")
+      : photoFigure(m, "moment-photo");
     const play = playBtn(m);
     if (!m.context && !photo) {
       return `<div class="moment moment--compact"><span class="moment-glyph" aria-hidden="true">${srcGlyph(m.source)}</span><span class="moment-meta">${meta || esc(t("no_context"))}</span>${play}</div>`;
@@ -117,18 +123,18 @@
     const body = c.readonly
       ? (c.count ? `<div class="moments"><div class="moment moment--compact"><span class="moment-meta">${esc(c.count)}×</span></div></div>` : "")
       : `<div class="moments">${(c.moments || []).map(momentRow).join("")}</div>`;
-    // In review mode (a due card the tide carried ashore) the foreign word is
-    // masked: you see the meaning, reach for the word, reveal it, then self-
-    // grade — that outcome feeds the schedule (DESIGN §10.3). The museum opens
-    // cards plainly (no review), so it stays browsing, not a quiz.
+    // In review mode (a due card the tide carried ashore) the MEANING is
+    // masked: the foreign word — the form you'll meet again in the world — is
+    // the shown question, and you reach for what it means (the review
+    // direction IS the translation direction, §3.3). Reveal, then self-grade;
+    // that outcome feeds the schedule (DESIGN §10.3). The museum opens cards
+    // plainly (no review), so it stays browsing, not a quiz.
     const reviewable = currentOpts.review && !c.readonly && c.id != null;
-    const word = reviewable
-      ? `<span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(c.original)}</span>`
-      : esc(c.original);
-    // Dictation order: in review the standard pronunciation is rendered but
-    // stays hidden until the word is revealed (CSS gate) — the recording in
-    // the moments is the cue, the standard voice is the AFTER-recall
-    // comparison; speaking earlier would answer the quiz out loud.
+    const meaning = reviewable
+      ? `<span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(c.translated)}</span>`
+      : esc(c.translated);
+    // The standard pronunciation belongs to the shown word — part of the
+    // question, speakable any time (it can't leak the masked meaning).
     const sayWord = speakBtn(c.original, c.source_lang);
     const grade = reviewable
       ? `<div class="review-grade">
@@ -138,7 +144,7 @@
       : "";
     return `<div class="cluster card">
         <div class="card-head">
-          <h2>${word} → ${esc(c.translated)} ${annot(c.source_lang, c.target_lang)}${sayWord}</h2>
+          <h2>${esc(c.original)} → ${meaning} ${annot(c.source_lang, c.target_lang)}${sayWord}</h2>
           ${sink}
         </div>
         ${body}
@@ -170,19 +176,19 @@
         <div class="group-words">${words}</div>
       </div>`;
   }
-  // crab → a theme: masked recall — you see the meaning, recall the word
-  // (tap to reveal); "reveal all" flips to plain browsing. On the shore (review
-  // mode) a scene is a review unit too: recall the night's words, then self-
-  // grade once — that outcome reschedules the whole scene (DESIGN §10.3, keyed
-  // on session_id). The museum opens themes plainly (no review), so it stays
-  // browsing, not a quiz — same split as cards.
+  // crab → a theme: masked recall — the scene's foreign words shown as met,
+  // each MEANING behind its patch (the review direction is the translation
+  // direction, §3.3); "reveal all" flips to plain browsing. On the shore
+  // (review mode) a scene is a review unit too: reach for the night's
+  // meanings, then self-grade once — that outcome reschedules the whole scene
+  // (DESIGN §10.3, keyed on session_id). The museum opens themes plainly (no
+  // review), so it stays browsing, not a quiz — same split as cards.
   function themeSheet(c) {
-    // One recall prompt per meaning. A scene is a single-language capture
+    // One recall row per concept. A scene is a single-language capture
     // session, so rows sharing a translation share a concept (账单 ← addition /
-    // facture); collapse them, or the meaning shows twice with the word masked,
-    // which just reads as a duplicate. The masked side then holds every foreign
-    // word that meant it, so revealing teaches the whole synonym set the scene
-    // used instead of one word per identical-looking row.
+    // facture); collapse them, or the same meaning hides behind two patches
+    // that read as duplicates. The shown side then holds every foreign word
+    // that meant it — the scene's whole synonym set poses one question.
     const byMeaning = [];
     const seen = new Map();
     (c.members || []).forEach((m) => {
@@ -195,10 +201,12 @@
       if (!g.originals.includes(m.original)) g.originals.push(m.original);
       if (!g.context && m.context) g.context = m.context;
     });
+    // .translated is the row's lead-slot class (styling), not its content:
+    // the foreign words lead the row now, the meaning sits behind the patch.
     const rows = byMeaning.map((g) => `
       <div class="member">
-        <span class="translated">${esc(g.translated)}</span>
-        <span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(g.originals.join(" / "))}</span>
+        <span class="translated">${esc(g.originals.join(" / "))}</span>
+        <span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(g.translated)}</span>
         ${g.context ? `<span class="context">${esc(g.context)}</span>` : ""}
       </div>`).join("");
     const reviewable = currentOpts.review && c.session_id != null;

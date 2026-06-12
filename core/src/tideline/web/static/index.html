@@ -194,10 +194,12 @@
       // offers masked recall + a self-grade (sheet.js).
       const crabs = dueWeakestFirst(named(themes))
         .map((t) => ({ id: 'theme-' + t.id, kind: 'crab', label: t.title, data: t }));
-      // Cards wash ashore when due; the label is the translation into your
-      // language, so drop any without one.
+      // Cards wash ashore when due; the label is the FOREIGN word — the shown
+      // question (review direction = translation direction, §3.3). Labelling
+      // by translation would hand out the masked answer before the card even
+      // opens. Still drop cards without a translation (nothing to reach for).
       const glass = dueWeakestFirst(cards.filter((c) => c.translated && c.translated.trim()))
-        .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.translated, data: c }));
+        .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.original, data: c }));
       // Only a calm few wash up — never a wall; that restraint is what fixes the
       // deck overload (DESIGN §10.5). Due cards (the review work) get a
       // guaranteed share so consolidation never starves behind the due scenes
