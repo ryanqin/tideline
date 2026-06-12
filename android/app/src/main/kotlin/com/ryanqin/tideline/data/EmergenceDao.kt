@@ -67,6 +67,19 @@ interface EmergenceDao {
   )
   suspend fun themeRows(): List<ThemeRow>
 
+  /** Every active card with the language its evidence was met in — the
+   * museum's cards lens. The language is derived from the card's moments
+   * (cards mirror core's schema, which keeps language on the translations). */
+  @Query(
+    "SELECT c.*, " +
+      "(SELECT t.source_lang FROM translations t " +
+      " JOIN candidate_evidence ce ON ce.translation_id = t.id " +
+      " WHERE ce.candidate_id = c.candidate_id AND t.source_lang IS NOT NULL " +
+      " ORDER BY t.id LIMIT 1) AS sourceLang " +
+      "FROM cards c WHERE c.state = 'active' ORDER BY c.created_at DESC"
+  )
+  suspend fun museumCards(): List<MuseumCard>
+
   @Query("SELECT * FROM theme_reviews")
   suspend fun themeReviewStates(): List<ThemeReviewEntity>
 

@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -85,11 +86,16 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
     ActivityResultContracts.RequestPermission()
   ) { granted -> if (granted) viewModel.toggleRecording() }
 
-  // Phase 5c: the review deck. A plain doorway, always present — never a
-  // count, never a badge (DESIGN §3.1/§10.3).
+  // Phase 5c: the review deck and the museum. Plain doorways, always present
+  // — never a count, never a badge (DESIGN §3.1/§10.3).
   var showReview by remember { mutableStateOf(false) }
   if (showReview) {
     ReviewScreen(viewModel = viewModel, onClose = { showReview = false })
+    return
+  }
+  var showMuseum by remember { mutableStateOf(false) }
+  if (showMuseum) {
+    MuseumScreen(viewModel = viewModel, onClose = { showMuseum = false })
     return
   }
 
@@ -104,7 +110,8 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
     return
   }
 
-  Scaffold { innerPadding ->
+  ShoreBackdrop {
+  Scaffold(containerColor = Color.Transparent) { innerPadding ->
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -188,11 +195,16 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         Text(if (state.recording) "停止录音并翻译 ●" else "录音翻译 → ${state.targetLang}")
       }
 
-      OutlinedButton(
-        onClick = { showReview = true },
+      Row(
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
-        Text("去复习 — 看看潮水带来了什么")
+        OutlinedButton(onClick = { showReview = true }, modifier = Modifier.weight(1f)) {
+          Text("去复习")
+        }
+        OutlinedButton(onClick = { showMuseum = true }, modifier = Modifier.weight(1f)) {
+          Text("陈列馆")
+        }
       }
 
       if (state.translation.isNotEmpty() || state.engineState == EngineState.INFERRING) {
@@ -212,6 +224,7 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         }
       }
     }
+  }
   }
 }
 

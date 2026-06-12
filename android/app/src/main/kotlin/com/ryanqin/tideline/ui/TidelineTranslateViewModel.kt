@@ -30,13 +30,16 @@ import android.graphics.BitmapFactory
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.ryanqin.tideline.data.CardEntity
+import com.ryanqin.tideline.data.MuseumData
 import com.ryanqin.tideline.data.ThemeGroup
 import com.ryanqin.tideline.data.ThemeReviewEntity
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.data.cardGroups
 import com.ryanqin.tideline.data.dueThemes
 import com.ryanqin.tideline.data.emergenceSweep
+import com.ryanqin.tideline.data.langBuckets
 import com.ryanqin.tideline.data.liveSessionId
 import com.ryanqin.tideline.data.reschedule
 import com.ryanqin.tideline.data.themeGroups
@@ -44,6 +47,7 @@ import com.ryanqin.tideline.intelligence.ImageReply
 import com.ryanqin.tideline.intelligence.detectScriptLanguage
 import com.ryanqin.tideline.intelligence.parseAudioReply
 import com.ryanqin.tideline.intelligence.parseImageReply
+import com.ryanqin.tideline.intelligence.rendersInTargetScript
 import com.ryanqin.tideline.media.exifRotationDegrees
 import com.ryanqin.tideline.media.WavRecorder
 import com.ryanqin.tideline.media.matchTermBoxes
@@ -144,6 +148,18 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
   suspend fun cardMoments(cardId: Long): List<TranslationEntity> =
     emergence.cardMoments(cardId)
+
+  /** Everything the museum browses: cards folded by meaning, words bucketed
+   * by language, and the occasions — all from one read of the drawer. */
+  suspend fun museum(): MuseumData {
+    val rows = emergence.themeRows()
+    val cards = emergence.museumCards()
+    return MuseumData(
+      cardGroups = cardGroups(cards),
+      langBuckets = langBuckets(rows, cards),
+      scenes = themeGroups(rows),
+    )
+  }
 
   /** A scene member's photo, fetched only when its card is on screen — the
    * theme rows themselves travel without blobs. */
@@ -639,9 +655,11 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         object : MessageCallback {
           override fun onMessage(message: Message) { acc.append(message.toString()) }
           override fun onDone() {
-            val terms = parseImageReply(acc.toString().trim(), lang).terms
-            Log.i(TAG, "BENCH terms_retry got=${terms.size}")
-            finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, terms)
+            val r2 = parseImageReply(acc.toString().trim(), lang)
+            Log.i(TAG, "BENCH terms_retry got=${r2.terms.size}")
+            // Any half-translated retries from this pass get the same
+            // word-level fix; an empty list falls straight through to persist.
+            dispatchWordFix(r2.retryWorthy, r2.terms, translated, sceneGist, originalLabel, lang, sourceImage)
           }
           override fun onError(throwable: Throwable) {
             Log.e(TAG, "Terms retry failed", throwable)
@@ -653,6 +671,65 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     } catch (t: Throwable) {
       Log.e(TAG, "Terms retry send failed", t)
       finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList())
+    }
+  }
+
+  /*
+   * Word-fix follow-up: a TERM pair whose rendering failed the script guard
+   * ("Premium = 高 premium") gets ONE single-task ask in the same
+   * conversation. The probe shows the bare word translates cleanly
+   * ("Premium" → 高级 in ~0.5 s) — the half-borrowing is list-context
+   * laziness, not ability. Each fix passes the same script guard before it
+   * may sediment; a fix that still fails is dropped (rather absent than
+   * wrong). Recursive over the pending words; the empty list is the exit
+   * into persist, so callers may hand it an empty list to mean "no fixes".
+   */
+  private fun dispatchWordFix(
+    pending: List<String>,
+    fixed: List<ImageReply.Term>,
+    translated: String,
+    sceneGist: String?,
+    originalLabel: String,
+    lang: String,
+    sourceImage: ByteArray?,
+  ) {
+    if (pending.isEmpty()) {
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8))
+      return
+    }
+    val word = pending.first()
+    val rest = pending.drop(1)
+    val conv = conversation ?: run {
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8))
+      return
+    }
+    val acc = StringBuilder()
+    val prompt = "What does \"$word\" mean in $lang? Reply with only the $lang word, nothing else."
+    try {
+      conv.sendMessageAsync(
+        Contents.of(listOf(Content.Text(prompt))),
+        object : MessageCallback {
+          override fun onMessage(message: Message) { acc.append(message.toString()) }
+          override fun onDone() {
+            val fix = acc.toString().trim().lineSequence().firstOrNull()?.trim().orEmpty()
+            val ok = fix.isNotEmpty() && fix.length <= 60 && rendersInTargetScript(fix, lang)
+            Log.i(TAG, "BENCH word_fix word=\"$word\" ok=$ok out=\"${fix.take(60)}\"")
+            dispatchWordFix(
+              rest,
+              if (ok) fixed + ImageReply.Term(word, fix) else fixed,
+              translated, sceneGist, originalLabel, lang, sourceImage,
+            )
+          }
+          override fun onError(throwable: Throwable) {
+            Log.e(TAG, "Word fix failed", throwable)
+            dispatchWordFix(rest, fixed, translated, sceneGist, originalLabel, lang, sourceImage)
+          }
+        },
+        emptyMap(),
+      )
+    } catch (t: Throwable) {
+      Log.e(TAG, "Word fix send failed", t)
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8))
     }
   }
 
@@ -775,11 +852,16 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             // the summary row; the translation is already on screen while the
             // retry runs. Text/audio keep the original single-row path.
             if (source == "image" && sourceImage != null) {
-              if (reply.terms.isEmpty() &&
+              if (reply.terms.isEmpty() && reply.retryWorthy.isEmpty() &&
                 translated.isNotEmpty() && !translated.equals("NONE", ignoreCase = true)
               ) {
                 _ui.value = _ui.value.copy(translation = translated)
                 dispatchTermsRetry(translated, reply.sceneGist, originalLabel, lang, sourceImage)
+              } else if (reply.retryWorthy.isNotEmpty()) {
+                // Some words read fine but rendered half-borrowed — fix each
+                // with a single-task ask before the rows sediment.
+                _ui.value = _ui.value.copy(translation = translated)
+                dispatchWordFix(reply.retryWorthy, reply.terms, translated, reply.sceneGist, originalLabel, lang, sourceImage)
               } else {
                 finishImagePersist(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.terms)
               }

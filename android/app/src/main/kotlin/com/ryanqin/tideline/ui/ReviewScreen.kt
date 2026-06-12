@@ -76,7 +76,8 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
 
   LaunchedEffect(Unit) { deck = viewModel.reviewDeck() }
 
-  Scaffold { innerPadding ->
+  ShoreBackdrop {
+  Scaffold(containerColor = Color.Transparent) { innerPadding ->
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -115,6 +116,7 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
       }
     }
   }
+  }
 }
 
 /** Nothing due — the tide is out. No counts, no streaks, just calm. */
@@ -125,6 +127,8 @@ private fun RestingShore(onClose: () -> Unit) {
     verticalArrangement = Arrangement.Center,
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
+    TidelineMark(Modifier.fillMaxWidth(0.45f).height(28.dp))
+    Spacer(Modifier.height(16.dp))
     Text("潮水退了", style = MaterialTheme.typography.headlineSmall)
     Spacer(Modifier.height(8.dp))
     Text(
@@ -380,19 +384,5 @@ private fun SceneLineRow(
   }
 }
 
-/** The capture, whole and uncropped — the scene exactly as it was met. (The
- * photo-pixel word mask retired with the direction flip: the word is the
- * shown question now, so there is nothing on the photo to hide. The OCR
- * geometry in source_region stays — the web's browse-mode mask toggle still
- * reads it.) */
-@Composable
-private fun CapturePhoto(bitmap: Bitmap) {
-  Box(modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height)) {
-    Image(
-      bitmap = bitmap.asImageBitmap(),
-      contentDescription = null,
-      modifier = Modifier.fillMaxSize(),
-      contentScale = ContentScale.Fit,
-    )
-  }
-}
+// CapturePhoto (the whole, unmasked capture) lives in CapturePhoto.kt now —
+// shared with the museum.
