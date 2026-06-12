@@ -52,10 +52,33 @@ class ImageReplyTest {
 
   @Test
   fun `terms deduplicate by original and cap at eight`() {
-    val pairs = (1..12).joinToString(" | ") { "词$it=t$it" } + " | 词1=重复"
+    val pairs = (1..12).joinToString(" | ") { "词$it=译$it" } + " | 词1=重复"
     val reply = parseImageReply("TRANSLATION: x\nSCENE: y\nTERMS: $pairs")
     assertEquals(8, reply.terms.size)
-    assertEquals("t1", reply.terms.first { it.original == "词1" }.translated)
+    assertEquals("译1", reply.terms.first { it.original == "词1" }.translated)
+  }
+
+  @Test
+  fun `a half-translation never sediments — the rendering must live in the target script`() {
+    // The live failure: E2B rendered "Premium" as 高 premium — a borrowed
+    // word inside the "meaning". CJK-only renderings pass; mixed ones don't.
+    val reply = parseImageReply(
+      "TRANSLATION: 杀菌湿巾\nSCENE: 包装\n" +
+        "TERM: Premium = 高 premium\n" +
+        "TERM: Alcohol = 酒精\n" +
+        "TERM: Wipes = wipes\n" +
+        "TERM: 75% ALCOHOL = 75%酒精"
+    )
+    assertEquals(listOf("Alcohol", "75% ALCOHOL"), reply.terms.map { it.original })
+  }
+
+  @Test
+  fun `targets without a script rule pass renderings through`() {
+    val reply = parseImageReply(
+      "TRANSLATION: x\nTERM: 出口 = exit",
+      targetLang = "English",
+    )
+    assertEquals(listOf(ImageReply.Term("出口", "exit")), reply.terms)
   }
 
   @Test

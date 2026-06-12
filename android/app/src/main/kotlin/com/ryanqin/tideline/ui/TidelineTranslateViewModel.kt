@@ -639,7 +639,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         object : MessageCallback {
           override fun onMessage(message: Message) { acc.append(message.toString()) }
           override fun onDone() {
-            val terms = parseImageReply(acc.toString().trim()).terms
+            val terms = parseImageReply(acc.toString().trim(), lang).terms
             Log.i(TAG, "BENCH terms_retry got=${terms.size}")
             finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, terms)
           }
@@ -756,7 +756,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             // Image prompt returns marked TRANSLATION / SCENE / TERMS lines;
             // text/audio replies carry no markers and pass through unchanged
             // (gist null, no terms).
-            val reply = parseImageReply(raw)
+            val reply = parseImageReply(raw, lang)
             val translated = reply.translated
             Log.i(TAG, "BENCH scene_gist=\"${reply.sceneGist}\" terms=${reply.terms.size}")
             val tDone = System.currentTimeMillis()

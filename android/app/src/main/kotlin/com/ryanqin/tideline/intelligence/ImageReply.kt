@@ -71,8 +71,23 @@ fun parseAudioReply(raw: String): AudioReply {
   return AudioReply(transcript = transcript, translated = translated, language = language)
 }
 
+/** Does the rendering actually live in the target language's script? A weak
+ * model sometimes HALF-translates a term ("Premium" → "高 premium"), leaving
+ * the source word inside the "meaning" — the exact-echo guard below can't see
+ * it, and once sedimented it promotes into a review card that quizzes you on
+ * a non-meaning. Same failure family as the core gloss's script-consistency
+ * guard: rather wrong-by-absence than wrong-by-content. For a Chinese target:
+ * at least one CJK char and zero Latin letters. Targets without a rule pass
+ * (honest: no rule, no claim). */
+private fun rendersInTargetScript(translated: String, targetLang: String): Boolean {
+  if (!targetLang.equals("Chinese", ignoreCase = true)) return true
+  val hasCjk = translated.any { it.code in 0x4E00..0x9FFF }
+  val hasLatin = translated.any { it in 'a'..'z' || it in 'A'..'Z' }
+  return hasCjk && !hasLatin
+}
+
 /** One "original = translation" pair → a Term, or null when malformed. */
-private fun termFromPair(segment: String): ImageReply.Term? {
+private fun termFromPair(segment: String, targetLang: String): ImageReply.Term? {
   val parts = segment.split('=', '→', limit = 2)
   if (parts.size != 2) return null
   val orig = parts[0].trim()
@@ -89,11 +104,13 @@ private fun termFromPair(segment: String): ImageReply.Term? {
     // become a vocabulary row.
     orig.contains("original", ignoreCase = true) ||
       trans.contains("translation", ignoreCase = true) -> null
+    // Half-translations don't sediment (fail-soft: the other terms still do).
+    !rendersInTargetScript(trans, targetLang) -> null
     else -> ImageReply.Term(orig, trans)
   }
 }
 
-fun parseImageReply(raw: String): ImageReply {
+fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
   val text = raw.trim()
   val sceneIdx = text.indexOf("SCENE:", ignoreCase = true)
   val termsIdx = text.indexOf("TERMS:", ignoreCase = true)
@@ -122,7 +139,7 @@ fun parseImageReply(raw: String): ImageReply {
   // attractor on-device — litertlm E2B looped the same words for thousands
   // of characters and never reached SCENE/TERMS.
   val lineTerms = Regex("(?im)^\\s*TERM:\\s*(.+)$").findAll(text)
-    .mapNotNull { m -> termFromPair(m.groupValues[1]) }
+    .mapNotNull { m -> termFromPair(m.groupValues[1], targetLang) }
     .toList()
 
   // Legacy fallback: a single "TERMS: a=b | c=d" line.
@@ -130,7 +147,7 @@ fun parseImageReply(raw: String): ImageReply {
     val line = text.substring(termsIdx + "TERMS:".length)
       .lineSequence().firstOrNull()?.trim().orEmpty()
     if (line.equals("NONE", ignoreCase = true)) emptyList()
-    else line.split('|', ';').mapNotNull { termFromPair(it) }
+    else line.split('|', ';').mapNotNull { termFromPair(it, targetLang) }
   } else emptyList()
 
   val terms = lineTerms.ifEmpty { inlineTerms }
