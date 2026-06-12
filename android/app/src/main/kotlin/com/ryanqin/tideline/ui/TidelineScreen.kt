@@ -13,6 +13,10 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,13 +95,10 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
     ActivityResultContracts.RequestPermission()
   ) { granted -> if (granted) viewModel.toggleRecording() }
 
-  // Phase 5c: the review deck and the museum. Plain doorways, always present
-  // — never a count, never a badge (DESIGN §3.1/§10.3).
+  // Phase 5c: the shore and the museum. Plain doorways, always present —
+  // never a count, never a badge (DESIGN §3.1/§10.3). The shore rises from
+  // the foot of the desk (swipe up or tap the handle), the web's wade-in.
   var showReview by remember { mutableStateOf(false) }
-  if (showReview) {
-    ReviewScreen(viewModel = viewModel, onClose = { showReview = false })
-    return
-  }
   var showMuseum by remember { mutableStateOf(false) }
   if (showMuseum) {
     MuseumScreen(viewModel = viewModel, onClose = { showMuseum = false })
@@ -114,6 +116,7 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
     return
   }
 
+  Box(modifier = Modifier.fillMaxSize()) {
   ShoreBackdrop {
   Scaffold(containerColor = Color.Transparent) { innerPadding ->
     Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
@@ -236,10 +239,24 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         }
       }
     }
-    // Wade into the shore — the web desk's swipe-up handle, as a quiet
-    // chevron resting on the tideline.
+    // Wade into the shore — the web desk's swipe-up handle: a quiet chevron
+    // resting on the tideline. The whole strip answers an upward drag, not
+    // just the button (a wade is a gesture, not a click).
     Column(
-      modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+      modifier = Modifier
+        .align(Alignment.BottomCenter)
+        .fillMaxWidth()
+        .pointerInput(Unit) {
+          var pulled = 0f
+          detectVerticalDragGestures(
+            onDragStart = { pulled = 0f },
+            onVerticalDrag = { _, dy ->
+              pulled += dy
+              if (pulled < -48f && !showReview) showReview = true
+            },
+          )
+        }
+        .padding(bottom = 10.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
     ) {
       IconButton(onClick = { showReview = true }) {
@@ -257,6 +274,16 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
       )
     }
     }
+  }
+  }
+  // The shore rises from the bottom of the desk and slides back down — the
+  // wade in, the walk back (web §10.2).
+  AnimatedVisibility(
+    visible = showReview,
+    enter = slideInVertically(initialOffsetY = { it }),
+    exit = slideOutVertically(targetOffsetY = { it }),
+  ) {
+    ReviewScreen(viewModel = viewModel, onClose = { showReview = false })
   }
   }
 }

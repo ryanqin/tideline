@@ -26,6 +26,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -73,6 +74,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -117,7 +119,17 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
     Box(
       modifier = Modifier
         .fillMaxSize()
-        .padding(innerPadding),
+        .padding(innerPadding)
+        // Walk back: a downward drag on the sand lowers the shore — the
+        // mirror of the desk's wade-up (web closes the same way).
+        .pointerInput(Unit) {
+          var pulled = 0f
+          detectVerticalDragGestures(
+            onDragStart = { pulled = 0f },
+            onVerticalDrag = { _, dy -> pulled += dy },
+            onDragEnd = { if (pulled > 120f) onClose() },
+          )
+        },
     ) {
       IconButton(onClick = onClose, modifier = Modifier.padding(12.dp)) {
         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
