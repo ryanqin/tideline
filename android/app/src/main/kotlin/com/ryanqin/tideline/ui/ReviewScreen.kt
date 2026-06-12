@@ -221,12 +221,14 @@ private fun hashFrac(key: String, salt: Int): Float {
  * screen). Each item adds its own small hash jitter and tilt on top, and
  * SIZE follows NEARNESS (lower on the sand = closer = bigger), so the
  * perspective stays honest whatever washes up. */
+// The lowest spot keeps clear of the system navigation strip: the anchor is
+// the glyph's CENTER, and the two-line name hangs below it.
 private val SHORE_SPOTS = listOf(
   0.27f to 0.710f,
-  0.71f to 0.748f,
-  0.21f to 0.806f,
-  0.64f to 0.838f,
-  0.40f to 0.888f,
+  0.71f to 0.746f,
+  0.21f to 0.796f,
+  0.64f to 0.822f,
+  0.40f to 0.856f,
 )
 
 @Composable
@@ -239,8 +241,8 @@ private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
       val id = itemKey(item)
       val spot = SHORE_SPOTS[i % SHORE_SPOTS.size]
       val xF = (spot.first + (hashFrac(id, 1) - 0.5f) * 0.07f).coerceIn(0.12f, 0.88f)
-      val yF = (spot.second + (hashFrac(id, 2) - 0.5f) * 0.025f).coerceIn(0.70f, 0.90f)
-      val nearness = (yF - 0.70f) / 0.20f
+      val yF = (spot.second + (hashFrac(id, 2) - 0.5f) * 0.025f).coerceIn(0.70f, 0.865f)
+      val nearness = (yF - 0.70f) / 0.165f
       val glyphSize = minSide * (0.11f + nearness * 0.15f)
       Creature(
         item = item,
