@@ -13,6 +13,7 @@
 
   <application
     android:label="Tideline"
+    android:icon="@mipmap/ic_launcher"
     android:supportsRtl="true"
     android:theme="@style/Theme.Tideline">
     <activity

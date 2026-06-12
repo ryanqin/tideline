@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- A: The tideline — the mark the sea leaves on the sand. -->
+  <defs>
+    <linearGradient id="skyA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf8"/>
+      <stop offset="0.62" stop-color="#faf4e9"/>
+      <stop offset="1" stop-color="#f7efdd"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#skyA)"/>
+  <!-- wet sand below the line, where the water just was -->
+  <path d="M0 356 C 80 336, 168 372, 264 358 S 430 338, 512 360 L 512 512 L 0 512 Z"
+        fill="#f1e4cb"/>
+  <!-- an older, fainter line above — the last tide's memory -->
+  <path d="M0 296 C 110 282, 190 310, 300 296 S 450 282, 512 298"
+        fill="none" stroke="#d9725a" stroke-width="9" stroke-linecap="round" opacity="0.45"/>
+  <!-- the tideline itself -->
+  <path d="M0 356 C 80 336, 168 372, 264 358 S 430 338, 512 360"
+        fill="none" stroke="#c2742f" stroke-width="20" stroke-linecap="round"/>
+</svg>
