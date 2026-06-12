@@ -47,7 +47,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -218,11 +217,13 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
 
 @Composable
 private fun EngineStatusBar(engineState: EngineState, errorMessage: String?) {
+  // READY is the resting state — it stays quiet (muted, like the web's
+  // restraint rule); only the transient states glow amber.
   val (text, color) = when (engineState) {
     EngineState.IDLE -> "Engine idle" to MaterialTheme.colorScheme.onSurfaceVariant
     EngineState.INITIALIZING -> "Loading Gemma E2B from /data/local/tmp/…" to
       MaterialTheme.colorScheme.primary
-    EngineState.READY -> "Engine ready" to Color(0xFF2E7D32)
+    EngineState.READY -> "Engine ready" to MaterialTheme.colorScheme.onSurfaceVariant
     EngineState.INFERRING -> "Translating…" to MaterialTheme.colorScheme.primary
     EngineState.ERROR -> (errorMessage ?: "Engine error") to MaterialTheme.colorScheme.error
   }

@@ -10,15 +10,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import android.os.Build
 import androidx.lifecycle.ViewModelProvider
 import com.ryanqin.tideline.ui.TidelineScreen
 import com.ryanqin.tideline.ui.TidelineTranslateViewModel
+import com.ryanqin.tideline.ui.theme.TidelineTheme
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,13 +35,7 @@ class MainActivity : ComponentActivity() {
       intent?.getStringExtra("tideline.debug_audio")?.let { vm.queueDebugAudio(it) }
     }
     setContent {
-      val ctx = LocalContext.current
-      val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        dynamicLightColorScheme(ctx)
-      } else {
-        lightColorScheme()
-      }
-      MaterialTheme(colorScheme = colors) {
+      TidelineTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
           TidelineScreen()
         }

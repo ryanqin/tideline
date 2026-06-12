@@ -17,6 +17,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -202,10 +203,11 @@ private fun ReviewCard(
       }
     } else {
       Row(verticalAlignment = Alignment.CenterVertically) {
+        // The revealed word wears coral — the web's --spark reveal reward.
         Text(
           text = card.original,
           style = MaterialTheme.typography.headlineSmall,
-          color = MaterialTheme.colorScheme.primary,
+          color = MaterialTheme.colorScheme.tertiary,
           modifier = Modifier.weight(1f, fill = false),
         )
         // The standard pronunciation, AFTER recall — the dictation order.
@@ -368,14 +370,20 @@ private fun SceneLineRow(
             if (revealed) Color.Transparent
             else MaterialTheme.colorScheme.surfaceVariant,
           )
+          // A sand hairline so the patch reads as tappable on the sand ground.
+          .then(
+            if (revealed) Modifier
+            else Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
+          )
           .clickable(enabled = !revealed, onClick = onReveal)
           .padding(horizontal = 6.dp, vertical = 2.dp),
       ) {
         // Transparent until revealed: the patch keeps the word's own size.
+        // Revealed words wear coral — the web's --spark reveal reward.
         Text(
           text = line.originals.joinToString(" / "),
           style = MaterialTheme.typography.bodyLarge,
-          color = if (revealed) MaterialTheme.colorScheme.primary else Color.Transparent,
+          color = if (revealed) MaterialTheme.colorScheme.tertiary else Color.Transparent,
         )
       }
     }
