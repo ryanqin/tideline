@@ -2,8 +2,10 @@
  * The emergence sweep + spaced repetition, on the phone.
  *
  * Logic mirrored 1:1 from the Python core (promotion.py / tools/card.py):
- *  - drawer rows crossing the threshold promote to candidates (UPSERT keyed
- *    on (original, target_lang) — the id stays stable so evidence survives)
+ *  - drawer entries met in >= threshold distinct OCCASIONS (sessions)
+ *    promote to candidates (UPSERT keyed on (original, target_lang) — the id
+ *    stays stable so evidence survives). Counting sessions, not rows, keeps
+ *    a re-photographed package from inflating every word on it at once.
  *  - every contributing translation links via candidate_evidence
  *  - every candidate auto-promotes to an active card (opt-out: INSERT OR
  *    IGNORE on candidate_id is the whole "a sunk card never resurfaces"
@@ -56,7 +58,7 @@ fun emergenceSweep(db: SupportSQLiteDatabase, nowMs: Long = System.currentTimeMi
           $nowMs
       FROM translations t
       GROUP BY original, target_lang
-      HAVING COUNT(*) >= $PROMOTION_THRESHOLD
+      HAVING COUNT(DISTINCT COALESCE(session_id, 'row#' || id)) >= $PROMOTION_THRESHOLD
       ON CONFLICT(original, target_lang) DO UPDATE SET
           translated = excluded.translated,
           occurrence_count = excluded.occurrence_count,

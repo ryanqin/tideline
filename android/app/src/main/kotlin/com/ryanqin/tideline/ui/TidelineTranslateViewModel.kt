@@ -34,6 +34,7 @@ import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
 import com.ryanqin.tideline.data.emergenceSweep
+import com.ryanqin.tideline.data.liveSessionId
 import com.ryanqin.tideline.data.reschedule
 import com.ryanqin.tideline.intelligence.ImageReply
 import com.ryanqin.tideline.intelligence.detectScriptLanguage
@@ -44,7 +45,6 @@ import com.ryanqin.tideline.media.WavRecorder
 import com.ryanqin.tideline.media.matchTermBoxes
 import com.ryanqin.tideline.media.ocrWords
 import com.ryanqin.tideline.media.prepareCaptureImage
-import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -149,9 +149,13 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     }
   }
 
-  // App-launch session UUID. MVP shortcut; real Tideline "outing" semantics
-  // (GPS / time-window grouping) lands in Phase 5d.
-  private val sessionId: String = UUID.randomUUID().toString()
+  // Occasion boundary (5d-lite): captures within the inactivity window share
+  // a session — promotion counts distinct sessions, so one sitting is one
+  // encounter no matter how many shots it takes.
+  private val sessionPrefs =
+    application.getSharedPreferences("tideline_session", Application.MODE_PRIVATE)
+
+  private fun currentSessionId(): String = liveSessionId(sessionPrefs)
 
   val history = dao.observeLatest().stateIn(
     scope = viewModelScope,
@@ -470,9 +474,10 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         "TRANSLATION: all visible text translated to $lang, as one natural " +
         "sentence or phrase (write NONE if there is no text)\n" +
         "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects\n" +
-        "Then 1-6 key words from the image, each on its own line exactly like " +
-        "this example:\n" +
-        "TERM: Exit = 出口"
+        "Then 1-6 key words from the image worth learning, each on its own " +
+        "line exactly like this example:\n" +
+        "TERM: Exit = 出口\n" +
+        "Skip brand names, logos and proper names — they are not vocabulary."
     dispatchInference(
       contents = Contents.of(listOf(Content.ImageBytes(prepared), Content.Text(prompt))),
       originalLabel = "[image ${prepared.size} B]",
@@ -621,7 +626,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             translated = term.translated,
             source = "image",
             contextSnippet = sceneGist,
-            sessionId = sessionId,
+            sessionId = currentSessionId(),
             sourceImage = sourceImage,
             sourceRegion = regions[term.original],
             sourceLang = detectScriptLanguage(term.original),
@@ -635,7 +640,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             translated = translated,
             source = "image",
             contextSnippet = sceneGist,
-            sessionId = sessionId,
+            sessionId = currentSessionId(),
             sourceImage = sourceImage,
           )
         )
@@ -749,7 +754,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                         translated = rowTranslated,
                         source = source,
                         contextSnippet = reply.sceneGist,
-                        sessionId = sessionId,
+                        sessionId = currentSessionId(),
                         sourceAudio = if (source == "audio") sourceAudio else null,
                         sourceLang = rowLang,
                       )

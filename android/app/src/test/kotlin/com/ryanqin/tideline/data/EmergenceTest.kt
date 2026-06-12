@@ -27,6 +27,20 @@ class EmergenceTest {
   }
 
   @Test
+  fun `captures within the window share a session, a long gap mints a new one`() {
+    val kept = resolveLiveSession("live-abc", lastAtMs = now, nowMs = now + 29 * 60 * 1000)
+    assertEquals("live-abc", kept)
+
+    val minted = resolveLiveSession(
+      "live-abc", lastAtMs = now, nowMs = now + 31 * 60 * 1000, mint = { "live-new" }
+    )
+    assertEquals("live-new", minted)
+
+    val fresh = resolveLiveSession(null, lastAtMs = 0, nowMs = now, mint = { "live-first" })
+    assertEquals("live-first", fresh)
+  }
+
+  @Test
   fun `ladder is capped at the top and floored at zero`() {
     val top = REVIEW_INTERVALS_DAYS.size - 1
     val (sTop, dueTop) = reschedule(strength = top, remembered = true, nowMs = now)

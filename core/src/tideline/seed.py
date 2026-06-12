@@ -103,6 +103,8 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "回转寿司传送带上一小碟一小碟转过来的握寿司"},
             {"suffix": "market", "source": "image", "day": 2,
              "gist": "清晨筑地市场摊位上铺在碎冰上的海鲜"},
+            {"suffix": "metro-platform", "source": "image", "day": 1,
+             "gist": "地铁站台柱子上蓝底白字的站名牌"},
         ],
         "frequent": [
             # The recurring words of the trip — one language (Japanese), met
@@ -143,18 +145,23 @@ SCENARIOS: list[dict[str, Any]] = [
         # OCR / transcript context must fit the term (a station word belongs on
         # a station sign, not a ramen menu). Copies round-robin only within this
         # whitelist.
+        # Promotion counts distinct OCCASIONS (sessions), so every frequent
+        # term spans >= 3 sessions it could honestly appear in — a word that
+        # matters shows up at the yokocho AND the counter AND the izakaya.
+        # ラーメン deliberately spans five (the trip's signature word), so a
+        # higher threshold still isolates it.
         "term_sessions": {
-            "ラーメン": ["ramen-yokocho", "counter-audio"],
-            "中華そば": ["ramen-yokocho"],
-            "駅": ["station"],
-            "地下鉄": ["station"],
-            "メトロ": ["station"],
-            "刺身": ["sushi", "izakaya"],
-            "天ぷら": ["izakaya", "market"],
-            "餃子": ["ramen-yokocho"],
-            "醤油": ["sushi", "izakaya"],
-            "寿司": ["sushi", "market"],
-            "お茶": ["sushi", "izakaya"],
+            "ラーメン": ["ramen-yokocho", "counter-audio", "izakaya", "market", "sushi"],
+            "中華そば": ["ramen-yokocho", "counter-audio", "izakaya"],
+            "駅": ["station", "metro-platform", "counter-audio"],
+            "地下鉄": ["station", "metro-platform", "counter-audio"],
+            "メトロ": ["station", "metro-platform", "counter-audio"],
+            "刺身": ["sushi", "izakaya", "market"],
+            "天ぷら": ["izakaya", "market", "sushi"],
+            "餃子": ["ramen-yokocho", "izakaya", "counter-audio"],
+            "醤油": ["sushi", "izakaya", "market"],
+            "寿司": ["sushi", "market", "izakaya"],
+            "お茶": ["sushi", "izakaya", "counter-audio"],
             "焼き鳥": ["izakaya"],
             "枝豆": ["izakaya"],
             "わさび": ["sushi"],
@@ -183,6 +190,8 @@ SCENARIOS: list[dict[str, Any]] = [
              "gist": "露天市场摊位上堆成小山的奶酪和水果"},
             {"suffix": "waiter-audio", "source": "audio", "day": 15,
              "gist": None},
+            {"suffix": "rer-station", "source": "image", "day": 13,
+             "gist": "RER 站台上指向市中心方向的蓝色指示牌"},
         ],
         "frequent": [
             # One language (French — Latin script, so source_lang is the
@@ -213,13 +222,13 @@ SCENARIOS: list[dict[str, Any]] = [
             ("merci", "谢谢"),
         ],
         "term_sessions": {
-            "café": ["cafe-morning", "bistro", "waiter-audio"],
-            "thé": ["cafe-morning", "bistro"],
-            "métro": ["metro"],
-            "pain": ["boulangerie", "market"],
-            "fromage": ["market", "bistro"],
+            "café": ["cafe-morning", "bistro", "waiter-audio", "boulangerie", "market"],
+            "thé": ["cafe-morning", "bistro", "waiter-audio"],
+            "métro": ["metro", "rer-station", "waiter-audio"],
+            "pain": ["boulangerie", "market", "bistro"],
+            "fromage": ["market", "bistro", "cafe-morning"],
             "addition": ["bistro", "cafe-morning", "waiter-audio"],
-            "facture": ["bistro"],
+            "facture": ["bistro", "waiter-audio", "cafe-morning"],
             "vin": ["bistro", "market"],
             "croissant": ["cafe-morning", "boulangerie"],
             "musée": ["metro"],

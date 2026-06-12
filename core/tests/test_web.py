@@ -116,14 +116,35 @@ def test_translate_tags_source_lang_live_on_first_occurrence(tmp_path):
     assert sl == "Japanese"
 
 
+
+def _age_live_session(db_path: str, minutes: int = 31) -> None:
+    """Backdate the live-session window so the NEXT translation starts a new
+    occasion — promotion counts distinct sessions, so a test (or a person)
+    repeating a word within one sitting is one encounter, not three."""
+    from datetime import timedelta
+
+    conn = sqlite3.connect(db_path)
+    try:
+        old = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+        conn.execute(
+            "UPDATE settings SET value = ? WHERE key = 'live_session_last_at'",
+            (old,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 def test_translate_promotes_and_cards_live_without_restart(tmp_path):
-    """A word repeated to threshold becomes a tagged candidate and an auto-card
-    within the same app run — the learnings view is live, not restart-gated."""
+    """A word met on three distinct OCCASIONS becomes a tagged candidate and an
+    auto-card within the same app run — the learnings view is live, not
+    restart-gated. The window is aged between translations because repeating a
+    word within one sitting is one encounter (occasion-counted promotion)."""
     db = str(tmp_path / "t.db")
     c = TestClient(create_app(runtime_name="mock", db_path=db))
     for _ in range(3):
         r = c.post("/api/translate", json={"text": "ラーメン"})
         assert r.status_code == 200
+        _age_live_session(db)
 
     row = next(d for d in c.get("/api/candidates").json() if d["original"] == "ラーメン")
     assert row["source_lang"] == "Japanese"  # deterministic, immediate
@@ -138,6 +159,7 @@ def test_card_review_reschedules_and_clears_due(tmp_path):
     c = TestClient(create_app(runtime_name="mock", db_path=db))
     for _ in range(3):
         c.post("/api/translate", json={"text": "ラーメン"})
+        _age_live_session(db)
 
     card = next(x for x in c.get("/api/cards").json() if x["original"] == "ラーメン")
     assert card["due"] is True and card["strength"] == 0   # new + ready

@@ -1,8 +1,11 @@
 """Tier-promotion engine: drawer → candidate (night-watch) + candidate → card (user nod).
 
 Scans the translations drawer, groups by (original, target_lang), and
-promotes any pair whose occurrence count crosses `threshold` into the
-candidates table. Idempotent: re-runs UPSERT on the unique key, so a
+promotes any pair met in at least `threshold` distinct OCCASIONS (capture
+sessions) into the candidates table. Counting sessions, not rows, is what
+keeps a re-photographed menu from inflating every word on it at once: ten
+captures in one sitting are one encounter. Rows with no session (debug
+paths, pre-session data) each count as their own occasion. Idempotent: re-runs UPSERT on the unique key, so a
 candidate's occurrence_count and last_seen_at stay current without
 duplicating rows.
 
@@ -59,7 +62,7 @@ def promote_candidates(
             MAX(created_at) AS last_seen_at
         FROM translations t
         GROUP BY original, target_lang
-        HAVING COUNT(*) >= ?
+        HAVING COUNT(DISTINCT COALESCE(session_id, 'row#' || id)) >= ?
         """,
         (threshold,),
     ).fetchall()
