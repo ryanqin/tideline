@@ -78,6 +78,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ryanqin.tideline.data.CardEntity
 import com.ryanqin.tideline.data.ThemeGroup
@@ -114,7 +115,7 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
     open = null
   }
 
-  ShoreBackdrop {
+  ShoreScene {
   Scaffold(containerColor = Color.Transparent) { innerPadding ->
     Box(
       modifier = Modifier
@@ -132,7 +133,11 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
         },
     ) {
       IconButton(onClick = onClose, modifier = Modifier.padding(12.dp)) {
-        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        Icon(
+          Icons.AutoMirrored.Filled.ArrowBack,
+          contentDescription = "Back",
+          tint = ShoreInk,
+        )
       }
       val items = deck
       when {
@@ -205,24 +210,48 @@ private fun itemLabel(item: ReviewItem): String = when (item) {
       ?: SimpleDateFormat("M月d日", Locale.getDefault()).format(Date(item.group.latestAt)) + "的场合"
 }
 
-/** The sand with what washed up on it: each due item a creature at its own
- * stable spot (hashed, so the beach doesn't reshuffle underfoot), wearing
- * its name. Two loose columns, a little scatter — driftage, not a grid. */
+/** The web shore's stable scatter hash — [0,1) per (key, salt). */
+private fun hashFrac(key: String, salt: Int): Float {
+  val h = (key + "·" + salt).hashCode()
+  return ((h ushr 8) % 1000) / 1000f
+}
+
+/** The near-sand band, the web's renderCreatures fitted to a portrait hand:
+ * creatures scatter below the surf line down toward your feet, even columns
+ * with a gentle jitter, near-big far-small (a real perspective, not a flat
+ * scatter), each tilted a few degrees and wearing its name in the shore's
+ * own ink. */
 @Composable
 private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     val w = maxWidth
     val h = maxHeight
+    val minSide = if (w < h) w else h
+    val n = items.size.coerceAtLeast(1)
+    // below the surf, down toward your feet (portrait gives the band a
+    // little more room than the web's landscape clamp)
+    val top = 0.70f
+    val bottom = 0.90f
+    val mx = 0.12f
+    val capMax = (w * 0.9f * (1f - 2 * mx)) / n
     items.forEachIndexed { i, item ->
-      val hash = itemKey(item).hashCode()
-      val col = i % 2
-      val row = i / 2
-      val xFrac = (if (col == 0) 0.10f else 0.52f) + ((hash ushr 4) % 100) / 100f * 0.08f
-      val yFrac = 0.16f + row * 0.20f + ((hash ushr 12) % 100) / 100f * 0.05f
+      val id = itemKey(item)
+      val depth = hashFrac(id, 2) // 0 = far (up, small), 1 = near (down, big)
+      val glyphSize = minSide * (0.11f + depth * 0.15f)
+      var xF = mx + ((i + 0.5f) / n) * (1f - 2 * mx) +
+        (hashFrac(id, 1) - 0.5f) * (0.5f / n)
+      val half = (glyphSize / 2) / w
+      xF = xF.coerceIn(half + 0.015f, 1f - half - 0.015f)
+      val yF = top + depth * (bottom - top)
       Creature(
         item = item,
-        hash = hash,
-        modifier = Modifier.offset(x = w * xFrac, y = h * yFrac),
+        rot = (hashFrac(id, 3) - 0.5f) * 26f,
+        glyphSize = glyphSize,
+        capMax = if (capMax > 72.dp) capMax else 72.dp,
+        modifier = Modifier.offset(
+          x = w * xF - glyphSize / 2,
+          y = h * yF - glyphSize / 2,
+        ),
         onPick = onPick,
       )
     }
@@ -232,31 +261,32 @@ private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
 @Composable
 private fun Creature(
   item: ReviewItem,
-  hash: Int,
+  rot: Float,
+  glyphSize: androidx.compose.ui.unit.Dp,
+  capMax: androidx.compose.ui.unit.Dp,
   modifier: Modifier,
   onPick: (ReviewItem) -> Unit,
 ) {
-  // The web shore tilts each creature a few degrees — driftage, not a grid.
-  val rot = ((hash ushr 16) % 25 - 12).toFloat()
   Column(
     modifier = modifier
-      .width(150.dp)
       .clickable { onPick(item) }
-      .padding(6.dp),
+      .padding(4.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    val glyphMod = Modifier.size(62.dp).rotate(rot)
+    val glyphMod = Modifier.size(glyphSize).rotate(rot)
     when (item) {
-      is ReviewItem.Word -> CreatureGlyph(GlyphKind.Card, item.card.original, glyphMod)
-      is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sessionId, glyphMod)
+      is ReviewItem.Word -> CreatureGlyph(GlyphKind.Card, item.card.original, glyphMod, ink = ShoreInk)
+      is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sessionId, glyphMod, ink = ShoreInk)
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(4.dp))
     Text(
       itemLabel(item),
       style = MaterialTheme.typography.bodySmall,
-      color = MaterialTheme.colorScheme.onSurface,
+      color = ShoreInk,
       textAlign = TextAlign.Center,
       maxLines = 2,
+      overflow = TextOverflow.Ellipsis,
+      modifier = Modifier.width(capMax),
     )
   }
 }
@@ -271,15 +301,15 @@ private fun RestingShore(onClose: () -> Unit) {
   ) {
     TidelineMark(Modifier.fillMaxWidth(0.45f).height(28.dp))
     Spacer(Modifier.height(16.dp))
-    Text("潮水退了", style = MaterialTheme.typography.headlineSmall)
+    Text("潮水退了", style = MaterialTheme.typography.headlineSmall, color = ShoreInk)
     Spacer(Modifier.height(8.dp))
     Text(
       "现在没有等你的词。去走走,翻译点什么。",
       style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      color = ShoreInk.copy(alpha = 0.75f),
     )
     Spacer(Modifier.height(20.dp))
-    OutlinedButton(onClick = onClose) { Text("回去") }
+    OutlinedButton(onClick = onClose) { Text("回去", color = ShoreInk) }
   }
 }
 
