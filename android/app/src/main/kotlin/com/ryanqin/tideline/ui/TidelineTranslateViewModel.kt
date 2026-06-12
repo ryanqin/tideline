@@ -29,9 +29,12 @@ import com.google.ai.edge.litertlm.SamplerConfig
 import android.graphics.BitmapFactory
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.ryanqin.tideline.data.CardEntity
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
+import com.ryanqin.tideline.data.emergenceSweep
+import com.ryanqin.tideline.data.reschedule
 import com.ryanqin.tideline.intelligence.ImageReply
 import com.ryanqin.tideline.intelligence.detectScriptLanguage
 import com.ryanqin.tideline.intelligence.parseAudioReply
@@ -95,7 +98,56 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   private val _ui = MutableStateFlow(TidelineUiState())
   val ui = _ui.asStateFlow()
 
-  private val dao: TranslationDao = TidelineDatabase.get(application).translationDao()
+  private val db = TidelineDatabase.get(application)
+  private val dao: TranslationDao = db.translationDao()
+  private val emergence = db.emergenceDao()
+
+  /** The night-watch is deterministic SQL — cheap enough to run at startup
+   * and after every capture (the live-sweep shape the web grew in core). */
+  private fun sweepSoon() {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        emergenceSweep(db.openHelper.writableDatabase)
+      } catch (t: Throwable) {
+        Log.e(TAG, "Emergence sweep failed", t)
+      }
+    }
+  }
+
+  init {
+    sweepSoon()
+  }
+
+  // --- review deck (the shore's job, on the phone) -------------------------
+
+  suspend fun dueCards(): List<CardEntity> =
+    emergence.dueCards(System.currentTimeMillis())
+
+  suspend fun cardMoments(cardId: Long): List<TranslationEntity> =
+    emergence.cardMoments(cardId)
+
+  fun reviewCard(cardId: Long, remembered: Boolean) {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        val now = System.currentTimeMillis()
+        val strength = emergence.cardStrength(cardId) ?: return@launch
+        val (next, dueAt) = reschedule(strength, remembered, now)
+        emergence.applyReview(cardId, next, dueAt, now)
+      } catch (t: Throwable) {
+        Log.e(TAG, "Review failed", t)
+      }
+    }
+  }
+
+  fun sinkCard(cardId: Long) {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        emergence.sinkCard(cardId)
+      } catch (t: Throwable) {
+        Log.e(TAG, "Sink failed", t)
+      }
+    }
+  }
 
   // App-launch session UUID. MVP shortcut; real Tideline "outing" semantics
   // (GPS / time-window grouping) lands in Phase 5d.
@@ -141,6 +193,28 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     }
     t.language = locale
     t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tideline-speak")
+  }
+
+  // The captured recording, played back — dictation material. WAV bytes go
+  // through a small cache file (MediaPlayer has no byte[] source).
+  private var player: android.media.MediaPlayer? = null
+
+  fun playRecording(wav: ByteArray) {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        val f = java.io.File(getApplication<Application>().cacheDir, "tideline_replay.wav")
+        f.writeBytes(wav)
+        player?.release()
+        player = android.media.MediaPlayer().apply {
+          setDataSource(f.absolutePath)
+          setOnCompletionListener { it.release(); if (player === it) player = null }
+          prepare()
+          start()
+        }
+      } catch (t: Throwable) {
+        Log.e(TAG, "Replay failed", t)
+      }
+    }
   }
 
   // Geometry source for photo-word masks: OCR owns WHERE a word sits in the
@@ -568,6 +642,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
       } else emptyList()
       try {
         rows.forEach { dao.insert(it) }
+        emergenceSweep(db.openHelper.writableDatabase)
       } catch (t: Throwable) {
         Log.e(TAG, "Persist translation failed", t)
       }
@@ -679,6 +754,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                         sourceLang = rowLang,
                       )
                     )
+                    emergenceSweep(db.openHelper.writableDatabase)
                   } catch (t: Throwable) {
                     Log.e(TAG, "Persist translation failed", t)
                   }
@@ -718,6 +794,9 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     } catch (_: Throwable) {}
     try {
       if (ttsReady) tts.shutdown()
+    } catch (_: Throwable) {}
+    try {
+      player?.release()
     } catch (_: Throwable) {}
     conversation = null
     engine = null

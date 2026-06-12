@@ -86,6 +86,14 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
     ActivityResultContracts.RequestPermission()
   ) { granted -> if (granted) viewModel.toggleRecording() }
 
+  // Phase 5c: the review deck. A plain doorway, always present — never a
+  // count, never a badge (DESIGN §3.1/§10.3).
+  var showReview by remember { mutableStateOf(false) }
+  if (showReview) {
+    ReviewScreen(viewModel = viewModel, onClose = { showReview = false })
+    return
+  }
+
   if (showCamera) {
     CameraCaptureScreen(
       onCaptured = { bytes, rotation ->
@@ -179,6 +187,13 @@ fun TidelineScreen(viewModel: TidelineTranslateViewModel = viewModel()) {
         enabled = state.engineState == EngineState.READY || state.recording,
       ) {
         Text(if (state.recording) "停止录音并翻译 ●" else "录音翻译 → ${state.targetLang}")
+      }
+
+      OutlinedButton(
+        onClick = { showReview = true },
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Text("去复习 — 看看潮水带来了什么")
       }
 
       if (state.translation.isNotEmpty() || state.engineState == EngineState.INFERRING) {
