@@ -21,12 +21,18 @@ package com.ryanqin.tideline.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -74,6 +80,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -103,6 +111,10 @@ private const val ASHORE = 5
 fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
   var deck by remember { mutableStateOf<List<ReviewItem>?>(null) }
   var open by remember { mutableStateOf<ReviewItem?>(null) }
+
+  // Every shell you haven't opened yet glows; opening one puts its glint
+  // out (the web shore's session-scoped OPENED set).
+  var opened by remember { mutableStateOf(setOf<String>()) }
 
   LaunchedEffect(Unit) { deck = viewModel.reviewDeck() }
 
@@ -151,7 +163,10 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
           val scenes = items.filterIsInstance<ReviewItem.Scene>()
           val ashoreWords = words.take(if (scenes.isEmpty()) ASHORE else 3)
           val ashore = ashoreWords + scenes.take(ASHORE - ashoreWords.size)
-          Beach(ashore, onPick = { open = it })
+          Beach(ashore, opened, onPick = {
+            opened = opened + itemKey(it)
+            open = it
+          })
         }
       }
     }
@@ -232,7 +247,7 @@ private val SHORE_SPOTS = listOf(
 )
 
 @Composable
-private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
+private fun Beach(items: List<ReviewItem>, opened: Set<String>, onPick: (ReviewItem) -> Unit) {
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     val w = maxWidth
     val h = maxHeight
@@ -249,6 +264,7 @@ private fun Beach(items: List<ReviewItem>, onPick: (ReviewItem) -> Unit) {
         rot = (hashFrac(id, 3) - 0.5f) * 26f,
         glyphSize = glyphSize,
         capMax = 132.dp,
+        glow = id !in opened,
         modifier = Modifier.offset(
           x = w * xF - glyphSize / 2,
           y = h * yF - glyphSize / 2,
@@ -265,19 +281,36 @@ private fun Creature(
   rot: Float,
   glyphSize: androidx.compose.ui.unit.Dp,
   capMax: androidx.compose.ui.unit.Dp,
+  glow: Boolean,
   modifier: Modifier,
   onPick: (ReviewItem) -> Unit,
 ) {
   Column(
     modifier = modifier
-      .clickable { onPick(item) }
+      // No press chrome on a shell — the web shore has no tap highlight;
+      // picking something up is its own feedback (the sheet rises).
+      .clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+      ) { onPick(item) }
       .padding(4.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    val glyphMod = Modifier.size(glyphSize).rotate(rot)
-    when (item) {
-      is ReviewItem.Word -> CreatureGlyph(GlyphKind.Card, item.card.original, glyphMod, ink = ShoreInk)
-      is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sessionId, glyphMod, ink = ShoreInk)
+    Box {
+      val glyphMod = Modifier.size(glyphSize).rotate(rot)
+      when (item) {
+        is ReviewItem.Word -> CreatureGlyph(GlyphKind.Card, item.card.original, glyphMod, ink = ShoreInk)
+        is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sessionId, glyphMod, ink = ShoreInk)
+      }
+      if (glow) {
+        val spark = if (glyphSize * 0.28f < 15.dp) glyphSize * 0.28f else 15.dp
+        ShellSpark(
+          Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = -(glyphSize * 0.13f), y = glyphSize * 0.17f)
+            .size(spark),
+        )
+      }
     }
     Spacer(Modifier.height(4.dp))
     Text(
@@ -289,6 +322,49 @@ private fun Creature(
       overflow = TextOverflow.Ellipsis,
       modifier = Modifier.width(capMax),
     )
+  }
+}
+
+// The web's four-point glint, path-for-path.
+private val SPARK_PATH by lazy {
+  androidx.compose.ui.graphics.vector.PathParser()
+    .parsePathString("M12 0 Q13 11 24 12 Q13 13 12 24 Q11 13 0 12 Q11 11 12 0 Z")
+    .toPath()
+}
+
+/** Two quick blinks, then a short rest, on repeat (一闪一闪) — the web's
+ * shell-spark keyframes. The glint marks "you haven't opened me yet"; it
+ * goes dark the moment you do. Never a paler fill, a badge, or a count. */
+@Composable
+private fun ShellSpark(modifier: Modifier) {
+  val t = rememberInfiniteTransition(label = "shell-spark")
+  val phase by t.animateFloat(
+    initialValue = 0f, targetValue = 1f,
+    animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)),
+    label = "phase",
+  )
+  val seg = { a: Float, b: Float, f: Float -> a + (b - a) * f }
+  val (alpha, scale, rot) = when {
+    phase < 0.15f -> (phase / 0.15f).let { Triple(seg(0f, 1f, it), seg(0.3f, 1f, it), seg(0f, 10f, it)) }
+    phase < 0.30f -> ((phase - 0.15f) / 0.15f).let { Triple(seg(1f, 0.2f, it), seg(1f, 0.65f, it), seg(10f, 16f, it)) }
+    phase < 0.45f -> ((phase - 0.30f) / 0.15f).let { Triple(seg(0.2f, 1f, it), seg(0.65f, 1.05f, it), seg(16f, 24f, it)) }
+    phase < 0.62f -> ((phase - 0.45f) / 0.17f).let { Triple(seg(1f, 0f, it), seg(1.05f, 0.4f, it), seg(24f, 30f, it)) }
+    else -> Triple(0f, 0.3f, 0f)
+  }
+  Canvas(
+    modifier.graphicsLayer {
+      this.alpha = alpha
+      scaleX = scale
+      scaleY = scale
+      rotationZ = rot
+    },
+  ) {
+    val s = size.minDimension / 24f
+    scale(s, pivot = Offset.Zero) {
+      // a soft warm halo, then the glint itself
+      drawPath(SPARK_PATH, Color(0xFFFFD68C).copy(alpha = 0.6f), style = Stroke(width = 3f))
+      drawPath(SPARK_PATH, Color(0xFFFFF1CF))
+    }
   }
 }
 

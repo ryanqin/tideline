@@ -11,6 +11,7 @@ package com.ryanqin.tideline.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -161,7 +162,14 @@ private fun ShelfShell(
   Column(
     modifier = Modifier
       .width(96.dp)
-      .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+      .then(
+        // No press chrome on a shelf shell — same rule as the shore.
+        if (onClick != null) Modifier.clickable(
+          interactionSource = remember { MutableInteractionSource() },
+          indication = null,
+          onClick = onClick,
+        ) else Modifier
+      )
       .padding(vertical = 6.dp, horizontal = 2.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
