@@ -28,8 +28,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,6 +35,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -48,7 +48,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -72,7 +71,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -414,6 +412,7 @@ private fun RestingShore(onClose: () -> Unit) {
   }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReviewCard(
   card: CardEntity,
@@ -425,82 +424,76 @@ private fun ReviewCard(
   var revealed by remember(card.id) { mutableStateOf(false) }
   LaunchedEffect(card.id) { moments = viewModel.cardMoments(card.id) }
 
-  val photoMoment = moments.firstOrNull { it.sourceImage != null }
-  val audioMoments = moments.filter { it.sourceAudio != null }
+  // The card mirrors core's schema (no language column); its source language
+  // lives on the moments it grew from.
+  val sourceLang = moments.firstNotNullOfOrNull { it.sourceLang }
 
   Column(
     modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    // The word as met is the question — the form you'll meet again in the
-    // world. Its standard pronunciation is part of the question, on tap.
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    // The card head, one line like the web: the word as met → its meaning
+    // (masked — the thing to reach for) (日→中) 🔊. The standard pronunciation
+    // belongs to the SHOWN word, so it can't leak the masked meaning.
+    FlowRow(
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
       Text(
-        text = card.original,
-        style = MaterialTheme.typography.headlineMedium,
+        "${card.original} →",
+        style = MaterialTheme.typography.headlineSmall,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.weight(1f, fill = false),
       )
-      IconButton(onClick = { viewModel.speak(card.original, photoMoment?.sourceLang ?: audioMoments.firstOrNull()?.sourceLang) }) {
+      MaskedMeaning(
+        text = card.translated,
+        revealed = revealed,
+        onReveal = { revealed = true },
+        style = MaterialTheme.typography.headlineSmall,
+      )
+      Text(
+        Lingo.langTag(sourceLang, card.targetLang),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      IconButton(onClick = { viewModel.speak(card.original, sourceLang) }) {
         Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Standard pronunciation",
           tint = MaterialTheme.colorScheme.primary)
       }
     }
 
-    // The lived material rounds out the question: the photo whole, as you
-    // saw it; the recording playable, as you heard it.
-    photoMoment?.sourceImage?.let { bytes ->
-      val bitmap = remember(card.id) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
-      if (bitmap != null) {
-        CapturePhoto(bitmap)
+    // The lived moments — the captures this word grew from (§3.2), each the
+    // same row the museum and the web show.
+    if (moments.isNotEmpty()) {
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        moments.forEach { m -> MomentRow(m, onPlayAudio = { viewModel.playRecording(it) }) }
       }
-    }
-    audioMoments.take(2).forEach { m ->
-      OutlinedButton(onClick = { viewModel.playRecording(m.sourceAudio!!) }) {
-        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.size(6.dp))
-        Text("播放当时的原声")
-      }
-    }
-    photoMoment?.contextSnippet?.let {
-      Text(it, style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    if (!revealed) {
-      Button(onClick = { revealed = true }, modifier = Modifier.fillMaxWidth()) {
-        Text("想起来了再揭开")
+    // Grade is always here (the web's review-grade is never gated behind a
+    // reveal): reach for the meaning, reveal to check, then say honestly
+    // whether it came — that outcome walks the Leitner ladder (§10.3).
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      OutlinedButton(onClick = { onGraded(false) }, modifier = Modifier.weight(1f)) {
+        Text("没想起来")
       }
-    } else {
-      // The meaning is the reveal, wearing coral — the web's --spark reward.
+      Button(onClick = { onGraded(true) }, modifier = Modifier.weight(1f)) {
+        Text("想起来了")
+      }
+    }
+    // The opt-out: a quiet way to say "this one isn't worth keeping" — sunk
+    // cards never resurface (the user curates by subtraction).
+    TextButton(
+      onClick = onSink,
+      modifier = Modifier.align(Alignment.CenterHorizontally),
+    ) {
       Text(
-        text = card.translated,
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.tertiary,
+        "这个词不用记 — 沉底",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        OutlinedButton(onClick = { onGraded(false) }, modifier = Modifier.weight(1f)) {
-          Text("没想起来")
-        }
-        Button(onClick = { onGraded(true) }, modifier = Modifier.weight(1f)) {
-          Text("想起来了")
-        }
-      }
-      // The opt-out: a quiet way to say "this one isn't worth keeping" —
-      // sunk cards never resurface (the user curates by subtraction).
-      TextButton(
-        onClick = onSink,
-        modifier = Modifier.align(Alignment.CenterHorizontally),
-      ) {
-        Text(
-          "这个词不用记 — 沉底",
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      }
     }
     Spacer(Modifier.height(24.dp))
   }
@@ -573,6 +566,21 @@ private fun SceneCard(
     // The scene photo, whole — the occasion as you saw it.
     photo?.let { CapturePhoto(it) }
 
+    // "Reveal all / mask again" flips the whole night at once (the web's
+    // theme reveal-all) — for when you'd rather browse than be quizzed.
+    val allKeys = remember(lines) { lines.map { it.translated }.toSet() }
+    val anyHidden = revealed.size < allKeys.size
+    TextButton(
+      onClick = { revealed = if (anyHidden) allKeys else emptySet() },
+      modifier = Modifier.align(Alignment.End),
+    ) {
+      Text(
+        if (anyHidden) "全部揭开" else "重新遮住",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
       lines.forEach { line ->
         SceneLineRow(
@@ -614,29 +622,9 @@ private fun SceneLineRow(
   ) {
     Column(modifier = Modifier.weight(1f)) {
       Text(line.originals.joinToString(" / "), style = MaterialTheme.typography.titleMedium)
-      Box(
-        modifier = Modifier
-          .clip(RoundedCornerShape(6.dp))
-          .background(
-            if (revealed) Color.Transparent
-            else MaterialTheme.colorScheme.surfaceVariant,
-          )
-          // A sand hairline so the patch reads as tappable on the sand ground.
-          .then(
-            if (revealed) Modifier
-            else Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
-          )
-          .clickable(enabled = !revealed, onClick = onReveal)
-          .padding(horizontal = 6.dp, vertical = 2.dp),
-      ) {
-        // Transparent until revealed: the patch keeps the meaning's own size.
-        // The revealed meaning wears coral — the web's --spark reveal reward.
-        Text(
-          text = line.translated,
-          style = MaterialTheme.typography.bodyLarge,
-          color = if (revealed) MaterialTheme.colorScheme.tertiary else Color.Transparent,
-        )
-      }
+      // The foreign word is shown; its meaning waits behind the patch (shared
+      // with the word card — one masking, two surfaces).
+      MaskedMeaning(text = line.translated, revealed = revealed, onReveal = onReveal)
     }
     line.audioId?.let { id ->
       IconButton(onClick = { viewModel.playRecordingFor(id) }) {

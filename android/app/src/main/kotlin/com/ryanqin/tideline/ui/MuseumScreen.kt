@@ -29,7 +29,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -285,11 +284,22 @@ private fun CardGroupSheet(
   onSunk: () -> Unit,
 ) {
   Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
-    Text(
-      group.translated + (group.sourceLang?.let { "  ·  $it" } ?: ""),
-      style = MaterialTheme.typography.headlineSmall,
-      fontWeight = FontWeight.SemiBold,
-    )
+    // The meaning, then which direction it came from (日→中) — the web's
+    // cardGroupSheet langtag, instead of a bare English language name.
+    Row(verticalAlignment = Alignment.Bottom) {
+      Text(
+        group.translated,
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.SemiBold,
+      )
+      Spacer(Modifier.width(8.dp))
+      Text(
+        Lingo.langTag(group.sourceLang, group.cards.firstOrNull()?.card?.targetLang),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp),
+      )
+    }
     Spacer(Modifier.height(8.dp))
     group.cards.forEach { mc ->
       WordBlock(mc, viewModel, onSunk)
@@ -323,30 +333,11 @@ private fun WordBlock(
           color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
     }
-    // The lived moments — the captures this word grew from (§3.2).
-    val photoMoment = moments.firstOrNull { it.sourceImage != null }
-    photoMoment?.sourceImage?.let { bytes ->
-      val bitmap = remember(mc.card.id) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
-      if (bitmap != null) CapturePhoto(bitmap)
-    }
-    photoMoment?.contextSnippet?.let {
-      Spacer(Modifier.height(6.dp))
-      Text(it, style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    moments.filter { it.sourceAudio != null }.take(1).forEach { m ->
-      TextButton(onClick = { viewModel.playRecordingFor(m.id) }) {
-        Icon(Icons.Default.PlayArrow, contentDescription = null,
-          modifier = Modifier.padding(end = 4.dp))
-        Text("播放当时的原声", style = MaterialTheme.typography.bodySmall)
-      }
-    }
-    if (moments.isNotEmpty()) {
-      Text(
-        "${moments.size} 次相遇 · 最近 ${Lingo.humanTime(moments.last().createdAt)}",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+    // The lived moments — the captures this word grew from (§3.2), each the
+    // same row the shore and the web show: glyph, photo, "今天 · 看到的". The
+    // stack of rows IS the "六次相遇", richer than a bare count.
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      moments.forEach { m -> MomentRow(m, onPlayAudio = { viewModel.playRecording(it) }) }
     }
   }
 }
