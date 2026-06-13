@@ -67,4 +67,23 @@ class MuseumTest {
     assertEquals(7L, ja.words[0].cardId)
     assertNull(ja.words[1].cardId)
   }
+
+  @Test
+  fun `case variants of a word fold into one tile, displayed canonical`() {
+    val cards = listOf(card(9, "premium", "高级", sourceLang = "English"))
+    val buckets = langBuckets(
+      listOf(
+        row(1, "PREMIUM", sourceLang = "English"),
+        row(2, "Premium", sourceLang = "English"),
+        row(3, "ALCOHOL", sourceLang = "English"),
+      ),
+      cards,
+    )
+    val en = buckets.first { it.lang == "English" }
+    // PREMIUM + Premium = one canonical "premium" tile (count 2), pointing at
+    // the matured card; ALCOHOL folds to "alcohol".
+    assertEquals(listOf("premium", "alcohol"), en.words.map { it.original })
+    assertEquals(2, en.words[0].count)
+    assertEquals(9L, en.words[0].cardId)
+  }
 }

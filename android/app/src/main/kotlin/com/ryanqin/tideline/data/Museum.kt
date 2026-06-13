@@ -71,7 +71,9 @@ fun langBuckets(rows: List<ThemeRow>, cards: List<MuseumCard>): List<LangBucket>
   val cardByWord = cards.associateBy { it.card.original to it.card.targetLang }
   return rows.groupBy { it.sourceLang }
     .map { (lang, bucket) ->
-      val words = bucket.groupBy { it.original }
+      // Fold case so PREMIUM and Premium are one tile (the canonical word the
+      // card carries too) — never the same word shown twice.
+      val words = bucket.groupBy { canonicalWord(it.original) }
         .map { (original, met) ->
           LangWord(
             original = original,

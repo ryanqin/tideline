@@ -40,39 +40,64 @@ fun reschedule(strength: Int, remembered: Boolean, nowMs: Long): Pair<Int, Long>
 fun emergenceSweep(db: SupportSQLiteDatabase, nowMs: Long = System.currentTimeMillis()) {
   db.beginTransaction()
   try {
-    // drawer → candidates (UPSERT keeps ids stable; count/last_seen refresh)
-    db.execSQL(
+    // drawer → candidates (UPSERT keeps ids stable; count/last_seen refresh).
+    // Group case-insensitively (COLLATE NOCASE) so PREMIUM and Premium count
+    // as ONE word's occasions, then store the display casing canonicalised
+    // (lowercase except proper nouns) — so the candidate's UNIQUE(original) key
+    // is stable. SQLite can't call canonicalWord mid-query, so read the merged
+    // groups and UPSERT each (mirrors core's fetch-transform-executemany).
+    db.query(
       """
-      INSERT INTO candidates
-          (original, target_lang, translated, occurrence_count,
-           first_seen_at, last_seen_at, promoted_at)
       SELECT
           original,
           target_lang,
           (SELECT translated FROM translations t2
-           WHERE t2.original = t.original AND t2.target_lang = t.target_lang
+           WHERE t2.original = t.original COLLATE NOCASE
+             AND t2.target_lang = t.target_lang
            ORDER BY id DESC LIMIT 1),
           COUNT(*),
           MIN(created_at),
-          MAX(created_at),
-          $nowMs
+          MAX(created_at)
       FROM translations t
-      GROUP BY original, target_lang
+      GROUP BY original COLLATE NOCASE, target_lang
       HAVING COUNT(DISTINCT COALESCE(session_id, 'row#' || id)) >= $PROMOTION_THRESHOLD
-      ON CONFLICT(original, target_lang) DO UPDATE SET
-          translated = excluded.translated,
-          occurrence_count = excluded.occurrence_count,
-          last_seen_at = excluded.last_seen_at
       """
-    )
-    // evidence back-links (idempotent on the composite key)
+    ).use { c ->
+      while (c.moveToNext()) {
+        db.execSQL(
+          """
+          INSERT INTO candidates
+              (original, target_lang, translated, occurrence_count,
+               first_seen_at, last_seen_at, promoted_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(original, target_lang) DO UPDATE SET
+              translated = excluded.translated,
+              occurrence_count = excluded.occurrence_count,
+              last_seen_at = excluded.last_seen_at
+          """,
+          arrayOf(
+            canonicalWord(c.getString(0)),
+            c.getString(1),
+            c.getString(2),
+            c.getLong(3),
+            c.getLong(4),
+            c.getLong(5),
+            nowMs,
+          ),
+        )
+      }
+    }
+    // evidence back-links (idempotent on the composite key) — case-insensitive,
+    // since the candidate's stored original is canonical ("premium") while the
+    // drawer keeps each row as met ("PREMIUM").
     db.execSQL(
       """
       INSERT OR IGNORE INTO candidate_evidence (candidate_id, translation_id, recorded_at)
       SELECT c.id, t.id, $nowMs
       FROM candidates c
       JOIN translations t
-        ON t.original = c.original AND t.target_lang = c.target_lang
+        ON t.original = c.original COLLATE NOCASE
+       AND t.target_lang = c.target_lang
       """
     )
     // candidates → active cards (opt-out; sunk cards never resurrect)
