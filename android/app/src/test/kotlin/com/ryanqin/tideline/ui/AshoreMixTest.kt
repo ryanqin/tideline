@@ -67,15 +67,38 @@ class AshoreMixTest {
   }
 
   @Test
-  fun `an occasion that covers every due word holds the beach alone`() {
+  fun `identical occasions take one spot per tide`() {
+    // The same package captured on three sittings: one crab ashore, not
+    // three; its words fold; a different occasion still gets its own spot.
     val mix = ashoreMix(
       listOf(
         word(1, "Alcohol"), word(2, "Wipes"),
         scene("s1", "Alcohol", "Wipes"),
         scene("s2", "Alcohol", "Wipes"),
+        scene("s3", "Alcohol", "Wipes"),
+        scene("s4", "駅", "切符"),
       )
     )
-    assertEquals(2, mix.size)
-    assertEquals(2, mix.count { it is ReviewItem.Scene })
+    assertEquals(
+      listOf("s1", "s4"),
+      mix.filterIsInstance<ReviewItem.Scene>().map { it.group.sessionId },
+    )
+    assertEquals(0, mix.count { it is ReviewItem.Word })
+  }
+
+  @Test
+  fun `a smaller capture of the same occasion folds into the fuller one`() {
+    // The live case: one sitting read five words, another read four of the
+    // same five (a guard dropped one) — containment, same occasion, one crab.
+    val mix = ashoreMix(
+      listOf(
+        scene("s1", "Kills", "Alcohol", "Wipes", "Sanitizing", "Premium"),
+        scene("s2", "Kills", "Alcohol", "Wipes", "Sanitizing"),
+      )
+    )
+    assertEquals(
+      listOf("s1"),
+      mix.filterIsInstance<ReviewItem.Scene>().map { it.group.sessionId },
+    )
   }
 }

@@ -114,7 +114,23 @@ internal const val ASHORE = 5
  * and rests, the word washes up on a later tide. No scenes due = all words,
  * as before. */
 internal fun ashoreMix(items: List<ReviewItem>, limit: Int = ASHORE): List<ReviewItem> {
-  val scenes = items.filterIsInstance<ReviewItem.Scene>().take(2)
+  // The same occasion captured on several sittings takes ONE spot per
+  // tide. "Same" is containment, not equality: a 4-word shot of the package
+  // is the 5-word shot minus a guarded term, so a scene whose words are a
+  // subset of an ashore scene's (same language) folds into the fuller one.
+  // Each keeps its own review state; only the beach refuses the rerun.
+  val scenes = mutableListOf<ReviewItem.Scene>()
+  for (s in items.filterIsInstance<ReviewItem.Scene>()) {
+    if (scenes.size == 2) break
+    val ws = s.group.members.map { it.original }.toSet()
+    val rerun = scenes.any { k ->
+      k.group.sourceLang == s.group.sourceLang &&
+        k.group.members.map { it.original }.toSet().let { kw ->
+          kw.containsAll(ws) || ws.containsAll(kw)
+        }
+    }
+    if (!rerun) scenes.add(s)
+  }
   val covered = scenes
     .flatMap { s -> s.group.members.map { it.original to it.targetLang } }
     .toSet()
