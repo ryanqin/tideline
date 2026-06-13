@@ -23,6 +23,12 @@ private const val MAX_TERM_LENGTH = 60
 data class ImageReply(
   val translated: String,
   val sceneGist: String?,
+  // Which language the visible text is in, as the model reports it — the
+  // image-level source language (one sign / package is usually one language).
+  // It backfills a term's source_lang when the deterministic script check
+  // can't pin one (Latin words like "Premium" carry no script signal), so the
+  // by-language lens and the (日→中) langtag work for photographed words too.
+  val language: String?,
   val terms: List<Term>,
   // Structurally sound pairs whose rendering failed the script guard
   // ("Premium = 高 premium"): the word was READ fine, only its translation
@@ -129,10 +135,11 @@ private fun parsePair(segment: String, targetLang: String): PairParse {
 fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
   val text = raw.trim()
   val sceneIdx = text.indexOf("SCENE:", ignoreCase = true)
+  val languageIdx = text.indexOf("LANGUAGE:", ignoreCase = true)
   val termsIdx = text.indexOf("TERMS:", ignoreCase = true)
   val firstTermIdx = Regex("(?im)^\\s*TERM:").find(text)?.range?.first ?: -1
 
-  val cutIdx = listOf(sceneIdx, termsIdx, firstTermIdx)
+  val cutIdx = listOf(sceneIdx, languageIdx, termsIdx, firstTermIdx)
     .filter { it >= 0 }.minOrNull() ?: text.length
   val translated = text.substring(0, cutIdx)
     .replace(Regex("(?i)TRANSLATION:\\s*"), "")
@@ -166,6 +173,15 @@ fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
     else line.split('|', ';').map { parsePair(it, targetLang) }
   } else emptyList()
 
+  // The image-level source language: a single capitalized word like
+  // "English"/"Japanese" (same shape and guard as the audio LANGUAGE line);
+  // anything chattier is the model rambling, not a language name.
+  val language = if (languageIdx >= 0) {
+    text.substring(languageIdx + "LANGUAGE:".length)
+      .lineSequence().firstOrNull()?.trim()
+      ?.takeIf { it.isNotEmpty() && it.length <= 20 && !it.contains(' ') }
+  } else null
+
   // Per-line TERM rows win when they carry anything real (a half-translated
   // row counts: the format WAS followed, only the rendering needs the fix).
   val chosen = if (lineParses.any { it !is PairParse.Bad }) lineParses else inlineParses
@@ -178,7 +194,7 @@ fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
     .take(MAX_TERMS)
 
   return ImageReply(
-    translated = translated, sceneGist = sceneGist,
+    translated = translated, sceneGist = sceneGist, language = language,
     terms = terms, retryWorthy = retryWorthy,
   )
 }

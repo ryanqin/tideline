@@ -228,4 +228,31 @@ class ImageReplyTest {
     assertEquals("居酒屋", reply.sceneGist)
     assertTrue(reply.terms.isEmpty())
   }
+
+  @Test
+  fun `the LANGUAGE line is parsed and never bleeds into translation or terms`() {
+    val reply = parseImageReply(
+      "TRANSLATION: 杀菌湿巾\nSCENE: 包装\nLANGUAGE: English\n" +
+        "TERM: Alcohol = 酒精\nTERM: Wipes = 湿巾"
+    )
+    assertEquals("English", reply.language)
+    assertEquals("杀菌湿巾", reply.translated)
+    assertEquals("包装", reply.sceneGist)
+    assertEquals(listOf("Alcohol", "Wipes"), reply.terms.map { it.original })
+  }
+
+  @Test
+  fun `a chatty LANGUAGE line is rejected as not a language name`() {
+    val reply = parseImageReply(
+      "TRANSLATION: x\nLANGUAGE: the text appears to be English\nTERM: Exit = 出口"
+    )
+    assertNull(reply.language)
+    assertEquals(listOf("Exit"), reply.terms.map { it.original })
+  }
+
+  @Test
+  fun `no LANGUAGE line leaves language null`() {
+    val reply = parseImageReply("TRANSLATION: 菜单\nSCENE: 餐厅\nTERM: 駅 = 车站")
+    assertNull(reply.language)
+  }
 }
