@@ -34,6 +34,35 @@ from pathlib import Path
 _DEFAULT_THRESHOLD = 3
 
 
+def canonical_word(word: str) -> str:
+    """Casing-normalize a learned word: "lowercase except proper nouns".
+
+    Signage shouts common nouns in all-caps (PREMIUM, ALCOHOL); typed text and
+    other captures meet them as "Premium" / "premium". Left alone they split
+    into two candidates and two review cards. The learned word is one word, so
+    fold case for IDENTITY — but display the lemma, lowercased, EXCEPT where the
+    casing likely IS the word: a short all-caps acronym (NASA, USB) or an
+    internally-capitalised name (iPhone, eBay). A word with no ASCII-cased
+    letters (CJK, kana) is returned untouched.
+
+    Deterministic and idempotent — canonical(canonical(x)) == canonical(x) — so
+    it can key the candidates table directly. Proper-noun detection is fuzzy, so
+    this is a garnish-level heuristic ([[tideline_engineering_vs_reasoning]]):
+    the model is already asked to skip proper names, and a miss here is only
+    cosmetic, never load-bearing.
+    """
+    letters = [c for c in word if c.isascii() and c.isalpha()]
+    if not letters:
+        return word
+    # an internal uppercase (an upper right after a lower): iPhone, McD, eBay
+    if any(cur.isupper() and prev.islower() for prev, cur in zip(word, word[1:])):
+        return word
+    # a short all-caps acronym keeps its shout: NASA, USB, EU
+    if len(letters) <= 4 and all(c.isupper() for c in letters):
+        return word
+    return word.lower()
+
+
 def promote_candidates(
     conn: sqlite3.Connection,
     threshold: int = _DEFAULT_THRESHOLD,
@@ -49,19 +78,25 @@ def promote_candidates(
     if threshold < 1:
         raise ValueError(f"threshold must be >= 1, got {threshold}")
 
+    # Group case-insensitively (COLLATE NOCASE) so PREMIUM and Premium count as
+    # ONE word's occasions — otherwise the same word, shouted on a sign and
+    # typed in lower-case elsewhere, splits its evidence across two candidates
+    # and neither may reach the threshold. The stored `original` is then
+    # canonicalized below, so the candidate's UNIQUE(original) key is stable.
     rows = conn.execute(
         """
         SELECT
             original,
             target_lang,
             (SELECT translated FROM translations t2
-             WHERE t2.original = t.original AND t2.target_lang = t.target_lang
+             WHERE t2.original = t.original COLLATE NOCASE
+               AND t2.target_lang = t.target_lang
              ORDER BY id DESC LIMIT 1) AS translated,
             COUNT(*) AS occurrence_count,
             MIN(created_at) AS first_seen_at,
             MAX(created_at) AS last_seen_at
         FROM translations t
-        GROUP BY original, target_lang
+        GROUP BY original COLLATE NOCASE, target_lang
         HAVING COUNT(DISTINCT COALESCE(session_id, 'row#' || id)) >= ?
         """,
         (threshold,),
@@ -69,6 +104,10 @@ def promote_candidates(
 
     if not rows:
         return 0
+
+    # Canonicalize the display casing (lowercase except proper nouns); the
+    # arbitrary group representative SQLite returns becomes deterministic.
+    rows = [(canonical_word(o), *rest) for (o, *rest) in rows]
 
     conn.executemany(
         """
@@ -85,14 +124,16 @@ def promote_candidates(
     )
 
     # Evidence rows: link each candidate to every translation that
-    # contributed. UNIQUE constraint makes this idempotent across re-runs.
+    # contributed — case-insensitively, since the candidate's stored original
+    # is canonical ("premium") while the drawer keeps each as met ("PREMIUM").
     conn.execute(
         """
         INSERT OR IGNORE INTO candidate_evidence (candidate_id, translation_id)
         SELECT c.id, t.id
         FROM candidates c
         JOIN translations t
-          ON t.original = c.original AND t.target_lang = c.target_lang
+          ON t.original = c.original COLLATE NOCASE
+         AND t.target_lang = c.target_lang
         """
     )
     conn.commit()

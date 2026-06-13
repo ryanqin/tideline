@@ -26,7 +26,7 @@ import sys
 import pytest
 
 from tideline.agent import Agent
-from tideline.promotion import promote_candidates
+from tideline.promotion import canonical_word, promote_candidates
 from tideline.runtimes import get_runtime
 from tideline.seed import seed_db
 from tideline.tools import (
@@ -103,6 +103,44 @@ def test_distinct_pairs_promoted_separately(conn):
         "ORDER BY occurrence_count DESC"
     ).fetchall()
     assert rows == [("thanks", 4), ("hello", 3)]
+
+
+def test_canonical_word_lowercases_except_proper_nouns():
+    # shouted common nouns become the lemma
+    assert canonical_word("PREMIUM") == "premium"
+    assert canonical_word("Premium") == "premium"
+    assert canonical_word("ALCOHOL") == "alcohol"
+    assert canonical_word("germs") == "germs"
+    # likely proper nouns keep their casing
+    assert canonical_word("NASA") == "NASA"      # short all-caps acronym
+    assert canonical_word("iPhone") == "iPhone"  # internal uppercase
+    # no ASCII-cased letters → untouched (CJK / kana)
+    assert canonical_word("ラーメン") == "ラーメン"
+    assert canonical_word("拉面") == "拉面"
+    # idempotent
+    assert canonical_word(canonical_word("PREMIUM")) == "premium"
+
+
+def test_case_variants_merge_into_one_canonical_candidate(conn):
+    # The same word met shouting on a sign and typed in lower-case is ONE word:
+    # its occasions combine, and it promotes as a single lowercased candidate.
+    _add(conn, "PREMIUM", "zh", "高级")
+    _add(conn, "PREMIUM", "zh", "高级")
+    _add(conn, "Premium", "zh", "高级")  # 3 occasions across two casings
+
+    n = promote_candidates(conn, threshold=3)
+    assert n == 1
+    rows = conn.execute(
+        "SELECT original, occurrence_count FROM candidates"
+    ).fetchall()
+    assert rows == [("premium", 3)]
+
+    # Evidence links every casing's row (3), case-insensitively.
+    ev = conn.execute(
+        "SELECT COUNT(*) FROM candidate_evidence ce JOIN candidates c "
+        "ON ce.candidate_id = c.id WHERE c.original = 'premium'"
+    ).fetchone()
+    assert ev[0] == 3
 
 
 def test_promotion_is_idempotent_on_second_run(conn):
