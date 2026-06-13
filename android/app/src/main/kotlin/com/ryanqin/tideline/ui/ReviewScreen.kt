@@ -104,7 +104,24 @@ import java.util.Locale
 
 // A calm few wash up at a time — never a wall (DESIGN §10.5). Grading one
 // lets the next wash in.
-private const val ASHORE = 5
+internal const val ASHORE = 5
+
+/** What washes ashore this tide. Scenes come first — a scene REPRESENTS its
+ * whole occasion, so a word card whose word belongs to an ashore scene FOLDS
+ * into it (one occasion shouldn't fill the beach with itself); words not
+ * covered by any ashore scene fill the remaining spots. A folded word isn't
+ * starved: its content rides with the scene, and once the scene is graded
+ * and rests, the word washes up on a later tide. No scenes due = all words,
+ * as before. */
+internal fun ashoreMix(items: List<ReviewItem>, limit: Int = ASHORE): List<ReviewItem> {
+  val scenes = items.filterIsInstance<ReviewItem.Scene>().take(2)
+  val covered = scenes
+    .flatMap { s -> s.group.members.map { it.original to it.targetLang } }
+    .toSet()
+  val words = items.filterIsInstance<ReviewItem.Word>()
+    .filter { (it.card.original to it.card.targetLang) !in covered }
+  return scenes + words.take((limit - scenes.size).coerceAtLeast(0))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,19 +172,10 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
       when {
         items == null -> {}
         items.isEmpty() -> RestingShore(onClose)
-        else -> {
-          // Both kinds share the sand: words get a guaranteed share, scenes
-          // fill the rest (the web shore's mix, simplified). Each grade
-          // re-deals, so the next thing washes in.
-          val words = items.filterIsInstance<ReviewItem.Word>()
-          val scenes = items.filterIsInstance<ReviewItem.Scene>()
-          val ashoreWords = words.take(if (scenes.isEmpty()) ASHORE else 3)
-          val ashore = ashoreWords + scenes.take(ASHORE - ashoreWords.size)
-          Beach(ashore, opened, onPick = {
-            opened = opened + itemKey(it)
-            open = it
-          })
-        }
+        else -> Beach(ashoreMix(items), opened, onPick = {
+          opened = opened + itemKey(it)
+          open = it
+        })
       }
     }
   }
