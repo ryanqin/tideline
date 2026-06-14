@@ -140,7 +140,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   suspend fun reviewDeck(): List<ReviewItem> {
     val now = System.currentTimeMillis()
     val words = emergence.dueCards(now).map { ReviewItem.Word(it) }
-    val states = emergence.themeReviewStates().associateBy { it.sessionId }
+    val states = emergence.themeReviewStates().associateBy { it.sceneLabel }
     val scenes = dueThemes(themeGroups(emergence.themeRows()), states, now)
       .map { ReviewItem.Scene(it.group, it.strength) }
     return words + scenes
@@ -175,15 +175,15 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     }
   }
 
-  fun reviewTheme(sessionId: String, remembered: Boolean) {
+  fun reviewTheme(sceneLabel: String, remembered: Boolean) {
     viewModelScope.launch(Dispatchers.IO) {
       try {
         val now = System.currentTimeMillis()
-        val state = emergence.themeReview(sessionId)
+        val state = emergence.themeReview(sceneLabel)
         val (next, dueAt) = reschedule(state?.strength ?: 0, remembered, now)
         emergence.upsertThemeReview(
           ThemeReviewEntity(
-            sessionId = sessionId,
+            sceneLabel = sceneLabel,
             strength = next,
             dueAt = dueAt,
             lastReviewedAt = now,
@@ -544,6 +544,8 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         "TRANSLATION: all visible text translated to $lang, as one natural " +
         "sentence or phrase (write NONE if there is no text)\n" +
         "SCENE: 5-8 words naming where/what this is — place, activity, or notable objects\n" +
+        "SCENE_TYPE: the kind of place in 2-4 characters (例如 拉面店 / 车站 / 咖啡馆) — " +
+        "the same kind of place should get the same label so it groups across visits\n" +
         "LANGUAGE: the language the visible text is written in, one word like English\n" +
         "Then 1-6 key words from the image worth learning, each on its own " +
         "line exactly like this example:\n" +
@@ -645,8 +647,9 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     lang: String,
     sourceImage: ByteArray,
     imageLanguage: String?,
+    sceneType: String?,
   ) {
-    val conv = conversation ?: run { finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList(), imageLanguage); return }
+    val conv = conversation ?: run { finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList(), imageLanguage, sceneType); return }
     val acc = StringBuilder()
     val prompt =
       "Now list 1-6 key words you can see in that image, each on its own " +
@@ -659,20 +662,20 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
           override fun onDone() {
             val r2 = parseImageReply(acc.toString().trim(), lang)
             Log.i(TAG, "BENCH terms_retry got=${r2.terms.size}")
-            // The retry is a terms-only ask (no LANGUAGE line), so keep the
-            // first pass's image-level language for these rows.
-            dispatchWordFix(r2.retryWorthy, r2.terms, translated, sceneGist, originalLabel, lang, sourceImage, imageLanguage)
+            // The retry is a terms-only ask (no LANGUAGE / SCENE_TYPE line), so
+            // keep the first pass's image-level language and scene type.
+            dispatchWordFix(r2.retryWorthy, r2.terms, translated, sceneGist, originalLabel, lang, sourceImage, imageLanguage, sceneType)
           }
           override fun onError(throwable: Throwable) {
             Log.e(TAG, "Terms retry failed", throwable)
-            finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList(), imageLanguage)
+            finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList(), imageLanguage, sceneType)
           }
         },
         emptyMap(),
       )
     } catch (t: Throwable) {
       Log.e(TAG, "Terms retry send failed", t)
-      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList(), imageLanguage)
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, emptyList(), imageLanguage, sceneType)
     }
   }
 
@@ -695,15 +698,16 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     lang: String,
     sourceImage: ByteArray?,
     imageLanguage: String?,
+    sceneType: String?,
   ) {
     if (pending.isEmpty()) {
-      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8), imageLanguage)
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8), imageLanguage, sceneType)
       return
     }
     val word = pending.first()
     val rest = pending.drop(1)
     val conv = conversation ?: run {
-      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8), imageLanguage)
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8), imageLanguage, sceneType)
       return
     }
     val acc = StringBuilder()
@@ -720,19 +724,19 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             dispatchWordFix(
               rest,
               if (ok) fixed + ImageReply.Term(word, fix) else fixed,
-              translated, sceneGist, originalLabel, lang, sourceImage, imageLanguage,
+              translated, sceneGist, originalLabel, lang, sourceImage, imageLanguage, sceneType,
             )
           }
           override fun onError(throwable: Throwable) {
             Log.e(TAG, "Word fix failed", throwable)
-            dispatchWordFix(rest, fixed, translated, sceneGist, originalLabel, lang, sourceImage, imageLanguage)
+            dispatchWordFix(rest, fixed, translated, sceneGist, originalLabel, lang, sourceImage, imageLanguage, sceneType)
           }
         },
         emptyMap(),
       )
     } catch (t: Throwable) {
       Log.e(TAG, "Word fix send failed", t)
-      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8), imageLanguage)
+      finishImagePersist(translated, sceneGist, originalLabel, lang, sourceImage, fixed.take(8), imageLanguage, sceneType)
     }
   }
 
@@ -745,6 +749,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     sourceImage: ByteArray?,
     terms: List<ImageReply.Term>,
     imageLanguage: String?,
+    sceneType: String?,
   ) {
     _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = translated)
     viewModelScope.launch(Dispatchers.IO) {
@@ -769,6 +774,9 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             // model's image-level report so Latin words (Premium) still carry
             // their language. Mirrors the web's detect-then-model source_lang.
             sourceLang = detectScriptLanguage(term.original) ?: imageLanguage,
+            // The scene TYPE this was met in — the key it clusters into a
+            // cross-visit theme by (the model's SCENE_TYPE label).
+            sceneLabel = sceneType,
           )
         }
       } else if (translated.isNotEmpty() && translated.length <= MAX_PERSIST_CHARS) {
@@ -864,14 +872,14 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
                 translated.isNotEmpty() && !translated.equals("NONE", ignoreCase = true)
               ) {
                 _ui.value = _ui.value.copy(translation = translated)
-                dispatchTermsRetry(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.language)
+                dispatchTermsRetry(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.language, reply.sceneType)
               } else if (reply.retryWorthy.isNotEmpty()) {
                 // Some words read fine but rendered half-borrowed — fix each
                 // with a single-task ask before the rows sediment.
                 _ui.value = _ui.value.copy(translation = translated)
-                dispatchWordFix(reply.retryWorthy, reply.terms, translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.language)
+                dispatchWordFix(reply.retryWorthy, reply.terms, translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.language, reply.sceneType)
               } else {
-                finishImagePersist(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.terms, reply.language)
+                finishImagePersist(translated, reply.sceneGist, originalLabel, lang, sourceImage, reply.terms, reply.language, reply.sceneType)
               }
             } else {
               // Audio: the transcript (what was actually said, in its own

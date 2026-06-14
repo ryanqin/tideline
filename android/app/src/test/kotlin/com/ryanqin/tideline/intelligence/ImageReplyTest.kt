@@ -255,4 +255,22 @@ class ImageReplyTest {
     val reply = parseImageReply("TRANSLATION: 菜单\nSCENE: 餐厅\nTERM: 駅 = 车站")
     assertNull(reply.language)
   }
+
+  @Test
+  fun `SCENE_TYPE is parsed and kept distinct from SCENE, never bleeding into terms`() {
+    val reply = parseImageReply(
+      "TRANSLATION: 拉面 800日元\nSCENE: 深夜拉面横丁的购票机\nSCENE_TYPE: 拉面店\n" +
+        "LANGUAGE: Japanese\nTERM: ラーメン = 拉面\nTERM: 餃子 = 煎饺"
+    )
+    assertEquals("拉面店", reply.sceneType)
+    assertEquals("深夜拉面横丁的购票机", reply.sceneGist)  // the two markers don't collide
+    assertEquals("拉面 800日元", reply.translated)
+    assertEquals(listOf("ラーメン", "餃子"), reply.terms.map { it.original })
+  }
+
+  @Test
+  fun `no SCENE_TYPE line leaves sceneType null`() {
+    val reply = parseImageReply("TRANSLATION: x\nSCENE: 餐厅\nTERM: 駅 = 车站")
+    assertNull(reply.sceneType)
+  }
 }

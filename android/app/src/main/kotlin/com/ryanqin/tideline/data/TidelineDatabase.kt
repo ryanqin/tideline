@@ -21,7 +21,7 @@ import androidx.room.RoomDatabase
     CardEntity::class,
     ThemeReviewEntity::class,
   ],
-  version = 6,
+  version = 7,  // v7: translations.scene_label + theme_reviews re-keyed to it
   exportSchema = false,
 )
 abstract class TidelineDatabase : RoomDatabase() {

@@ -15,16 +15,16 @@ class AshoreMixTest {
     )
   )
 
-  private fun scene(sessionId: String, vararg originals: String) = ReviewItem.Scene(
+  private fun scene(label: String, vararg originals: String) = ReviewItem.Scene(
     ThemeGroup(
-      sessionId = sessionId,
+      sceneLabel = label,
       sourceLang = "English",
       members = originals.mapIndexed { i, o ->
         ThemeRow(
           id = i + 100L, original = o, targetLang = "Chinese", translated = "义$o",
-          source = "image", contextSnippet = null, sessionId = sessionId,
+          source = "image", contextSnippet = null, sessionId = null,
           sourceRegion = null, sourceLang = "English", createdAt = 0L,
-          hasImage = false, hasAudio = false,
+          hasImage = false, hasAudio = false, sceneLabel = label,
         )
       },
     ),
@@ -42,7 +42,7 @@ class AshoreMixTest {
     // the scene represents Alcohol and Wipes; only the uncovered word remains
     assertEquals(
       listOf("s:s1", "w:駅"),
-      mix.map { if (it is ReviewItem.Scene) "s:${it.group.sessionId}" else "w:${(it as ReviewItem.Word).card.original}" },
+      mix.map { if (it is ReviewItem.Scene) "s:${it.group.sceneLabel}" else "w:${(it as ReviewItem.Word).card.original}" },
     )
   }
 
@@ -81,7 +81,7 @@ class AshoreMixTest {
     )
     assertEquals(
       listOf("s1", "s4"),
-      mix.filterIsInstance<ReviewItem.Scene>().map { it.group.sessionId },
+      mix.filterIsInstance<ReviewItem.Scene>().map { it.group.sceneLabel },
     )
     assertEquals(0, mix.count { it is ReviewItem.Word })
   }
@@ -98,7 +98,7 @@ class AshoreMixTest {
     )
     assertEquals(
       listOf("s1"),
-      mix.filterIsInstance<ReviewItem.Scene>().map { it.group.sessionId },
+      mix.filterIsInstance<ReviewItem.Scene>().map { it.group.sceneLabel },
     )
   }
 }

@@ -23,6 +23,10 @@ private const val MAX_TERM_LENGTH = 60
 data class ImageReply(
   val translated: String,
   val sceneGist: String?,
+  // The scene TYPE — a short 2-4 char place/scene label (拉面店 / 车站) the model
+  // reports; the key terms cluster into a cross-visit theme by. Distinct from
+  // the descriptive sceneGist (that's the per-photo snippet).
+  val sceneType: String?,
   // Which language the visible text is in, as the model reports it — the
   // image-level source language (one sign / package is usually one language).
   // It backfills a term's source_lang when the deterministic script check
@@ -134,12 +138,15 @@ private fun parsePair(segment: String, targetLang: String): PairParse {
 
 fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
   val text = raw.trim()
+  // "SCENE_TYPE:" doesn't contain "SCENE:" (an underscore follows SCENE, not a
+  // colon), so the two markers don't collide.
+  val sceneTypeIdx = text.indexOf("SCENE_TYPE:", ignoreCase = true)
   val sceneIdx = text.indexOf("SCENE:", ignoreCase = true)
   val languageIdx = text.indexOf("LANGUAGE:", ignoreCase = true)
   val termsIdx = text.indexOf("TERMS:", ignoreCase = true)
   val firstTermIdx = Regex("(?im)^\\s*TERM:").find(text)?.range?.first ?: -1
 
-  val cutIdx = listOf(sceneIdx, languageIdx, termsIdx, firstTermIdx)
+  val cutIdx = listOf(sceneIdx, sceneTypeIdx, languageIdx, termsIdx, firstTermIdx)
     .filter { it >= 0 }.minOrNull() ?: text.length
   val translated = text.substring(0, cutIdx)
     .replace(Regex("(?i)TRANSLATION:\\s*"), "")
@@ -182,6 +189,14 @@ fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
       ?.takeIf { it.isNotEmpty() && it.length <= 20 && !it.contains(' ') }
   } else null
 
+  // The scene TYPE label (拉面店 / 车站) — a short place category, first line,
+  // length-guarded so a rambling answer doesn't become a junk theme key.
+  val sceneType = if (sceneTypeIdx >= 0) {
+    text.substring(sceneTypeIdx + "SCENE_TYPE:".length)
+      .lineSequence().firstOrNull()?.trim()?.trim('。', '.', '：', ':')
+      ?.takeIf { it.isNotEmpty() && it.length <= 12 }
+  } else null
+
   // Per-line TERM rows win when they carry anything real (a half-translated
   // row counts: the format WAS followed, only the rendering needs the fix).
   val chosen = if (lineParses.any { it !is PairParse.Bad }) lineParses else inlineParses
@@ -194,7 +209,7 @@ fun parseImageReply(raw: String, targetLang: String = "Chinese"): ImageReply {
     .take(MAX_TERMS)
 
   return ImageReply(
-    translated = translated, sceneGist = sceneGist, language = language,
-    terms = terms, retryWorthy = retryWorthy,
+    translated = translated, sceneGist = sceneGist, sceneType = sceneType,
+    language = language, terms = terms, retryWorthy = retryWorthy,
   )
 }

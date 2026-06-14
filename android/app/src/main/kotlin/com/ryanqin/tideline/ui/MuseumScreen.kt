@@ -261,11 +261,10 @@ private fun ThemesLens(scenes: List<ThemeGroup>, onOpen: (ThemeGroup) -> Unit) {
   }
   ShelfRow {
     scenes.forEach { s ->
-      val gist = s.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
       ShelfShell(
         kind = GlyphKind.Scene,
-        seed = s.sessionId,
-        cap = gist ?: "${Lingo.humanTime(s.latestAt)}的场合",
+        seed = s.sceneLabel,
+        cap = s.sceneLabel,   // the scene's name is its type (拉面店 / 车站)
         onClick = { onOpen(s) },
       )
     }
@@ -342,28 +341,26 @@ private fun WordBlock(
   }
 }
 
-/** An occasion, browsed: the photo and every word with its meaning in the
+/** A scene type, browsed: the photo and every word with its meaning in the
  * open — recall lives on the shore, not here. */
 @Composable
 private fun SceneBrowseSheet(scene: ThemeGroup, viewModel: TidelineTranslateViewModel) {
-  var photo by remember(scene.sessionId) { mutableStateOf<android.graphics.Bitmap?>(null) }
+  var photo by remember(scene.sceneLabel) { mutableStateOf<android.graphics.Bitmap?>(null) }
   val photoMember = scene.members.firstOrNull { it.hasImage }
-  LaunchedEffect(scene.sessionId) {
+  LaunchedEffect(scene.sceneLabel) {
     photo = photoMember?.let { m ->
       viewModel.photoFor(m.id)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
     }
   }
-  val gist = scene.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
 
   Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
     Text(
-      gist ?: "那一次的场合",
+      scene.sceneLabel,   // the scene's name is its type
       style = MaterialTheme.typography.headlineSmall,
       fontWeight = FontWeight.SemiBold,
     )
     Text(
-      Lingo.humanTime(scene.latestAt) +
-        (scene.sourceLang?.let { " · ${Lingo.langName(it)}" } ?: ""),
+      scene.sourceLang?.let { Lingo.langName(it) } ?: "",
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

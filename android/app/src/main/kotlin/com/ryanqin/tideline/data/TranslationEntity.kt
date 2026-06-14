@@ -43,5 +43,9 @@ data class TranslationEntity(
   // The speech/word's own language (model-reported for audio, script-detected
   // elsewhere; null when honest detection can't tell). Picks the TTS voice.
   @ColumnInfo(name = "source_lang") val sourceLang: String? = null,
+  // The scene TYPE this was met in (拉面店 / 车站) — a short label the capture
+  // model reports, the key a theme clusters on across visits. Image captures
+  // only; null for text/audio. Mirrors Python core.
+  @ColumnInfo(name = "scene_label") val sceneLabel: String? = null,
   @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
 )

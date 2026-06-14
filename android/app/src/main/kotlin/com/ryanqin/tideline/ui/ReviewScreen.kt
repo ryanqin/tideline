@@ -96,9 +96,6 @@ import com.ryanqin.tideline.ui.theme.CoralSoft
 import com.ryanqin.tideline.ui.theme.SandSink
 import com.ryanqin.tideline.ui.theme.SunWhite
 import com.ryanqin.tideline.ui.theme.Taupe
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 // A calm few wash up at a time — never a wall (DESIGN §10.5). Grading one
 // lets the next wash in.
@@ -223,7 +220,7 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
             group = item.group,
             viewModel = viewModel,
             onGraded = { remembered ->
-              viewModel.reviewTheme(item.group.sessionId, remembered)
+              viewModel.reviewTheme(item.group.sceneLabel, remembered)
               dismiss(item)
             },
           )
@@ -237,14 +234,13 @@ fun ReviewScreen(viewModel: TidelineTranslateViewModel, onClose: () -> Unit) {
 
 private fun itemKey(item: ReviewItem): String = when (item) {
   is ReviewItem.Word -> "w${item.card.id}"
-  is ReviewItem.Scene -> "s${item.group.sessionId}"
+  is ReviewItem.Scene -> "s${item.group.sceneLabel}"
 }
 
 private fun itemLabel(item: ReviewItem): String = when (item) {
   is ReviewItem.Word -> item.card.original
-  is ReviewItem.Scene ->
-    item.group.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
-      ?: SimpleDateFormat("M月d日", Locale.getDefault()).format(Date(item.group.latestAt)) + "的场合"
+  // A scene's name IS its type — the kind of place (拉面店 / 车站).
+  is ReviewItem.Scene -> item.group.sceneLabel
 }
 
 /** The web shore's stable scatter hash — [0,1) per (key, salt). */
@@ -322,7 +318,7 @@ private fun Creature(
       val glyphMod = Modifier.size(glyphSize).rotate(rot)
       when (item) {
         is ReviewItem.Word -> CreatureGlyph(GlyphKind.Card, item.card.original, glyphMod, ink = ShoreInk)
-        is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sessionId, glyphMod, ink = ShoreInk)
+        is ReviewItem.Scene -> CreatureGlyph(GlyphKind.Scene, item.group.sceneLabel, glyphMod, ink = ShoreInk)
       }
       if (glow) {
         val spark = if (glyphSize * 0.28f < 15.dp) glyphSize * 0.28f else 15.dp
@@ -519,24 +515,19 @@ private fun SceneCard(
   viewModel: TidelineTranslateViewModel,
   onGraded: (Boolean) -> Unit,
 ) {
-  var photo by remember(group.sessionId) { mutableStateOf<Bitmap?>(null) }
-  var revealed by remember(group.sessionId) { mutableStateOf(setOf<String>()) }
+  var photo by remember(group.sceneLabel) { mutableStateOf<Bitmap?>(null) }
+  var revealed by remember(group.sceneLabel) { mutableStateOf(setOf<String>()) }
 
   val photoMember = group.members.firstOrNull { it.hasImage }
-  LaunchedEffect(group.sessionId) {
+  LaunchedEffect(group.sceneLabel) {
     photo = photoMember?.let { m ->
       viewModel.photoFor(m.id)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
     }
   }
 
-  // The episodic title is the scene gist the model reported at capture time;
-  // a session without one falls back to its date. B6 naming waits for the
-  // night-watch model — the gist is the engineering that's already there.
-  val gist = group.members.firstNotNullOfOrNull { it.contextSnippet?.takeIf(String::isNotBlank) }
-  val day = remember(group.sessionId) {
-    SimpleDateFormat("M月d日", Locale.getDefault()).format(Date(group.latestAt))
-  }
-  val lines = remember(group.sessionId) {
+  // The scene's name is its TYPE — the kind of place (拉面店 / 车站) the model
+  // labelled it; that's the theme key now, and the title.
+  val lines = remember(group.sceneLabel) {
     group.members.groupBy { it.translated }.map { (translated, ms) ->
       SceneLine(
         translated = translated,
@@ -551,14 +542,14 @@ private fun SceneCard(
     modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    // The occasion is the question.
+    // The scene type is the question.
     Text(
-      text = gist ?: "那一次的场合",
+      text = group.sceneLabel,
       style = MaterialTheme.typography.headlineSmall,
       fontWeight = FontWeight.SemiBold,
     )
     Text(
-      text = "$day · 那时遇到的词,还想得起来吗",
+      text = "在这类地方遇到的词,还想得起来吗",
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

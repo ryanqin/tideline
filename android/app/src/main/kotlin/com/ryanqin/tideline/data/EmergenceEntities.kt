@@ -56,13 +56,12 @@ data class CandidateEvidenceEntity(
   @ColumnInfo(name = "recorded_at") val recordedAt: Long = System.currentTimeMillis(),
 )
 
-/** A scene's review schedule, keyed on session_id — a theme IS a capture
- * session, and the session id is the one handle an on-demand regrouping can't
- * churn (mirrors core tools/theme_review.py). No row yet = a new scene, due
- * by default. */
+/** A scene's review schedule, keyed on scene_label — a theme IS a scene type,
+ * and the label is the one handle an on-demand regrouping can't churn (mirrors
+ * core tools/theme_review.py). No row yet = a new scene, due by default. */
 @Entity(tableName = "theme_reviews")
 data class ThemeReviewEntity(
-  @PrimaryKey @ColumnInfo(name = "session_id") val sessionId: String,
+  @PrimaryKey @ColumnInfo(name = "scene_label") val sceneLabel: String,
   @ColumnInfo(name = "strength") val strength: Int = 0,
   @ColumnInfo(name = "due_at") val dueAt: Long? = null,
   @ColumnInfo(name = "last_reviewed_at") val lastReviewedAt: Long? = null,

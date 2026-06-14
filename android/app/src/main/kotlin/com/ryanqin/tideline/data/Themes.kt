@@ -2,10 +2,12 @@
  * The scene tier — theme grouping, mirrored from the core's cluster.py theme
  * path (DESIGN §3.2/§3.3).
  *
- * A theme IS one capture session in one language holding >= 2 distinct
- * concepts: co-occurrence is the load-bearing signal (real-model relatedness
- * probes couldn't draw a clean scene boundary), so grouping is deterministic —
- * no model, no budget. Concepts fold by construction, like the core's
+ * A theme is a SCENE TYPE — a kind of place clustered ACROSS visits, keyed on
+ * the short scene label the capture model reports (拉面店 / 车站 / 咖啡馆). A
+ * label holding >= 2 distinct concepts is a scene; members are every row ever
+ * met at that kind of place. The model only categorises (garnish); grouping is
+ * exact-match on the label (load-bearing) — clean type separation, only synonym
+ * drift between near-labels. Concepts fold by construction like the core's
  * deterministic concept edges: same source word, or same first-language
  * rendering within one source language.
  *
@@ -13,7 +15,7 @@
  * to persist B6 episodic titles, which on the phone wait for a night-watch
  * model. Grouping a personal library is milliseconds of in-memory work, so
  * themes are computed on demand; the only persisted state is the review
- * schedule (theme_reviews, keyed on session_id — the stable handle a
+ * schedule (theme_reviews, keyed on scene_label — the stable handle a
  * recomputed grouping can't churn). A device DB pulled to the desktop still
  * reads whole: the web's boot sweep rebuilds its own cluster tables and picks
  * the schedule up from theme_reviews.
@@ -37,11 +39,12 @@ data class ThemeRow(
   val createdAt: Long,
   val hasImage: Boolean,
   val hasAudio: Boolean,
+  val sceneLabel: String? = null,
 )
 
-/** One remembered occasion: a capture session's rows in one language. */
+/** One scene type: every row met at that kind of place. */
 data class ThemeGroup(
-  val sessionId: String,
+  val sceneLabel: String,
   val sourceLang: String?,
   val members: List<ThemeRow>,
 ) {
@@ -90,21 +93,24 @@ fun conceptPartition(rows: List<ThemeRow>): Map<Long, Long> {
   return rows.associate { it.id to uf.find(it.id) }
 }
 
-/** Group capture sessions into scenes: bucket session rows by
- * (session_id, source language) — a sitting that mixed two languages becomes
- * one scene per language, never a mixed scene — and keep buckets holding
- * >= 2 distinct concepts (a one-concept scene is not a scene). Newest
- * occasions first. The rare mixed sitting's two scenes share one session_id's
- * review state — the core's known limitation, mirrored. */
+/** Group rows into scene types by their model-reported scene_label — every row
+ * met at that kind of place, across visits — keeping labels that hold >= 2
+ * distinct concepts (a one-concept scene is not a scene). Newest first. (Mirror
+ * of core: a label is in the target language, so a café in two source languages
+ * could merge — the documented cross-language limitation.) */
 fun themeGroups(rows: List<ThemeRow>): List<ThemeGroup> {
   val partition = conceptPartition(rows)
   return rows
-    .filter { !it.sessionId.isNullOrEmpty() }
-    .groupBy { it.sessionId!! to (it.sourceLang ?: "") }
-    .mapNotNull { (key, members) ->
+    .filter { !it.sceneLabel.isNullOrEmpty() }
+    .groupBy { it.sceneLabel!! }
+    .mapNotNull { (label, members) ->
       val concepts = members.map { partition[it.id] ?: it.id }.toSet()
       if (concepts.size < 2) null
-      else ThemeGroup(key.first, key.second.ifEmpty { null }, members.sortedBy { it.id })
+      else ThemeGroup(
+        label,
+        members.firstNotNullOfOrNull { it.sourceLang },
+        members.sortedBy { it.id },
+      )
     }
     .sortedByDescending { it.latestAt }
 }
@@ -121,7 +127,7 @@ fun dueThemes(
   nowMs: Long,
 ): List<DueTheme> =
   groups.mapNotNull { g ->
-    val state = states[g.sessionId]
+    val state = states[g.sceneLabel]
     val due = state == null || state.dueAt == null || state.dueAt <= nowMs
     if (due) DueTheme(g, state?.strength ?: 0) else null
   }.sortedWith(compareBy({ it.strength }, { -it.group.latestAt }))

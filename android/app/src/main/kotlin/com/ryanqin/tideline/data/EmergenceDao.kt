@@ -62,7 +62,8 @@ interface EmergenceDao {
       "source_region AS sourceRegion, source_lang AS sourceLang, " +
       "created_at AS createdAt, " +
       "source_image IS NOT NULL AS hasImage, " +
-      "source_audio IS NOT NULL AS hasAudio " +
+      "source_audio IS NOT NULL AS hasAudio, " +
+      "scene_label AS sceneLabel " +
       "FROM translations"
   )
   suspend fun themeRows(): List<ThemeRow>
@@ -83,8 +84,8 @@ interface EmergenceDao {
   @Query("SELECT * FROM theme_reviews")
   suspend fun themeReviewStates(): List<ThemeReviewEntity>
 
-  @Query("SELECT * FROM theme_reviews WHERE session_id = :sessionId")
-  suspend fun themeReview(sessionId: String): ThemeReviewEntity?
+  @Query("SELECT * FROM theme_reviews WHERE scene_label = :sceneLabel")
+  suspend fun themeReview(sceneLabel: String): ThemeReviewEntity?
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertThemeReview(row: ThemeReviewEntity)
