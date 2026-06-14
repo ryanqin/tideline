@@ -66,6 +66,39 @@ def build_prompt(items: list[dict], native_lang: str) -> str:
     )
 
 
+# B6 for SCENE TYPES (2026-06-14). A theme is now a KIND of place clustered
+# across visits (拉面店 / 车站), not one remembered occasion — so its name wants
+# a warm, place-typed caption, not a "the night..." single-event frame. The
+# scene_label stays the key; this is only the title that surfaces on the shore.
+SCENE_SYSTEM_PROMPT = (
+    "Give a warm 3-6 character Chinese name to a KIND of place a learner keeps "
+    "returning to. It should evoke the place and its mood, keep the place "
+    "recognizable, and read as a recurring kind of spot — NOT a one-time event "
+    "('the night...', 'one Sunday') and NOT a bare category label. Output only "
+    "the name."
+)
+
+
+def build_scene_prompt(scene_label: str, items: list[dict], native_lang: str) -> str:
+    """Render a scene-type theme into a B6 naming prompt.
+
+    `scene_label` is the model's short place-type label (拉面店); `items` are
+    the words met there. The name is written in `native_lang` (the reader's
+    first language) and should embellish the place type without losing it.
+    """
+    if not scene_label or not scene_label.strip():
+        raise ValueError("build_scene_prompt requires a scene_label")
+    if not native_lang or not native_lang.strip():
+        raise ValueError("build_scene_prompt requires a native_lang")
+    words = "、".join(item["term"] for item in items[:8])
+    return (
+        f"这是一类反复去的地方,类型是「{scene_label}」,在这里遇到过这些词:"
+        f"{words}。请给它起一个温暖、有韵味的 {native_lang} 短名(3-6 字),"
+        "既能让人认出是哪类地方,又带一点情绪;不要写成'那一夜'式的单次事件,"
+        "也不要只是干巴巴的类别词。只输出名字。"
+    )
+
+
 def parse_response(response: str) -> str | None:
     """Extract a clean title from a model response.
 

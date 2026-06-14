@@ -691,8 +691,28 @@ def name_clusters(
         if not items:
             skipped += 1
             continue
-        prompt = episodic_title.build_prompt(items, native)
-        response = _direct_generate(runtime, episodic_title.SYSTEM_PROMPT, prompt)
+        # A theme is a SCENE TYPE — name it as a kind of place (拉面店 → a warm
+        # place caption), not as a one-time occasion. Its members share a
+        # scene_label; pass it as the strong hint. Concept clusters keep the
+        # original episodic B6.
+        if vote_type == "theme":
+            label_row = conn.execute(
+                "SELECT t.scene_label FROM cluster_members cm "
+                "JOIN translations t ON t.id = cm.translation_id "
+                "WHERE cm.cluster_id = ? AND t.scene_label IS NOT NULL LIMIT 1",
+                (cluster_id,),
+            ).fetchone()
+            scene_label = label_row[0] if label_row else None
+            if scene_label:
+                system = episodic_title.SCENE_SYSTEM_PROMPT
+                prompt = episodic_title.build_scene_prompt(scene_label, items, native)
+            else:
+                system = episodic_title.SYSTEM_PROMPT
+                prompt = episodic_title.build_prompt(items, native)
+        else:
+            system = episodic_title.SYSTEM_PROMPT
+            prompt = episodic_title.build_prompt(items, native)
+        response = _direct_generate(runtime, system, prompt)
         title = episodic_title.parse_response(response)
         if not title:
             bad += 1

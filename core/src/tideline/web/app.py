@@ -273,9 +273,10 @@ def _fetch_clusters(
         scene_label = next(iter(scene_labels)) if len(scene_labels) == 1 else None
         result.append({
             "id": cid,
-            # A theme's title IS its scene type (the model's label); a concept
-            # cluster keeps its B6 episodic title.
-            "title": (scene_label if vote_type == "theme" else title) or title,
+            # A theme shows its B6 scene-type name when the night-watch has
+            # named it (a warm caption for the kind of place); until then it
+            # falls back to the plain scene label. scene_label stays the key.
+            "title": title or scene_label,
             "scene_label": scene_label,
             "members": [
                 # `id`/`has_image` point recall back at the captured material
