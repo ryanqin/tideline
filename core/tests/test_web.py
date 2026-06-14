@@ -294,25 +294,37 @@ def test_live_session_breaks_after_an_inactivity_gap(tmp_path):
     assert _session_of(db, "寿司") != first   # new sitting → new session
 
 
-def test_live_captures_form_a_theme_after_the_sweep(tmp_path):
-    """The payoff: two distinct concepts captured in one live sitting co-occur
-    into a theme on the next sweep — emergence works on real usage, not only on
-    seed data. Both words are katakana, so source_lang is tagged
-    deterministically even under the mock runtime; a theme is single-language
-    (§3.3), so co-occurring words must share a source language to form a scene."""
+def test_captures_at_a_scene_type_form_a_theme_after_the_sweep(tmp_path):
+    """The payoff: two distinct concepts met at the SAME kind of place — even on
+    different sittings — gather into one scene-type theme on the next sweep. The
+    capture model reports the scene label (here injected directly, as the image
+    pipeline would); the night-watch groups by it deterministically."""
+    from tideline.tools import init_all_tables
+
     db = str(tmp_path / "t.db")
-    c = TestClient(create_app(runtime_name="mock", db_path=db))
-    c.post("/api/translate", json={"text": "ラーメン"})  # one concept
-    c.post("/api/translate", json={"text": "サラダ"})     # a distinct concept
-    session = _session_of(db, "ラーメン")
+    conn = sqlite3.connect(db)
+    init_all_tables(conn)
+    for original, translated, sid in [
+        ("ラーメン", "拉面", "day1"),   # one concept, first visit
+        ("餃子", "煎饺", "day2"),       # a distinct concept, a later visit
+    ]:
+        conn.execute(
+            "INSERT INTO translations "
+            "(original, target_lang, translated, source_lang, source, "
+            "session_id, scene_label) "
+            "VALUES (?, '中文', ?, 'Japanese', 'image', ?, '拉面店')",
+            (original, translated, sid),
+        )
+    conn.commit()
+    conn.close()
 
     # A fresh app on the same db runs the boot sweep (theme grouping + naming).
     c2 = TestClient(create_app(runtime_name="mock", db_path=db))
     themes = c2.get("/api/themes").json()
-    live = [t for t in themes if t.get("session_id") == session]
-    assert len(live) == 1, themes
-    assert {m["original"] for m in live[0]["members"]} == {"ラーメン", "サラダ"}
-    assert live[0]["due"] is True   # a brand-new scene is due to revisit
+    scene = [t for t in themes if t.get("scene_label") == "拉面店"]
+    assert len(scene) == 1, themes
+    assert {m["original"] for m in scene[0]["members"]} == {"ラーメン", "餃子"}
+    assert scene[0]["due"] is True   # a brand-new scene is due to revisit
 
 
 # --- /api/clusters and /api/candidates ----------------------------------
@@ -419,18 +431,18 @@ def test_themes_and_concept_clusters_isolated_across_endpoints(tmp_path):
     init_db(conn)
 
     def _add(original, translated):
-        # All captured in one session (a remembered meal) → co-occurrence theme.
+        # All met at one scene type (a ramen shop) → scene-type theme.
         return conn.execute(
             "INSERT INTO translations "
-            "(original, target_lang, translated, source_lang, session_id) "
-            "VALUES (?, '中文', ?, 'Japanese', 'meal')",
+            "(original, target_lang, translated, source_lang, scene_label) "
+            "VALUES (?, '中文', ?, 'Japanese', '拉面店')",
             (original, translated),
         ).lastrowid
 
     # Two same-meaning Japanese words → one CONCEPT cluster (拉面). A third,
-    # distinct concept (寿司). They share one capture session, so the THEME is
-    # that session (a remembered meal) spanning the two concepts — concept and
-    # theme are different relations, the realistic shape now (§3.3).
+    # distinct concept (寿司). They share one scene type, so the THEME is that
+    # scene type (拉面店) spanning the two concepts — concept and theme are
+    # different relations, the realistic shape now (§3.3).
     a = _add("ラーメン", "拉面")
     b = _add("中華そば", "拉面")   # same concept as a (deterministic)
     c = _add("寿司", "寿司")        # a different concept
@@ -453,9 +465,9 @@ def test_themes_and_concept_clusters_isolated_across_endpoints(tmp_path):
 
 def test_theme_is_reviewable_and_grading_reschedules_it(tmp_path):
     """A theme is a review unit too (DESIGN §10.3): it carries `due`/`strength`
-    and a session_id, and grading it through /api/themes/review reschedules the
-    scene so it stops being due — the consolidation loop, but for a remembered
-    occasion rather than a single word."""
+    and a scene_label, and grading it through /api/themes/review reschedules the
+    scene so it stops being due — the consolidation loop, but for a kind of place
+    rather than a single word."""
     from tideline.cluster import init_db, name_clusters, rebuild_clusters
     from tideline.runtime import ModelRuntime
     from tideline.tools import init_all_tables
@@ -471,8 +483,8 @@ def test_theme_is_reviewable_and_grading_reschedules_it(tmp_path):
     for original, translated in [("ラーメン", "拉面"), ("寿司", "寿司")]:
         conn.execute(
             "INSERT INTO translations "
-            "(original, target_lang, translated, source_lang, session_id) "
-            "VALUES (?, '中文', ?, 'Japanese', 'meal')",
+            "(original, target_lang, translated, source_lang, scene_label) "
+            "VALUES (?, '中文', ?, 'Japanese', '拉面店')",
             (original, translated),
         )
     conn.commit()
@@ -485,14 +497,14 @@ def test_theme_is_reviewable_and_grading_reschedules_it(tmp_path):
     before = client.get("/api/themes").json()
     assert len(before) == 1
     theme = before[0]
-    assert theme["session_id"] == "meal"
+    assert theme["scene_label"] == "拉面店"
     assert theme["due"] is True            # never reviewed → due
     assert theme["strength"] == 0
 
     # Grade the scene as remembered → it climbs a box and stops being due.
     r = client.post(
         "/api/themes/review",
-        json={"session_id": "meal", "remembered": True},
+        json={"scene_label": "拉面店", "remembered": True},
     )
     assert r.status_code == 200
     assert r.json()["strength"] == 1

@@ -57,12 +57,12 @@ def test_climb_is_capped_at_the_top_box(conn):
 
 
 def test_reviews_count_increments_on_each_grade(conn):
-    sid = "paris-market"
-    review_theme(conn, sid, remembered=True, now=_NOW)
-    review_theme(conn, sid, remembered=False, now=_NOW)
+    label = "露天市场"
+    review_theme(conn, label, remembered=True, now=_NOW)
+    review_theme(conn, label, remembered=False, now=_NOW)
     row = conn.execute(
-        "SELECT reviews, last_reviewed_at FROM theme_reviews WHERE session_id = ?",
-        (sid,),
+        "SELECT reviews, last_reviewed_at FROM theme_reviews WHERE scene_label = ?",
+        (label,),
     ).fetchone()
     assert row[0] == 2
     assert row[1] is not None

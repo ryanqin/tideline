@@ -209,11 +209,11 @@
         <span class="masked" role="button" tabindex="0" title="${esc(t("tap_reveal"))}">${esc(g.translated)}</span>
         ${g.context ? `<span class="context">${esc(g.context)}</span>` : ""}
       </div>`).join("");
-    const reviewable = currentOpts.review && c.session_id != null;
+    const reviewable = currentOpts.review && c.scene_label != null;
     const grade = reviewable
       ? `<div class="review-grade">
-          <button type="button" class="grade-missed" data-session-id="${esc(c.session_id)}">${esc(t("review_missed"))}</button>
-          <button type="button" class="grade-got" data-session-id="${esc(c.session_id)}">${esc(t("review_got"))}</button>
+          <button type="button" class="grade-missed" data-scene-label="${esc(c.scene_label)}">${esc(t("review_missed"))}</button>
+          <button type="button" class="grade-got" data-scene-label="${esc(c.scene_label)}">${esc(t("review_got"))}</button>
         </div>`
       : "";
     // The scene's own photo (when the capture kept one) leads the recall —
@@ -287,7 +287,7 @@
         const url = cardId ? "/api/cards/review" : "/api/themes/review";
         const body = cardId
           ? { card_id: Number(cardId), remembered }
-          : { session_id: grade.dataset.sessionId, remembered };
+          : { scene_label: grade.dataset.sceneLabel, remembered };
         try {
           const r = await fetch(url, {
             method: "POST", headers: { "Content-Type": "application/json" },

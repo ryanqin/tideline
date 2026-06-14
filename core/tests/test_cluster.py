@@ -84,12 +84,13 @@ def _add_translation(
     translated: str,
     source_lang: str | None = None,
     session_id: str | None = None,
+    scene_label: str | None = None,
 ) -> int:
     cursor = c.execute(
         "INSERT INTO translations "
-        "(original, target_lang, translated, source_lang, session_id) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (original, target_lang, translated, source_lang, session_id),
+        "(original, target_lang, translated, source_lang, session_id, scene_label) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (original, target_lang, translated, source_lang, session_id, scene_label),
     )
     c.commit()
     return cursor.lastrowid
@@ -457,89 +458,70 @@ def test_concept_voting_skips_deterministic_pairs(conn):
     assert (same_rend_a, same_rend_b) not in pending
 
 
-def test_theme_is_a_capture_session_with_two_concepts(conn):
-    """A theme is co-occurrence: one capture session (a remembered occasion)
-    holding >= 2 distinct concepts. No votes — deterministic from session_id."""
+def test_theme_is_a_scene_type_with_two_concepts(conn):
+    """A theme is a SCENE TYPE: a scene_label holding >= 2 distinct concepts.
+    No votes — deterministic from the model-reported label."""
     r = _add_translation(conn, "ラーメン", "Chinese", "拉面",
-                         source_lang="Japanese", session_id="ramen-night")
+                         source_lang="Japanese", scene_label="拉面店")
     g = _add_translation(conn, "餃子", "Chinese", "煎饺",
-                         source_lang="Japanese", session_id="ramen-night")
+                         source_lang="Japanese", scene_label="拉面店")
 
     assert rebuild_clusters(conn, vote_type="theme") == 1
     assert set(_cluster_member_ids(conn, "theme")) == {r, g}
 
 
-def test_theme_includes_every_row_captured_in_the_session(conn):
-    """No fragmentation: a theme is the whole session — every row, including
-    repeated words — not just one pair."""
+def test_theme_clusters_across_visits_by_scene_label(conn):
+    """The cross-visit heart: words met at the SAME kind of place on DIFFERENT
+    outings (sessions) gather into ONE scene-type theme — a station sign one day
+    and a platform sign another both belong to 车站."""
+    a = _add_translation(conn, "出口", "Chinese", "出口", source_lang="Japanese",
+                         session_id="day1", scene_label="车站")
+    b = _add_translation(conn, "切符", "Chinese", "车票", source_lang="Japanese",
+                         session_id="day1", scene_label="车站")
+    c = _add_translation(conn, "地下鉄", "Chinese", "地铁", source_lang="Japanese",
+                         session_id="day2", scene_label="车站")
+    assert rebuild_clusters(conn, vote_type="theme") == 1
+    assert set(_cluster_member_ids(conn, "theme")) == {a, b, c}
+
+
+def test_theme_includes_every_row_at_the_scene_type(conn):
+    """No fragmentation: a theme is every row ever met at that scene type,
+    including repeated words — not just one pair."""
     rows = [
         _add_translation(conn, "ラーメン", "Chinese", "拉面",
-                         source_lang="Japanese", session_id="s")
+                         source_lang="Japanese", scene_label="拉面店")
         for _ in range(3)
     ] + [
         _add_translation(conn, "餃子", "Chinese", "煎饺",
-                         source_lang="Japanese", session_id="s")
+                         source_lang="Japanese", scene_label="拉面店")
         for _ in range(2)
     ]
     assert rebuild_clusters(conn, vote_type="theme") == 1
     assert set(_cluster_member_ids(conn, "theme")) == set(rows)
 
 
-def test_single_concept_session_is_not_a_theme(conn):
-    """One word seen many times in a session is a single concept, not a
+def test_single_concept_scene_is_not_a_theme(conn):
+    """One word seen many times at a scene type is a single concept, not a
     scene — no theme forms."""
     for _ in range(3):
         _add_translation(conn, "ラーメン", "Chinese", "拉面",
-                         source_lang="Japanese", session_id="s")
+                         source_lang="Japanese", scene_label="拉面店")
     assert rebuild_clusters(conn, vote_type="theme") == 0
 
 
 def test_a_concept_can_belong_to_several_themes(conn):
-    """A concept met at two occasions belongs to both themes — sashimi at the
+    """A concept met at two scene types belongs to both themes — sashimi at the
     sushi counter and again at the izakaya. Themes overlap; each is its own
-    occasion."""
+    scene type."""
     _add_translation(conn, "刺身", "Chinese", "生鱼片",
-                     source_lang="Japanese", session_id="sushi")
+                     source_lang="Japanese", scene_label="寿司店")
     _add_translation(conn, "寿司", "Chinese", "寿司",
-                     source_lang="Japanese", session_id="sushi")
+                     source_lang="Japanese", scene_label="寿司店")
     _add_translation(conn, "刺身", "Chinese", "生鱼片",
-                     source_lang="Japanese", session_id="izakaya")
+                     source_lang="Japanese", scene_label="居酒屋")
     _add_translation(conn, "焼き鳥", "Chinese", "烤鸡肉串",
-                     source_lang="Japanese", session_id="izakaya")
+                     source_lang="Japanese", scene_label="居酒屋")
     assert rebuild_clusters(conn, vote_type="theme") == 2
-
-
-def test_theme_splits_a_mixed_language_session_by_language(conn):
-    """A theme is single-language (§3.3): a sitting that mixed two languages
-    becomes two single-language scenes, never one mixed scene. One capture
-    session holds two Japanese concepts and two French concepts → two themes,
-    each holding only its own language's rows."""
-    ja1 = _add_translation(conn, "ラーメン", "Chinese", "拉面",
-                           source_lang="Japanese", session_id="trip")
-    ja2 = _add_translation(conn, "餃子", "Chinese", "煎饺",
-                           source_lang="Japanese", session_id="trip")
-    fr1 = _add_translation(conn, "café", "Chinese", "咖啡",
-                           source_lang="French", session_id="trip")
-    fr2 = _add_translation(conn, "thé", "Chinese", "茶",
-                           source_lang="French", session_id="trip")
-
-    assert rebuild_clusters(conn, vote_type="theme") == 2
-    by_cluster: dict[int, set] = {}
-    member_ids: dict[int, set] = {}
-    for cid, slang, tid in conn.execute(
-        "SELECT cm.cluster_id, t.source_lang, t.id "
-        "FROM cluster_members cm "
-        "JOIN clusters c ON c.id = cm.cluster_id "
-        "JOIN translations t ON t.id = cm.translation_id "
-        "WHERE c.vote_type = 'theme'"
-    ):
-        by_cluster.setdefault(cid, set()).add(slang)
-        member_ids.setdefault(cid, set()).add(tid)
-    # every theme holds exactly one source language
-    assert all(len(langs) == 1 for langs in by_cluster.values()), by_cluster
-    # the two scenes are exactly the Japanese pair and the French pair
-    assert set(map(frozenset, member_ids.values())) == {
-        frozenset({ja1, ja2}), frozenset({fr1, fr2})}
 
 
 def test_mixed_language_session_with_one_concept_each_is_not_a_theme(conn):
@@ -995,22 +977,22 @@ def test_pending_pairs_independent_per_vote_type(conn):
 
 def test_theme_and_concept_clusters_coexist(conn):
     """rebuild_clusters scoped by vote_type: concept aggregates synonyms (a
-    vote), theme groups a capture session's distinct concepts (co-occurrence),
-    and both clusters live in the table tagged by relation."""
-    a = _add_translation(conn, "ramen", "en", "ramen", session_id="night")
-    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles", session_id="night")
-    c = _add_translation(conn, "sushi", "en", "sushi", session_id="night")
+    vote), theme groups a scene type's distinct concepts (scene_label), and both
+    clusters live in the table tagged by relation."""
+    a = _add_translation(conn, "ramen", "en", "ramen", scene_label="拉面店")
+    b = _add_translation(conn, "ramen noodles", "en", "ramen noodles", scene_label="拉面店")
+    c = _add_translation(conn, "sushi", "en", "sushi", scene_label="拉面店")
     vote_on_pair(conn, _AlwaysYes(), a, b, vote_type="concept")  # a ≡ b
 
     assert rebuild_clusters(conn, min_votes=1, vote_type="concept") == 1
-    assert rebuild_clusters(conn, vote_type="theme") == 1   # the "night" session
+    assert rebuild_clusters(conn, vote_type="theme") == 1   # the 拉面店 scene type
 
     counts = dict(conn.execute(
         "SELECT vote_type, COUNT(*) FROM clusters GROUP BY vote_type"
     ).fetchall())
     assert counts == {"concept": 1, "theme": 1}
     assert _cluster_member_ids(conn, "concept") == sorted([a, b])
-    # theme = every row of the session (a≡b is one concept, c another → 2)
+    # theme = every row at the scene type (a≡b is one concept, c another → 2)
     assert _cluster_member_ids(conn, "theme") == sorted([a, b, c])
 
 
@@ -1037,13 +1019,12 @@ def test_rebuild_one_relation_leaves_other_intact(conn):
 
 
 def test_cluster_sweep_theme_end_to_end(conn):
-    """cluster_sweep(vote_type='theme') builds themes from capture sessions
-    (co-occurrence — no voting) and names them. AlwaysFixedTitle stands in for
-    the B6 namer."""
+    """cluster_sweep(vote_type='theme') builds themes from scene-type labels
+    (no voting) and names them. AlwaysFixedTitle stands in for the B6 namer."""
     _add_translation(conn, "ラーメン", "Chinese", "拉面",
-                     source_lang="Japanese", session_id="night")
+                     source_lang="Japanese", scene_label="拉面店")
     _add_translation(conn, "餃子", "Chinese", "煎饺",
-                     source_lang="Japanese", session_id="night")
+                     source_lang="Japanese", scene_label="拉面店")
 
     stats = cluster_sweep(conn, _AlwaysFixedTitle("a Tokyo night"), vote_type="theme")
     assert stats["voted"] == 0      # themes don't vote

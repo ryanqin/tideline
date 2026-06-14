@@ -90,20 +90,31 @@ SCENARIOS: list[dict[str, Any]] = [
         "name": "Tokyo trip — a week of meals and trains",
         "slug": "tokyo",
         "target_lang": "Chinese",
+        # `scene` is the model's short scene-TYPE label (拉面店 / 车站) — the key
+        # a theme clusters on, across visits. station + metro-platform share
+        # 车站, so the two transit captures form ONE scene type (the cross-visit
+        # demo). `gist` stays the per-photo descriptive snippet.
         "sessions": [
             {"suffix": "ramen-yokocho", "source": "image", "day": 6,
+             "scene": "拉面店",
              "gist": "深夜拉面横丁里那台发着暖光的购票机"},
             {"suffix": "izakaya", "source": "image", "day": 5,
+             "scene": "居酒屋",
              "gist": "居酒屋矮桌上摊开的一张手写纸菜单"},
             {"suffix": "station", "source": "image", "day": 4,
+             "scene": "车站",
              "gist": "车站检票口上方那块蓝色的出口指示牌"},
             {"suffix": "counter-audio", "source": "audio", "day": 5,
+             "scene": None,
              "gist": None},
             {"suffix": "sushi", "source": "image", "day": 3,
+             "scene": "寿司店",
              "gist": "回转寿司传送带上一小碟一小碟转过来的握寿司"},
             {"suffix": "market", "source": "image", "day": 2,
+             "scene": "鱼市场",
              "gist": "清晨筑地市场摊位上铺在碎冰上的海鲜"},
             {"suffix": "metro-platform", "source": "image", "day": 1,
+             "scene": "车站",
              "gist": "地铁站台柱子上蓝底白字的站名牌"},
         ],
         "frequent": [
@@ -177,20 +188,31 @@ SCENARIOS: list[dict[str, Any]] = [
         "name": "Paris trip — a few days of cafés and the métro",
         "slug": "paris",
         "target_lang": "Chinese",
+        # Paris transit (metro + rer-station) shares 地铁站 — its own cross-visit
+        # scene. Labels stay distinct from the Tokyo trip's (车站 vs 地铁站) so the
+        # two single-language trips don't collide into a mixed-language theme
+        # (the documented cross-language limitation; real single-trip use is fine).
         "sessions": [
             {"suffix": "cafe-morning", "source": "image", "day": 18,
+             "scene": "咖啡馆",
              "gist": "清晨街角咖啡馆露天座上那杯冒着热气的咖啡"},
             {"suffix": "boulangerie", "source": "image", "day": 17,
+             "scene": "面包店",
              "gist": "面包店橱窗里斜插在藤篮中的长棍面包"},
             {"suffix": "metro", "source": "image", "day": 16,
+             "scene": "地铁站",
              "gist": "地铁站台上方那块白底的线路指示牌"},
             {"suffix": "bistro", "source": "image", "day": 15,
+             "scene": "小酒馆",
              "gist": "小酒馆黑板上用粉笔写的当日菜单"},
             {"suffix": "market", "source": "image", "day": 14,
+             "scene": "露天市场",
              "gist": "露天市场摊位上堆成小山的奶酪和水果"},
             {"suffix": "waiter-audio", "source": "audio", "day": 15,
+             "scene": None,
              "gist": None},
             {"suffix": "rer-station", "source": "image", "day": 13,
+             "scene": "地铁站",
              "gist": "RER 站台上指向市中心方向的蓝色指示牌"},
         ],
         "frequent": [
@@ -390,6 +412,10 @@ def generate_entries(
                     # The VLM scene gist for image captures; None for text/
                     # audio (their prompts emit no SCENE line in the real app).
                     context_snippet = session["gist"]
+                    # The scene-TYPE label this row clusters into a theme by
+                    # (image captures only, like the gist). Several sessions can
+                    # share one label — that's the cross-visit scene type.
+                    scene_label = session.get("scene")
                     session_id = f"{slug}-{session['suffix']}"
                     # Keep the capture's source image (image sessions only) as
                     # recall material — one swatch per session, shared by its
@@ -430,6 +456,7 @@ def generate_entries(
                             source_image,
                             source_region,
                             source_audio,
+                            scene_label,
                         )
                     )
 
@@ -444,8 +471,8 @@ def seed_db(conn: sqlite3.Connection, seed: int = 42) -> int:
         "INSERT INTO translations "
         "(original, target_lang, translated, source_lang, source, "
         "context_snippet, session_id, created_at, source_image, source_region, "
-        "source_audio) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "source_audio, scene_label) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         entries,
     )
     conn.commit()

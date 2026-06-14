@@ -536,11 +536,11 @@ def rebuild_clusters(
       - concept: Union-Find over deterministic same-concept edges + concept
         votes over threshold (within one source language, `_concept_edges`);
         a component of >= 2 member rows becomes a cluster.
-      - theme: group translations by capture session AND source language
-        (co-occurrence, single-language per §3.3); a (session, language) with
-        >= 2 distinct concepts (via `_concept_partition`) becomes a theme whose
-        members are that group's rows. No votes — `min_votes` and
-        `vote_threshold` are ignored for theme.
+      - theme: group translations by the model-reported `scene_label` (a SCENE
+        TYPE — a kind of place clustered across visits); a label with >= 2
+        distinct concepts (via `_concept_partition`) becomes a theme whose
+        members are every row met at that scene type. No votes — `min_votes`
+        and `vote_threshold` are ignored for theme.
     Then DELETE this vote_type's clusters/members and INSERT the new ones.
     """
     if not (0.0 <= vote_threshold <= 1.0):
@@ -550,35 +550,34 @@ def rebuild_clusters(
 
     uf = _UnionFind()
     if vote_type == "theme":
-        # A theme is CO-OCCURRENCE, not relatedness: one capture session — a
-        # remembered occasion — that holds >= 2 distinct concepts. Members are
-        # the session's translations. A concept may recur across sessions (you
-        # ate sashimi at both the sushi counter and the izakaya), so themes can
-        # overlap — each is its own occasion. Deterministic: no model, no
-        # budget, no cross-domain leak. (Real-model B7 relatedness can't draw a
-        # clean scene boundary on real vocab — 2026-06-03 probe — so it is
-        # demoted to garnish; co-occurrence is the load-bearing signal. §3.2.)
+        # A theme is a SCENE TYPE — a kind of place clustered ACROSS visits, not
+        # one occasion. The handle is the short scene label the capture model
+        # reports (拉面店 / 车站 / 咖啡馆); members are every word ever met at
+        # that kind of place. The model only categorises (garnish); grouping is
+        # exact-match on the label (engineering load-bearing) — cross-type
+        # separation is clean, and same-type synonym drift (居酒屋/酒馆) only
+        # makes near-duplicate themes, never a false merge. (Real-model relat-
+        # edness can't draw a clean boundary on word pairs — 2026-06-03 probe;
+        # the scene-label probe — 2026-06-13 — categorises cleanly. §3.2.)
+        # A scene still needs >= 2 distinct concepts to be a scene.
         partition = _concept_partition(conn)
-        # A theme is single-language (§3.3): bucket a capture session's rows by
-        # (session, source language), so a sitting that mixed two languages
-        # becomes one scene per language, never a mixed scene. source_lang is a
-        # real tag set ON each translation the moment it's made — the translating
-        # model reports it, with a deterministic script-check fallback (see
-        # AddTranslationTool) — so it's a property to group by, not something
-        # patched in here. Each (session, language) still needs >= 2 distinct
-        # concepts to be a scene.
-        sessions: dict[tuple[str, str], list[int]] = defaultdict(list)
-        for tid, sid, slang in conn.execute(
-            "SELECT id, session_id, COALESCE(source_lang, '') FROM translations "
-            "WHERE session_id IS NOT NULL AND session_id <> ''"
+        scenes: dict[str, list[int]] = defaultdict(list)
+        for tid, label in conn.execute(
+            "SELECT id, scene_label FROM translations "
+            "WHERE scene_label IS NOT NULL AND scene_label <> ''"
         ):
-            sessions[(sid, slang)].append(tid)
+            scenes[label].append(tid)
         groups: dict[int, list[int]] = {}
-        for idx, (_key, rows) in enumerate(sessions.items()):
+        for idx, (_label, rows) in enumerate(scenes.items()):
             concepts = {partition.get(r, r) for r in rows}
             if len(concepts) < 2:  # a one-concept scene is not a scene
                 continue
             groups[idx] = rows
+        # KNOWN LIMITATION (mirrors the old mixed-session note): a scene label is
+        # in the target language, so a café in Paris and one in Tokyo could share
+        # "咖啡馆" and merge across languages (§3.3 wants one language pair per
+        # cluster). Deferred until cross-language same-scene captures are common;
+        # seed trips are single-language so it doesn't bite the demo.
     else:
         # Concept edges: deterministic same-concept pairs + concept votes that
         # cleared the threshold, all kept inside one source language (§3.3).

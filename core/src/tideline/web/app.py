@@ -105,7 +105,7 @@ class ReviewRequest(BaseModel):
 
 
 class ThemeReviewRequest(BaseModel):
-    session_id: str
+    scene_label: str
     remembered: bool
 
 
@@ -257,7 +257,7 @@ def _fetch_clusters(
         members = conn.execute(
             """
             SELECT t.original, t.translated, t.context_snippet, t.source_lang,
-                   t.session_id, t.id, t.source_image IS NOT NULL, t.source_region
+                   t.scene_label, t.id, t.source_image IS NOT NULL, t.source_region
             FROM cluster_members cm
             JOIN translations t ON t.id = cm.translation_id
             WHERE cm.cluster_id = ?
@@ -265,15 +265,18 @@ def _fetch_clusters(
             """,
             (cid,),
         ).fetchall()
-        # A theme IS one capture session, so all its members share a session_id
-        # — the stable key its review schedule hangs on (theme_review), unlike
-        # the cluster id which the night-watch sweep rebuilds. Concept members
-        # span sessions, so this is only meaningful (single-valued) for themes.
-        session_ids = {m[4] for m in members if m[4]}
+        # A theme IS one scene type, so all its members share a scene_label —
+        # the stable key its review schedule hangs on (theme_review), unlike the
+        # cluster id which the night-watch sweep rebuilds. Concept members span
+        # scene types, so this is only meaningful (single-valued) for themes.
+        scene_labels = {m[4] for m in members if m[4]}
+        scene_label = next(iter(scene_labels)) if len(scene_labels) == 1 else None
         result.append({
             "id": cid,
-            "title": title,
-            "session_id": next(iter(session_ids)) if len(session_ids) == 1 else None,
+            # A theme's title IS its scene type (the model's label); a concept
+            # cluster keeps its B6 episodic title.
+            "title": (scene_label if vote_type == "theme" else title) or title,
+            "scene_label": scene_label,
             "members": [
                 # `id`/`has_image` point recall back at the captured material
                 # (the photo behind /api/translations/{id}/image), so opening
@@ -281,7 +284,7 @@ def _fetch_clusters(
                 {"original": o, "translated": tr, "context": ctx or "",
                  "source_lang": sl, "id": tid, "has_image": bool(img),
                  "region": _parse_region(region)}
-                for o, tr, ctx, sl, _sid, tid, img, region in members
+                for o, tr, ctx, sl, _label, tid, img, region in members
             ],
         })
     return result
@@ -402,8 +405,8 @@ def create_app(
             result = _fetch_clusters(conn, "theme")
             states = review_states(conn, datetime.now())
             for theme in result:
-                sid = theme.get("session_id")
-                state = states.get(sid) if sid else None
+                label = theme.get("scene_label")
+                state = states.get(label) if label else None
                 # A scene with no review row has never been reviewed → due,
                 # strength 0 (mirrors a brand-new card).
                 theme["due"] = state["due"] if state else True
@@ -605,15 +608,15 @@ def create_app(
 
     @app.post("/api/themes/review")
     def review_theme_endpoint(req: ThemeReviewRequest) -> dict[str, int]:
-        """Record one masked-recall outcome for a whole scene and reschedule it.
-        The theme review unit (DESIGN §10.3): you reach for the words of a
-        remembered occasion and grade the night once. Keyed on session_id (the
-        scene's stable handle), so it survives cluster rebuilds. Schedule stays
-        internal — the UI records the outcome, never a date or count."""
+        """Record one masked-recall outcome for a whole scene type and reschedule
+        it. The theme review unit (DESIGN §10.3): you reach for the words of a
+        kind of place and grade it once. Keyed on scene_label (the scene's stable
+        handle), so it survives cluster rebuilds. Schedule stays internal — the
+        UI records the outcome, never a date or count."""
         conn = _connect(db)
         try:
             strength = review_theme(
-                conn, req.session_id, req.remembered, datetime.now()
+                conn, req.scene_label, req.remembered, datetime.now()
             )
             return {"strength": strength}
         finally:

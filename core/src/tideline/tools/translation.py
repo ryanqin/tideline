@@ -39,6 +39,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             source_region TEXT,
             source_audio BLOB,
             session_id TEXT,
+            scene_label TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -61,6 +62,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         # material, kept after the model transcribes it; the standard
         # pronunciation is NOT stored (TTS regenerates it from text).
         ("source_audio", "ALTER TABLE translations ADD COLUMN source_audio BLOB"),
+        # The scene TYPE this was met in (拉面店 / 车站 / 咖啡馆) — a short label
+        # the capture model reports, the key a theme clusters on (a kind of
+        # place, across visits). The descriptive context_snippet stays the
+        # per-moment gist; this is the coarse category. (§3.2)
+        ("scene_label", "ALTER TABLE translations ADD COLUMN scene_label TEXT"),
     ):
         if column not in existing:
             conn.execute(ddl)
@@ -83,6 +89,7 @@ class AddTranslationTool(Tool):
         "source": "string",
         "context_snippet": "string",
         "session_id": "string",
+        "scene_label": "string",
     }
     description = (
         "Record a completed translation. Use this AFTER you have produced "
@@ -91,7 +98,10 @@ class AddTranslationTool(Tool):
         "source_lang (the language the original text is written in), "
         "target_lang, translated. Optional args: source (image/audio/text), "
         "context_snippet (surrounding text from OCR or transcript), "
-        "session_id (groups translations from one outing/session)."
+        "session_id (groups translations from one outing/session), "
+        "scene_label (a short 2-4 char type of place/scene this was met in, "
+        "e.g. 拉面店 / 车站 / 咖啡馆 — the same kind of place gets the same "
+        "label so it clusters across visits)."
     )
 
     def run(self, args: dict[str, Any], context: dict[str, Any]) -> str:
@@ -124,8 +134,8 @@ class AddTranslationTool(Tool):
         cursor = conn.execute(
             "INSERT INTO translations "
             "(original, target_lang, translated, source_lang, source, "
-            "context_snippet, session_id, source_image) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "context_snippet, session_id, source_image, scene_label) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 args["original"],
                 args["target_lang"],
@@ -135,6 +145,7 @@ class AddTranslationTool(Tool):
                 args.get("context_snippet"),
                 session_id,
                 source_image,
+                args.get("scene_label") or context.get("scene_label"),
             ),
         )
         conn.commit()
