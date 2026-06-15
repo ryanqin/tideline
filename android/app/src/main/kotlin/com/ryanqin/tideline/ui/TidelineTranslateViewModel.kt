@@ -471,26 +471,15 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         )
         try {
           for (g in groups) {
-            try {
-              // The words met at this kind of place are the naming cue — the
-              // source words, like the core's _cluster_items (the label is
-              // already the target-language place type).
-              val terms = g.members.map { it.original }.distinct()
-              val prompt = buildScenePrompt(g.sceneLabel, terms, native)
-              val raw = generateOnce(namer, Contents.of(listOf(Content.Text(prompt))))
-              Log.i(
-                TAG,
-                "BENCH scene_name label=\"${g.sceneLabel}\" " +
-                  "raw=\"${raw.replace("\n", "\\n").take(160)}\""
-              )
-              val title = parseSceneName(raw) ?: continue
-              emergence.upsertSceneName(
-                SceneNameEntity(sceneLabel = g.sceneLabel, title = title)
-              )
-              Log.i(TAG, "BENCH scene_named label=\"${g.sceneLabel}\" title=\"$title\"")
-            } catch (t: Throwable) {
-              Log.e(TAG, "Scene naming failed for ${g.sceneLabel}", t)
-            }
+            // The words met at this kind of place are the naming cue — the
+            // source words, like the core's _cluster_items (the label is
+            // already the target-language place type).
+            val terms = g.members.map { it.original }.distinct()
+            val title = nameSceneWith(namer, g.sceneLabel, terms, native) ?: continue
+            emergence.upsertSceneName(
+              SceneNameEntity(sceneLabel = g.sceneLabel, title = title)
+            )
+            Log.i(TAG, "BENCH scene_named label=\"${g.sceneLabel}\" title=\"$title\"")
           }
         } finally {
           namer.close()
@@ -509,6 +498,102 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         )
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
       }
+    }
+  }
+
+  /** Name one scene type with the model: buildScenePrompt → generate → parse,
+   * fail-soft. Logs the raw reply (the only window on E2B's naming behaviour).
+   * Returns the parsed B6 name, or null if unparseable. Shared by the sweep
+   * (which persists) and the quality probe (which only logs). */
+  private suspend fun nameSceneWith(
+    namer: Conversation, label: String, terms: List<String>, native: String,
+  ): String? = try {
+    val raw = generateOnce(
+      namer, Contents.of(listOf(Content.Text(buildScenePrompt(label, terms, native))))
+    )
+    Log.i(TAG, "BENCH scene_name label=\"$label\" raw=\"${raw.replace("\n", "\\n").take(160)}\"")
+    parseSceneName(raw)
+  } catch (t: Throwable) {
+    Log.e(TAG, "Scene naming failed for $label", t)
+    null
+  }
+
+  // A naming-quality probe across representative scene types (the phone-side
+  // mirror of the web's scene_type_validation.py): scene_label + the foreign
+  // words met there, exactly the shape the sweep feeds the model — isolated
+  // from the VLM's scene recognition so this measures B6 naming alone.
+  private val probeScenes = listOf(
+    "拉面店" to listOf("ラーメン", "餃子", "チャーシュー", "味噌"),
+    "车站" to listOf("出口", "ホーム", "改札", "時刻表"),
+    "咖啡馆" to listOf("Latte", "Espresso", "Croissant", "Menu"),
+    "书店" to listOf("Novel", "Magazine", "Stationery", "Bestseller"),
+    "药店" to listOf("Aspirin", "Bandage", "Vitamin", "Mask"),
+    "超市" to listOf("Milk", "Eggs", "Vegetable", "Checkout"),
+    "面包店" to listOf("Baguette", "Toast", "Tart", "Sourdough"),
+    "医院" to listOf("受付", "診察室", "薬局", "急患"),
+    "居酒屋" to listOf("焼き鳥", "生ビール", "枝豆", "刺身"),
+    "电影院" to listOf("Ticket", "Popcorn", "Screen", "Trailer"),
+  )
+
+  /** Run the naming probe: name every probeScenes entry with the on-device
+   * model and log each result (BENCH probe_named), without touching the DB.
+   * Borrows the conversation slot exactly like the sweep. Debug-triggered. */
+  suspend fun nameProbe() {
+    namingMutex.withLock {
+      val eng = engine ?: return@withLock
+      if (_ui.value.engineState != EngineState.READY) return@withLock
+      val native = _ui.value.targetLang
+      _ui.value = _ui.value.copy(engineState = EngineState.INFERRING)
+      val translator = conversation
+      conversation = null
+      try {
+        translator?.close()
+        val namer = eng.createConversation(
+          ConversationConfig(
+            samplerConfig = SamplerConfig(
+              topK = DEFAULT_TOP_K,
+              topP = DEFAULT_TOP_P,
+              temperature = DEFAULT_TEMPERATURE,
+            ),
+            systemInstruction = Contents.of(listOf(Content.Text(SCENE_SYSTEM_PROMPT))),
+          )
+        )
+        try {
+          for ((label, terms) in probeScenes) {
+            val title = nameSceneWith(namer, label, terms, native)
+            Log.i(TAG, "BENCH probe_named label=\"$label\" title=\"${title ?: "<null>"}\"")
+          }
+        } finally {
+          namer.close()
+        }
+      } finally {
+        conversation = eng.createConversation(
+          ConversationConfig(
+            samplerConfig = SamplerConfig(
+              topK = DEFAULT_TOP_K,
+              topP = DEFAULT_TOP_P,
+              temperature = DEFAULT_TEMPERATURE,
+            ),
+            systemInstruction = Contents.of(listOf(Content.Text(SYSTEM_PROMPT))),
+          )
+        )
+        _ui.value = _ui.value.copy(engineState = EngineState.READY)
+      }
+    }
+  }
+
+  /** Kick the probe off the debug intent: wait for the engine, then run it. */
+  fun nameProbeNow() {
+    viewModelScope.launch(Dispatchers.IO) {
+      var waited = 0
+      while (_ui.value.engineState == EngineState.IDLE ||
+        _ui.value.engineState == EngineState.INITIALIZING
+      ) {
+        kotlinx.coroutines.delay(200)
+        waited += 200
+        if (waited > 40_000) return@launch
+      }
+      runCatching { nameProbe() }.onFailure { Log.e(TAG, "Name probe failed", it) }
     }
   }
 

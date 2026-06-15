@@ -42,6 +42,17 @@ private const val MAX_NAME_CHARS = 12
 
 private const val MAX_PROMPT_TERMS = 8
 
+// Emoji / pictographs / dingbats the on-device model tacks onto a name (超市 →
+// "生活集市 🛒"). The web's E4B doesn't do this; the smaller on-device E2B does
+// on roughly half its names. Matched by code point (\x{...}), NOT by a
+// [\uD800-\uDFFF] surrogate class — the JVM sees a well-formed pair like 🛒
+// (U+1F6D2) as one code point, so a surrogate class never matches it. Plain CJK
+// names (and U+3000–303F punctuation) are untouched.
+private val SCENE_DECORATION = Regex(
+  "[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{2B00}-\\x{2BFF}\\x{2190}-\\x{21FF}" +
+    "\\x{2300}-\\x{23FF}\\x{FE00}-\\x{FE0F}\\x{200D}]",
+)
+
 /** Render a scene type into the B6 naming prompt — mirrors core
  * build_scene_prompt. `terms` are the words met at that kind of place (capped);
  * the name is written in `nativeLang`, the reader's first language. */
@@ -70,6 +81,9 @@ fun parseSceneName(response: String?): String? {
   // the bare name.
   cleaned = cleaned.trim(' ', '\t', '"', '\'', '`', '*', '#', '.', '。', '：', ':',
     '「', '」', '“', '”', '《', '》')
+  // Strip the emoji the on-device model decorates names with ("生活集市 🛒" →
+  // "生活集市"), then re-trim the space they leave behind.
+  cleaned = SCENE_DECORATION.replace(cleaned, "").trim()
   if (cleaned.isEmpty()) return null
   if (cleaned.length > MAX_NAME_CHARS) cleaned = cleaned.take(MAX_NAME_CHARS)
   return cleaned

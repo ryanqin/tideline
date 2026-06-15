@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
       // Same ViewModelStoreOwner as the composable's viewModel() — one VM.
       intent?.getStringExtra("tideline.debug_image")?.let { vm.queueDebugImage(it) }
       intent?.getStringExtra("tideline.debug_audio")?.let { vm.queueDebugAudio(it) }
+      // Naming-quality probe: name a fixed set of scene types and log each
+      // result, isolated from the VLM pipeline (mirrors scene_type_validation).
+      if (intent?.hasExtra("tideline.name_probe") == true) vm.nameProbeNow()
     }
     setContent {
       TidelineTheme {

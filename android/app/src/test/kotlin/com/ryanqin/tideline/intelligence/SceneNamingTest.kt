@@ -34,6 +34,16 @@ class SceneNamingTest {
   }
 
   @Test
+  fun `emoji the small model tacks on are stripped (real E2B probe output)`() {
+    assertEquals("生活集市", parseSceneName("生活集市 🛒"))
+    assertEquals("烘焙暖意", parseSceneName("烘焙暖意 🍞"))
+    assertEquals("光影殿堂", parseSceneName("光影殿堂 🎬"))
+    assertEquals("医心慰藉", parseSceneName("医心慰藉 🏥"))
+    // an emoji-only reply leaves nothing nameable
+    assertNull(parseSceneName("🍻"))
+  }
+
+  @Test
   fun `empty or unparseable replies yield null (caller keeps the bare label)`() {
     assertNull(parseSceneName(null))
     assertNull(parseSceneName(""))
