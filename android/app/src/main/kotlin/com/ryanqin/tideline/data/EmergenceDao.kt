@@ -89,4 +89,12 @@ interface EmergenceDao {
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertThemeReview(row: ThemeReviewEntity)
+
+  // --- scene names (the night-watch's B6 titles) ----------------------------
+
+  @Query("SELECT * FROM scene_names")
+  suspend fun sceneNames(): List<SceneNameEntity>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertSceneName(row: SceneNameEntity)
 }

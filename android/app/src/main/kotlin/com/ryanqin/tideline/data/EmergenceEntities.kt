@@ -68,6 +68,20 @@ data class ThemeReviewEntity(
   @ColumnInfo(name = "reviews") val reviews: Int = 0,
 )
 
+/** A scene type's warm B6 name, keyed on scene_label like theme_reviews. The
+ * night-watch model gives a KIND of place a little warmth (拉面店 → 暖汤馆); the
+ * bare label stays the grouping key and the fallback title, so this only adds
+ * poetry once the model has run. A label is named once and the name sticks — a
+ * new word met there doesn't change what kind of place it is. (The web persists
+ * the same thing in clusters.title; the phone has no materialized cluster
+ * table, so the name gets its own tiny store.) */
+@Entity(tableName = "scene_names")
+data class SceneNameEntity(
+  @PrimaryKey @ColumnInfo(name = "scene_label") val sceneLabel: String,
+  @ColumnInfo(name = "title") val title: String,
+  @ColumnInfo(name = "named_at") val namedAt: Long = System.currentTimeMillis(),
+)
+
 @Entity(
   tableName = "cards",
   foreignKeys = [

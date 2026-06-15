@@ -20,8 +20,9 @@ import androidx.room.RoomDatabase
     CandidateEvidenceEntity::class,
     CardEntity::class,
     ThemeReviewEntity::class,
+    SceneNameEntity::class,
   ],
-  version = 7,  // v7: translations.scene_label + theme_reviews re-keyed to it
+  version = 8,  // v8: scene_names — night-watch B6 titles for scene types
   exportSchema = false,
 )
 abstract class TidelineDatabase : RoomDatabase() {
