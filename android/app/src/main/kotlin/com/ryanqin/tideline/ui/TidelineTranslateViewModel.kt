@@ -32,6 +32,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.ryanqin.tideline.data.CardEntity
 import com.ryanqin.tideline.data.MuseumData
 import com.ryanqin.tideline.data.ThemeGroup
+import com.ryanqin.tideline.data.SceneNameEntity
 import com.ryanqin.tideline.data.ThemeReviewEntity
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
@@ -44,9 +45,12 @@ import com.ryanqin.tideline.data.liveSessionId
 import com.ryanqin.tideline.data.reschedule
 import com.ryanqin.tideline.data.themeGroups
 import com.ryanqin.tideline.intelligence.ImageReply
+import com.ryanqin.tideline.intelligence.SCENE_SYSTEM_PROMPT
+import com.ryanqin.tideline.intelligence.buildScenePrompt
 import com.ryanqin.tideline.intelligence.detectScriptLanguage
 import com.ryanqin.tideline.intelligence.parseAudioReply
 import com.ryanqin.tideline.intelligence.parseImageReply
+import com.ryanqin.tideline.intelligence.parseSceneName
 import com.ryanqin.tideline.intelligence.rendersInTargetScript
 import com.ryanqin.tideline.media.exifRotationDegrees
 import com.ryanqin.tideline.media.WavRecorder
@@ -61,6 +65,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 private const val TAG = "TidelineTranslateVM"
 
@@ -236,6 +245,12 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
   private var engine: Engine? = null
   private var conversation: Conversation? = null
 
+  // The night-watch names scene types with the model; this serializes its own
+  // re-entry (startup can fire it while a previous run is mid-sweep). It takes
+  // the engine via the same INFERRING gate every other inference path checks,
+  // so naming never shares the engine with a translation.
+  private val namingMutex = Mutex()
+
   // Standard pronunciation — the platform TTS speaks a row's original in its
   // own language, regenerated from text on demand (never stored). The same
   // split as the web: the RECORDING is material, the standard voice is free.
@@ -367,12 +382,123 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         Log.d(TAG, "Engine ready")
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
         maybeRunDebugCapture()
+        // Night-watch: name any new scene types while the engine is fresh and
+        // the user hasn't started translating (the phone's boot-sweep stand-in,
+        // there being no background model service). Skips if a debug capture
+        // just took the engine; already-named labels are skipped, so it's
+        // usually a no-op.
+        viewModelScope.launch(Dispatchers.IO) {
+          runCatching { nameScenesSweep() }
+            .onFailure { Log.e(TAG, "Naming sweep failed", it) }
+        }
       } catch (t: Throwable) {
         Log.e(TAG, "Engine init failed", t)
         _ui.value = _ui.value.copy(
           engineState = EngineState.ERROR,
           errorMessage = "Init failed: ${t.message}",
         )
+      }
+    }
+  }
+
+  /** Stream a single-turn reply to completion — the async callback wrapped as
+   * a suspend value. Naming is a batch of independent one-shot asks, so it
+   * wants the whole reply, not the live deltas the translate UI consumes. */
+  private suspend fun generateOnce(conv: Conversation, contents: Contents): String =
+    suspendCancellableCoroutine { cont ->
+      val acc = StringBuilder()
+      conv.sendMessageAsync(
+        contents,
+        object : MessageCallback {
+          override fun onMessage(message: Message) { acc.append(message.toString()) }
+          override fun onDone() { if (cont.isActive) cont.resume(acc.toString().trim()) }
+          override fun onError(throwable: Throwable) {
+            if (cont.isActive) cont.resumeWithException(throwable)
+          }
+        },
+      )
+    }
+
+  /** The night-watch's naming pass: give every still-unnamed scene type a warm
+   * B6 title with the on-device model. Deterministic grouping already happened
+   * (Themes.kt — load-bearing); this is only the caption on top, so it is
+   * fail-soft per scene and a no-op once every label is named. It runs only
+   * when the engine is idle and takes it via the INFERRING gate, so it never
+   * shares the engine with a translation the user started. */
+  suspend fun nameScenesSweep() {
+    namingMutex.withLock {
+      val eng = engine ?: return@withLock
+      // Lowest priority: if any inference holds the engine, yield — the next
+      // startup picks the new scenes up.
+      if (_ui.value.engineState != EngineState.READY) return@withLock
+      val named = emergence.sceneNames().mapTo(HashSet()) { it.sceneLabel }
+      val groups = themeGroups(emergence.themeRows()).filter { it.sceneLabel !in named }
+      if (groups.isEmpty()) return@withLock
+      val native = _ui.value.targetLang
+      // Re-check after the DB reads, then take the engine: only borrow the
+      // single conversation slot while still idle (the gate every other
+      // inference path checks), so naming never closes a conversation a
+      // translation is mid-flight on.
+      if (_ui.value.engineState != EngineState.READY) return@withLock
+      _ui.value = _ui.value.copy(engineState = EngineState.INFERRING)
+      // litert-lm allows only ONE conversation per engine, so borrow the slot:
+      // close the translator, name under the SCENE system prompt, then restore
+      // a fresh translator. The translator is stateless (every translation is
+      // independent), so nothing of value is lost — and no naming turn bleeds
+      // into the next translation's context.
+      val translator = conversation
+      conversation = null
+      try {
+        translator?.close()
+        val namer = eng.createConversation(
+          ConversationConfig(
+            samplerConfig = SamplerConfig(
+              topK = DEFAULT_TOP_K,
+              topP = DEFAULT_TOP_P,
+              temperature = DEFAULT_TEMPERATURE,
+            ),
+            systemInstruction = Contents.of(listOf(Content.Text(SCENE_SYSTEM_PROMPT))),
+          )
+        )
+        try {
+          for (g in groups) {
+            try {
+              // The words met at this kind of place are the naming cue — the
+              // source words, like the core's _cluster_items (the label is
+              // already the target-language place type).
+              val terms = g.members.map { it.original }.distinct()
+              val prompt = buildScenePrompt(g.sceneLabel, terms, native)
+              val raw = generateOnce(namer, Contents.of(listOf(Content.Text(prompt))))
+              Log.i(
+                TAG,
+                "BENCH scene_name label=\"${g.sceneLabel}\" " +
+                  "raw=\"${raw.replace("\n", "\\n").take(160)}\""
+              )
+              val title = parseSceneName(raw) ?: continue
+              emergence.upsertSceneName(
+                SceneNameEntity(sceneLabel = g.sceneLabel, title = title)
+              )
+              Log.i(TAG, "BENCH scene_named label=\"${g.sceneLabel}\" title=\"$title\"")
+            } catch (t: Throwable) {
+              Log.e(TAG, "Scene naming failed for ${g.sceneLabel}", t)
+            }
+          }
+        } finally {
+          namer.close()
+        }
+      } finally {
+        // Restore the translator conversation (mirrors initEngine's setup).
+        conversation = eng.createConversation(
+          ConversationConfig(
+            samplerConfig = SamplerConfig(
+              topK = DEFAULT_TOP_K,
+              topP = DEFAULT_TOP_P,
+              temperature = DEFAULT_TEMPERATURE,
+            ),
+            systemInstruction = Contents.of(listOf(Content.Text(SYSTEM_PROMPT))),
+          )
+        )
+        _ui.value = _ui.value.copy(engineState = EngineState.READY)
       }
     }
   }
