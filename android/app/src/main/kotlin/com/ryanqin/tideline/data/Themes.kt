@@ -47,8 +47,16 @@ data class ThemeGroup(
   val sceneLabel: String,
   val sourceLang: String?,
   val members: List<ThemeRow>,
+  // The night-watch's warm B6 name (洁净之憩); null until the model has named
+  // this label. scene_label stays the stable key (glyph seed, review schedule);
+  // this is only the caption that surfaces.
+  val title: String? = null,
 ) {
   val latestAt: Long get() = members.maxOf { it.createdAt }
+
+  /** What surfaces to the user: the warm name once named, else the bare scene
+   * type (拉面店). Mirrors the web's `title ?: scene_label`. */
+  val displayName: String get() = title ?: sceneLabel
 }
 
 private class UnionFind {

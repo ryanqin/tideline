@@ -264,7 +264,7 @@ private fun ThemesLens(scenes: List<ThemeGroup>, onOpen: (ThemeGroup) -> Unit) {
       ShelfShell(
         kind = GlyphKind.Scene,
         seed = s.sceneLabel,
-        cap = s.sceneLabel,   // the scene's name is its type (拉面店 / 车站)
+        cap = s.displayName,   // the warm B6 name once named, else the scene type
         onClick = { onOpen(s) },
       )
     }
@@ -355,7 +355,7 @@ private fun SceneBrowseSheet(scene: ThemeGroup, viewModel: TidelineTranslateView
 
   Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
     Text(
-      scene.sceneLabel,   // the scene's name is its type
+      scene.displayName,   // the warm B6 name once named, else the scene type
       style = MaterialTheme.typography.headlineSmall,
       fontWeight = FontWeight.SemiBold,
     )

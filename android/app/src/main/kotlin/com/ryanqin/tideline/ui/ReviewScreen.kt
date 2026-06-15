@@ -239,8 +239,9 @@ private fun itemKey(item: ReviewItem): String = when (item) {
 
 private fun itemLabel(item: ReviewItem): String = when (item) {
   is ReviewItem.Word -> item.card.original
-  // A scene's name IS its type — the kind of place (拉面店 / 车站).
-  is ReviewItem.Scene -> item.group.sceneLabel
+  // A scene wears its warm B6 name once the night-watch has run, else its bare
+  // type (拉面店 / 车站).
+  is ReviewItem.Scene -> item.group.displayName
 }
 
 /** The web shore's stable scatter hash — [0,1) per (key, salt). */
@@ -542,9 +543,9 @@ private fun SceneCard(
     modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    // The scene type is the question.
+    // The scene — its warm name if the night-watch named it — is the question.
     Text(
-      text = group.sceneLabel,
+      text = group.displayName,
       style = MaterialTheme.typography.headlineSmall,
       fontWeight = FontWeight.SemiBold,
     )

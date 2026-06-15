@@ -34,6 +34,7 @@ import com.ryanqin.tideline.data.MuseumData
 import com.ryanqin.tideline.data.ThemeGroup
 import com.ryanqin.tideline.data.SceneNameEntity
 import com.ryanqin.tideline.data.ThemeReviewEntity
+import com.ryanqin.tideline.data.ThemeRow
 import com.ryanqin.tideline.data.TidelineDatabase
 import com.ryanqin.tideline.data.TranslationDao
 import com.ryanqin.tideline.data.TranslationEntity
@@ -150,9 +151,17 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     val now = System.currentTimeMillis()
     val words = emergence.dueCards(now).map { ReviewItem.Word(it) }
     val states = emergence.themeReviewStates().associateBy { it.sceneLabel }
-    val scenes = dueThemes(themeGroups(emergence.themeRows()), states, now)
+    val scenes = dueThemes(namedThemeGroups(emergence.themeRows()), states, now)
       .map { ReviewItem.Scene(it.group, it.strength) }
     return words + scenes
+  }
+
+  /** Theme groups with the night-watch's B6 names attached — the name surfaces
+   * (displayName = title ?: scene_label) while grouping stays deterministic and
+   * name-free. The names live in their own tiny table, joined in here. */
+  private suspend fun namedThemeGroups(rows: List<ThemeRow>): List<ThemeGroup> {
+    val titles = emergence.sceneNames().associate { it.sceneLabel to it.title }
+    return themeGroups(rows).map { it.copy(title = titles[it.sceneLabel]) }
   }
 
   suspend fun cardMoments(cardId: Long): List<TranslationEntity> =
@@ -166,7 +175,7 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     return MuseumData(
       cardGroups = cardGroups(cards),
       langBuckets = langBuckets(rows, cards),
-      scenes = themeGroups(rows),
+      scenes = namedThemeGroups(rows),
     )
   }
 
