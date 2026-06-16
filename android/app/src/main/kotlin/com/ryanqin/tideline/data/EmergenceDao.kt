@@ -97,4 +97,7 @@ interface EmergenceDao {
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertSceneName(row: SceneNameEntity)
+
+  @Query("DELETE FROM scene_names")
+  suspend fun clearSceneNames()
 }

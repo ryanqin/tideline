@@ -36,6 +36,8 @@ class MainActivity : ComponentActivity() {
       // Naming-quality probe: name a fixed set of scene types and log each
       // result, isolated from the VLM pipeline (mirrors scene_type_validation).
       if (intent?.hasExtra("tideline.name_probe") == true) vm.nameProbeNow()
+      // Forget all scene names + re-run the sweep with the current model.
+      if (intent?.hasExtra("tideline.rename") == true) vm.renameScenesNow()
     }
     setContent {
       TidelineTheme {

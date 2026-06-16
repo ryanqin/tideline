@@ -78,6 +78,14 @@ private const val TAG = "TidelineTranslateVM"
 //   adb push gemma-4-E2B-it.litertlm /data/local/tmp/
 private const val MODEL_PATH = "/data/local/tmp/gemma-4-E2B-it.litertlm"
 
+// E4B — bigger, slower (~1.8x), markedly better at naming (E2B drifts on ~4/10
+// scene types and tacks on emoji; E4B does neither). Too large to coexist with
+// E2B on this 8GB device, so the night-watch swaps it in TEXT-ONLY for a naming
+// pass (no vision/audio encoders → far smaller footprint) and swaps E2B back
+// for realtime translation. Verified: E4B text-only inits in ~14s (cached),
+// leaving ~725MB free, no OOM.
+private const val MODEL_PATH_E4B = "/data/local/tmp/gemma-4-E4B-it.litertlm"
+
 // Mirrors tideline/core/src/tideline/bench/atoms/a1_word_translation.py and a2_sentence_translation.py.
 // Same prompt is used by Tideline's Python core in production — keep them in sync.
 private const val SYSTEM_PROMPT =
@@ -434,9 +442,81 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
    * fail-soft per scene and a no-op once every label is named. It runs only
    * when the engine is idle and takes it via the INFERRING gate, so it never
    * shares the engine with a translation the user started. */
+  /** Swap the engine to E4B (text-only) for a quality naming pass, then restore
+   * E2B (multimodal). litert holds one model per engine, and E4B is too big to
+   * coexist with E2B on this 8GB device — so naming closes E2B to free room,
+   * loads E4B, runs [block] under a SCENE-prompt conversation, then reloads
+   * E2B. Expensive (two model loads, ~25s) but naming is a background
+   * night-watch, never the realtime translate path. Caller holds the engine
+   * (INFERRING) and restores READY. */
+  private suspend fun withE4bNaming(block: suspend (Conversation) -> Unit) {
+    val cacheDir = getApplication<Application>().getExternalFilesDir(null)?.absolutePath
+    val sampler = SamplerConfig(
+      topK = DEFAULT_TOP_K, topP = DEFAULT_TOP_P, temperature = DEFAULT_TEMPERATURE,
+    )
+    // Tear E2B down FIRST — close() releases its GPU buffers + mmap, so E4B is
+    // never loaded alongside it (the two together would OOM 8GB).
+    conversation?.close()
+    conversation = null
+    engine?.close()
+    engine = null
+    var e4b: Engine? = null
+    try {
+      e4b = Engine(
+        EngineConfig(
+          modelPath = MODEL_PATH_E4B,
+          backend = Backend.GPU(),
+          maxNumTokens = DEFAULT_MAX_TOKENS,
+          cacheDir = cacheDir,
+        )
+      )
+      e4b.initialize()
+      Log.d(TAG, "E4B naming engine ready")
+      val namer = e4b.createConversation(
+        ConversationConfig(
+          samplerConfig = sampler,
+          systemInstruction = Contents.of(listOf(Content.Text(SCENE_SYSTEM_PROMPT))),
+        )
+      )
+      try {
+        block(namer)
+      } finally {
+        namer.close()
+      }
+    } finally {
+      e4b?.close()
+      // Reload E2B (mirror initEngine's multimodal config) for translation.
+      val e2 = Engine(
+        EngineConfig(
+          modelPath = MODEL_PATH,
+          backend = Backend.GPU(),
+          visionBackend = Backend.CPU(),
+          audioBackend = Backend.CPU(),
+          maxNumTokens = DEFAULT_MAX_TOKENS,
+          maxNumImages = 1,
+          cacheDir = cacheDir,
+        )
+      )
+      e2.initialize()
+      engine = e2
+      conversation = e2.createConversation(
+        ConversationConfig(
+          samplerConfig = sampler,
+          systemInstruction = Contents.of(listOf(Content.Text(SYSTEM_PROMPT))),
+        )
+      )
+      Log.d(TAG, "E2B translation engine restored")
+    }
+  }
+
+  /** The night-watch's naming pass: give every still-unnamed scene type a warm
+   * B6 title with the on-device model. Deterministic grouping already happened
+   * (Themes.kt); this is only the caption on top — fail-soft per scene, a no-op
+   * once every label is named. Runs only when the engine is idle and swaps in
+   * E4B (text-only) for naming quality, restoring E2B for translation. */
   suspend fun nameScenesSweep() {
     namingMutex.withLock {
-      val eng = engine ?: return@withLock
+      if (engine == null) return@withLock
       // Lowest priority: if any inference holds the engine, yield — the next
       // startup picks the new scenes up.
       if (_ui.value.engineState != EngineState.READY) return@withLock
@@ -444,36 +524,14 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
       val groups = themeGroups(emergence.themeRows()).filter { it.sceneLabel !in named }
       if (groups.isEmpty()) return@withLock
       val native = _ui.value.targetLang
-      // Re-check after the DB reads, then take the engine: only borrow the
-      // single conversation slot while still idle (the gate every other
-      // inference path checks), so naming never closes a conversation a
-      // translation is mid-flight on.
+      // Re-check after the DB reads, then take the engine for the E4B swap.
       if (_ui.value.engineState != EngineState.READY) return@withLock
       _ui.value = _ui.value.copy(engineState = EngineState.INFERRING)
-      // litert-lm allows only ONE conversation per engine, so borrow the slot:
-      // close the translator, name under the SCENE system prompt, then restore
-      // a fresh translator. The translator is stateless (every translation is
-      // independent), so nothing of value is lost — and no naming turn bleeds
-      // into the next translation's context.
-      val translator = conversation
-      conversation = null
       try {
-        translator?.close()
-        val namer = eng.createConversation(
-          ConversationConfig(
-            samplerConfig = SamplerConfig(
-              topK = DEFAULT_TOP_K,
-              topP = DEFAULT_TOP_P,
-              temperature = DEFAULT_TEMPERATURE,
-            ),
-            systemInstruction = Contents.of(listOf(Content.Text(SCENE_SYSTEM_PROMPT))),
-          )
-        )
-        try {
+        withE4bNaming { namer ->
           for (g in groups) {
-            // The words met at this kind of place are the naming cue — the
-            // source words, like the core's _cluster_items (the label is
-            // already the target-language place type).
+            // The words met here are the naming cue (source words, like the
+            // core's _cluster_items; the label is already the place type).
             val terms = g.members.map { it.original }.distinct()
             val title = nameSceneWith(namer, g.sceneLabel, terms, native) ?: continue
             emergence.upsertSceneName(
@@ -481,30 +539,17 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             )
             Log.i(TAG, "BENCH scene_named label=\"${g.sceneLabel}\" title=\"$title\"")
           }
-        } finally {
-          namer.close()
         }
       } finally {
-        // Restore the translator conversation (mirrors initEngine's setup).
-        conversation = eng.createConversation(
-          ConversationConfig(
-            samplerConfig = SamplerConfig(
-              topK = DEFAULT_TOP_K,
-              topP = DEFAULT_TOP_P,
-              temperature = DEFAULT_TEMPERATURE,
-            ),
-            systemInstruction = Contents.of(listOf(Content.Text(SYSTEM_PROMPT))),
-          )
-        )
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
       }
     }
   }
 
   /** Name one scene type with the model: buildScenePrompt → generate → parse,
-   * fail-soft. Logs the raw reply (the only window on E2B's naming behaviour).
-   * Returns the parsed B6 name, or null if unparseable. Shared by the sweep
-   * (which persists) and the quality probe (which only logs). */
+   * fail-soft. Logs the raw reply (the only window on the model's naming
+   * behaviour). Returns the parsed B6 name, or null if unparseable. Shared by
+   * the sweep (which persists) and the quality probe (which only logs). */
   private suspend fun nameSceneWith(
     namer: Conversation, label: String, terms: List<String>, native: String,
   ): String? = try {
@@ -537,46 +582,21 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
   /** Run the naming probe: name every probeScenes entry with the on-device
    * model and log each result (BENCH probe_named), without touching the DB.
-   * Borrows the conversation slot exactly like the sweep. Debug-triggered. */
+   * Swaps in E4B exactly like the sweep. Debug-triggered. */
   suspend fun nameProbe() {
     namingMutex.withLock {
-      val eng = engine ?: return@withLock
+      if (engine == null) return@withLock
       if (_ui.value.engineState != EngineState.READY) return@withLock
       val native = _ui.value.targetLang
       _ui.value = _ui.value.copy(engineState = EngineState.INFERRING)
-      val translator = conversation
-      conversation = null
       try {
-        translator?.close()
-        val namer = eng.createConversation(
-          ConversationConfig(
-            samplerConfig = SamplerConfig(
-              topK = DEFAULT_TOP_K,
-              topP = DEFAULT_TOP_P,
-              temperature = DEFAULT_TEMPERATURE,
-            ),
-            systemInstruction = Contents.of(listOf(Content.Text(SCENE_SYSTEM_PROMPT))),
-          )
-        )
-        try {
+        withE4bNaming { namer ->
           for ((label, terms) in probeScenes) {
             val title = nameSceneWith(namer, label, terms, native)
             Log.i(TAG, "BENCH probe_named label=\"$label\" title=\"${title ?: "<null>"}\"")
           }
-        } finally {
-          namer.close()
         }
       } finally {
-        conversation = eng.createConversation(
-          ConversationConfig(
-            samplerConfig = SamplerConfig(
-              topK = DEFAULT_TOP_K,
-              topP = DEFAULT_TOP_P,
-              temperature = DEFAULT_TEMPERATURE,
-            ),
-            systemInstruction = Contents.of(listOf(Content.Text(SYSTEM_PROMPT))),
-          )
-        )
         _ui.value = _ui.value.copy(engineState = EngineState.READY)
       }
     }
@@ -594,6 +614,24 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
         if (waited > 40_000) return@launch
       }
       runCatching { nameProbe() }.onFailure { Log.e(TAG, "Name probe failed", it) }
+    }
+  }
+
+  /** Debug: forget every scene name and re-run the sweep, so each scene is
+   * re-named with the current model (e.g. after switching the naming model
+   * E2B→E4B). Waits for the engine like the probe. */
+  fun renameScenesNow() {
+    viewModelScope.launch(Dispatchers.IO) {
+      var waited = 0
+      while (_ui.value.engineState == EngineState.IDLE ||
+        _ui.value.engineState == EngineState.INITIALIZING
+      ) {
+        kotlinx.coroutines.delay(200)
+        waited += 200
+        if (waited > 40_000) return@launch
+      }
+      runCatching { emergence.clearSceneNames(); nameScenesSweep() }
+        .onFailure { Log.e(TAG, "Rename failed", it) }
     }
   }
 
