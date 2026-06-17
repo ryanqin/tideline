@@ -50,6 +50,8 @@ import com.ryanqin.tideline.intelligence.SCENE_SYSTEM_PROMPT
 import com.ryanqin.tideline.intelligence.buildScenePrompt
 import com.ryanqin.tideline.intelligence.detectScriptLanguage
 import com.ryanqin.tideline.intelligence.parseAudioReply
+import com.ryanqin.tideline.intelligence.TranslationOutcome
+import com.ryanqin.tideline.intelligence.judgeTranslation
 import com.ryanqin.tideline.intelligence.parseImageReply
 import com.ryanqin.tideline.intelligence.parseSceneName
 import com.ryanqin.tideline.intelligence.rendersInTargetScript
@@ -1059,6 +1061,13 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
     }
   }
 
+  /** What to show when no real translation happened — an honest note, never a
+   * wrong result (DESIGN §3.3: Tideline only goes foreign → your language). */
+  private fun guardMessage(verdict: TranslationOutcome): String = when (verdict) {
+    TranslationOutcome.SAME_AS_NATIVE -> "这看起来已经是中文了,不用翻译"
+    else -> "这次没认出来——文字可能太复杂或太模糊了"
+  }
+
   private fun dispatchInference(
     contents: Contents,
     originalLabel: String,
@@ -1126,6 +1135,20 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
             // the summary row; the translation is already on screen while the
             // retry runs. Text/audio keep the original single-row path.
             if (source == "image" && sourceImage != null) {
+              // GUARD: was this a real foreign→native translation? If the model
+              // read the image text as the native language, surface an honest
+              // note instead of a non-result — and don't feed the emergence
+              // loop. (Catches the model self-reporting Chinese; a kanji source
+              // it labels Japanese yet doesn't translate is the known gap.)
+              val verdict = judgeTranslation(null, translated, reply.language, lang)
+              if (verdict != TranslationOutcome.TRANSLATED) {
+                Log.i(TAG, "BENCH guard=$verdict source=image lang=${reply.language}")
+                _ui.value = _ui.value.copy(
+                  engineState = EngineState.READY,
+                  translation = guardMessage(verdict),
+                )
+                return
+              }
               if (reply.terms.isEmpty() && reply.retryWorthy.isEmpty() &&
                 translated.isNotEmpty() && !translated.equals("NONE", ignoreCase = true)
               ) {
@@ -1152,6 +1175,17 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
               val rowLang = audio?.language ?: detectScriptLanguage(rowOriginal)
               if (audio != null) {
                 Log.i(TAG, "BENCH audio transcript=\"${audio.transcript?.take(80)}\" lang=$rowLang")
+              }
+              // GUARD: typed text or speech that wasn't actually translated —
+              // the source was already the native language, or echoed back.
+              val verdict = judgeTranslation(rowOriginal, rowTranslated, rowLang, lang)
+              if (verdict != TranslationOutcome.TRANSLATED) {
+                Log.i(TAG, "BENCH guard=$verdict source=$source")
+                _ui.value = _ui.value.copy(
+                  engineState = EngineState.READY,
+                  translation = guardMessage(verdict),
+                )
+                return
               }
               _ui.value = _ui.value.copy(engineState = EngineState.READY, translation = rowTranslated)
               if (rowTranslated.isNotEmpty() && rowTranslated.length <= MAX_PERSIST_CHARS) {
