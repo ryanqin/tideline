@@ -36,10 +36,101 @@ fun reschedule(strength: Int, remembered: Boolean, nowMs: Long): Pair<Int, Long>
   return next to nowMs + REVIEW_INTERVALS_DAYS[next] * DAY_MS
 }
 
+/** A card's review state, for merging casing variants. */
+internal data class CardState(
+  val candidateId: Long,
+  val state: String,
+  val strength: Int,
+  val dueAt: Long?,
+  val lastReviewedAt: Long?,
+  val reviews: Int,
+)
+
+/** The review state to carry onto a merged casing group: the strongest box
+ * wins (don't make a known word new again), tie-broken by reviews then
+ * recency; active unless every casing was sunk — sinking one casing of a word
+ * shouldn't bury a kept one. Mirror of core heal_casing_splits. Pure, so the
+ * decision is unit-tested without a DB. */
+internal fun mergeCardStates(cards: List<CardState>): CardState? {
+  if (cards.isEmpty()) return null
+  val best = cards.maxWith(
+    compareBy({ it.strength }, { it.reviews }, { it.lastReviewedAt ?: Long.MIN_VALUE })
+  )
+  return best.copy(state = if (cards.all { it.state == "sunk" }) "sunk" else "active")
+}
+
+/** Collapse candidates that split on casing before canonicalWord keyed the
+ * table — "PREMIUM" and "Premium" promoted as two candidates + two cards under
+ * an older build. Mirror of core promotion.heal_casing_splits: each
+ * (canonical, target_lang) group folds onto one canonical candidate carrying
+ * the strongest review progress; counts and evidence are left for the promote
+ * step below to re-derive (it groups case-insensitively). The lossless
+ * alternative to a destructive reinstall. Runs inside emergenceSweep's
+ * transaction ahead of the upsert; idempotent and a no-op once healed. */
+private fun healCasingSplits(db: SupportSQLiteDatabase) {
+  data class Member(val id: Long, val original: String)
+  val groups = LinkedHashMap<Pair<String, String>, MutableList<Member>>()
+  db.query("SELECT id, original, target_lang FROM candidates").use { c ->
+    while (c.moveToNext()) {
+      groups.getOrPut(canonicalWord(c.getString(1)) to c.getString(2)) { mutableListOf() }
+        .add(Member(c.getLong(0), c.getString(1)))
+    }
+  }
+  for ((key, members) in groups) {
+    val canon = key.first
+    if (members.size == 1 && members[0].original == canon) continue
+    val ids = members.map { it.id }
+    // survivor: the row already canonical, else rename the lowest id
+    var survivor = members.firstOrNull { it.original == canon }?.id
+    if (survivor == null) {
+      survivor = ids.minOrNull()!!
+      db.execSQL("UPDATE candidates SET original = ? WHERE id = ?", arrayOf<Any?>(canon, survivor))
+    }
+    // carry the strongest progress onto the survivor's card (cards exist from a
+    // prior sweep's auto-promote — the very rows we're healing)
+    val placeholders = ids.joinToString(",") { "?" }
+    val cards = mutableListOf<CardState>()
+    db.query(
+      "SELECT candidate_id, state, strength, due_at, last_reviewed_at, reviews " +
+        "FROM cards WHERE candidate_id IN ($placeholders)",
+      ids.toTypedArray(),
+    ).use { c ->
+      while (c.moveToNext()) {
+        cards.add(
+          CardState(
+            c.getLong(0), c.getString(1), c.getInt(2),
+            if (c.isNull(3)) null else c.getLong(3),
+            if (c.isNull(4)) null else c.getLong(4),
+            c.getInt(5),
+          )
+        )
+      }
+    }
+    mergeCardStates(cards)?.let { m ->
+      db.execSQL(
+        "UPDATE cards SET original = ?, state = ?, strength = ?, due_at = ?, " +
+          "last_reviewed_at = ?, reviews = ? WHERE candidate_id = ?",
+        arrayOf<Any?>(canon, m.state, m.strength, m.dueAt, m.lastReviewedAt, m.reviews, survivor),
+      )
+    }
+    val dups = ids.filter { it != survivor }
+    if (dups.isNotEmpty()) {
+      val dupPh = dups.joinToString(",") { "?" }
+      val dupArr = dups.toTypedArray()
+      db.execSQL("DELETE FROM cards WHERE candidate_id IN ($dupPh)", dupArr)
+      db.execSQL("DELETE FROM candidate_evidence WHERE candidate_id IN ($dupPh)", dupArr)
+      db.execSQL("DELETE FROM candidates WHERE id IN ($dupPh)", dupArr)
+    }
+  }
+}
+
 /** The night-watch, in milliseconds: promote drawer→candidates→cards. */
 fun emergenceSweep(db: SupportSQLiteDatabase, nowMs: Long = System.currentTimeMillis()) {
   db.beginTransaction()
   try {
+    // Heal any casing splits an older build left (PREMIUM vs Premium as two
+    // candidates) before re-deriving counts on the one canonical row.
+    healCasingSplits(db)
     // drawer → candidates (UPSERT keeps ids stable; count/last_seen refresh).
     // Group case-insensitively (COLLATE NOCASE) so PREMIUM and Premium count
     // as ONE word's occasions, then store the display casing canonicalised
