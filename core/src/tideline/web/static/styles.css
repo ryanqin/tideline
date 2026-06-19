@@ -944,6 +944,11 @@ body.shore-open { overflow: hidden; }
   border: 1px solid var(--border-soft);
   margin-top: 0.3rem;
 }
+/* Browsing makes the scene photo maskable (cover its own word, tap to
+   reveal). Inside a frame it must be uncropped so the mask's normalized box
+   maps 1:1 onto pixels — same rule as moment photos. */
+.theme .photo-frame { margin-top: 0.3rem; }
+.photo-frame .theme-photo { max-height: none; object-fit: unset; margin: 0; }
 
 .theme-tools {
   display: flex;

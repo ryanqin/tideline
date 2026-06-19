@@ -219,9 +219,22 @@
     // The scene's own photo (when the capture kept one) leads the recall —
     // you see the place again and reach for its words, instead of recalling
     // against a bare list. One photo stands for the occasion; the per-word
-    // moment stacks still hold each capture's own.
-    const photoMember = (c.members || []).find((m) => m.has_image && m.id != null);
-    const scenePhoto = photoMember ? capturePhoto(photoMember, "theme-photo") : "";
+    // moment stacks still hold each capture's own. Prefer a member whose word
+    // we know the spot of, so browsing can cover it.
+    const imageMembers = (c.members || []).filter((m) => m.has_image && m.id != null);
+    const photoMember =
+      imageMembers.find((m) => Array.isArray(m.region) && m.region.length === 4) ||
+      imageMembers[0];
+    // In browse the scene photo joins the recall: its own word is covered
+    // (only THIS photo's word — the others came from other captures), tap to
+    // reveal, the same look-at-the-place game cards play. In review the photo
+    // stays whole — the foreign words are the shown question in the rows
+    // below, so masking one on the photo would only fight them (§3.3).
+    const scenePhoto = !photoMember
+      ? ""
+      : currentOpts.review
+        ? capturePhoto(photoMember, "theme-photo")
+        : photoFigure(photoMember, "theme-photo");
     return `<div class="theme">
         <h2>${esc(c.title || "")}</h2>
         ${scenePhoto}
