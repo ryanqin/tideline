@@ -1,0 +1,22 @@
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- The tideline mark — the line the sea leaves on warm sand, with the last
+       tide's fainter memory above. Bolder strokes than the launcher icon so it
+       still reads at favicon size; clipped to a soft square. -->
+  <defs>
+    <linearGradient id="tlbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf8"/>
+      <stop offset="0.6" stop-color="#faf4e9"/>
+      <stop offset="1" stop-color="#f4ead2"/>
+    </linearGradient>
+    <clipPath id="tlclip"><rect width="512" height="512" rx="88"/></clipPath>
+  </defs>
+  <g clip-path="url(#tlclip)">
+    <rect width="512" height="512" fill="url(#tlbg)"/>
+    <path d="M0 372 C 92 344, 180 388, 272 366 S 436 340, 512 372 L 512 512 L 0 512 Z"
+          fill="#efdfc1"/>
+    <path d="M64 286 C 156 272, 232 300, 326 286 S 452 276, 472 290"
+          fill="none" stroke="#d9725a" stroke-width="22" stroke-linecap="round" opacity="0.5"/>
+    <path d="M40 366 C 120 338, 196 384, 284 366 S 432 338, 480 368"
+          fill="none" stroke="#c2742f" stroke-width="42" stroke-linecap="round"/>
+  </g>
+</svg>
