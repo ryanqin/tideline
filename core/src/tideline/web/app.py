@@ -26,6 +26,7 @@ from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
 from tideline.promotion import (
     auto_promote_cards,
+    heal_casing_splits,
     promote_candidates,
     promote_to_card,
     sink_card,
@@ -306,6 +307,10 @@ def create_app(
 
     # Startup sweep — same shape as cli/__main__.py
     boot_conn = _connect(db)
+    # Heal any casing splits an older build left behind (PREMIUM vs Premium as
+    # two candidates) BEFORE promoting, so the sweep re-derives counts on the
+    # one canonical row. A no-op once healed.
+    heal_casing_splits(boot_conn)
     promote_candidates(boot_conn)
     auto_promote_cards(boot_conn)
     # Tag source languages BEFORE clustering — concept clusters are scoped

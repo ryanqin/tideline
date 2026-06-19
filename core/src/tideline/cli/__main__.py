@@ -6,7 +6,7 @@ from pathlib import Path
 from tideline.agent import Agent
 from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
-from tideline.promotion import auto_promote_cards, promote_candidates
+from tideline.promotion import auto_promote_cards, heal_casing_splits, promote_candidates
 from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
@@ -52,6 +52,10 @@ def main(argv: list[str] | None = None) -> int:
     conn = sqlite3.connect(args.db)
     init_all_tables(conn)
     init_cluster_db(conn)
+
+    # Heal casing splits an older build may have left (PREMIUM vs Premium as
+    # two candidates) before promoting — a no-op once healed.
+    heal_casing_splits(conn)
 
     # Night-watch sweep: silently promote any drawer entries that crossed the
     # repetition threshold during prior sessions. Idempotent, cheap, no output.

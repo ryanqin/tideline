@@ -26,7 +26,12 @@ import sys
 import pytest
 
 from tideline.agent import Agent
-from tideline.promotion import canonical_word, promote_candidates
+from tideline.promotion import (
+    auto_promote_cards,
+    canonical_word,
+    heal_casing_splits,
+    promote_candidates,
+)
 from tideline.runtimes import get_runtime
 from tideline.seed import seed_db
 from tideline.tools import (
@@ -141,6 +146,117 @@ def test_case_variants_merge_into_one_canonical_candidate(conn):
         "ON ce.candidate_id = c.id WHERE c.original = 'premium'"
     ).fetchone()
     assert ev[0] == 3
+
+
+# --- Casing heal-in-place migration (heal_casing_splits) ------------------
+# An older, pre-canonical build promoted the same word under two casings as
+# two candidates and two review cards. The heal folds them onto one canonical
+# row, carrying the strongest review progress forward — the lossless
+# alternative to a clean install. These tests hand-build that legacy state
+# (current promote can't produce it — it canonicalizes).
+
+
+def _seed_legacy_split(conn) -> None:
+    """Two casing variants of one word, as old code left them: 'PREMIUM'
+    (strength 3, 5 reviews) and 'Premium' (strength 1, 1 review), each its own
+    candidate + card, with the drawer rows behind them (3 distinct occasions)."""
+    for sess, original in (("s1", "PREMIUM"), ("s2", "PREMIUM"), ("s3", "Premium")):
+        conn.execute(
+            "INSERT INTO translations (original, target_lang, translated, session_id) "
+            "VALUES (?, 'zh', '高级', ?)",
+            (original, sess),
+        )
+    conn.executescript(
+        """
+        INSERT INTO candidates (id, original, target_lang, translated,
+            occurrence_count, first_seen_at, last_seen_at)
+          VALUES (1, 'PREMIUM', 'zh', '高级', 2, '2026-01-01', '2026-01-02'),
+                 (2, 'Premium', 'zh', '高级', 1, '2026-01-03', '2026-01-03');
+        INSERT INTO cards (candidate_id, original, target_lang, translated,
+            state, strength, reviews)
+          VALUES (1, 'PREMIUM', 'zh', '高级', 'active', 3, 5),
+                 (2, 'Premium', 'zh', '高级', 'active', 1, 1);
+        """
+    )
+    conn.commit()
+
+
+def test_heal_collapses_casing_split_into_one_canonical(conn):
+    _seed_legacy_split(conn)
+    assert heal_casing_splits(conn) == 1  # one duplicate candidate removed
+
+    # one canonical candidate, one card, carrying the STRONGEST progress
+    assert conn.execute("SELECT original FROM candidates").fetchall() == [("premium",)]
+    assert conn.execute(
+        "SELECT original, state, strength, reviews FROM cards"
+    ).fetchall() == [("premium", "active", 3, 5)]
+
+    # promote then re-derives the merged occasions + evidence on the survivor
+    promote_candidates(conn)
+    auto_promote_cards(conn)
+    assert conn.execute(
+        "SELECT original, occurrence_count FROM candidates"
+    ).fetchone() == ("premium", 3)
+    assert conn.execute("SELECT COUNT(*) FROM candidate_evidence").fetchone()[0] == 3
+    assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 1
+
+
+def test_heal_folds_onto_existing_canonical_row(conn):
+    # The realistic boot order: a new sweep already made the canonical
+    # 'premium' (fresh, strength 0); a leftover 'PREMIUM' from the old build
+    # still carries the review progress. Fold onto the canonical one, inherit
+    # the stronger progress.
+    conn.executescript(
+        """
+        INSERT INTO candidates (id, original, target_lang, translated,
+            occurrence_count, first_seen_at, last_seen_at)
+          VALUES (1, 'premium', 'zh', '高级', 3, '2026-01-01', '2026-01-05'),
+                 (2, 'PREMIUM', 'zh', '高级', 2, '2026-01-01', '2026-01-02');
+        INSERT INTO cards (candidate_id, original, target_lang, translated,
+            state, strength, reviews)
+          VALUES (1, 'premium', 'zh', '高级', 'active', 0, 0),
+                 (2, 'PREMIUM', 'zh', '高级', 'active', 4, 6);
+        """
+    )
+    conn.commit()
+
+    assert heal_casing_splits(conn) == 1
+    assert conn.execute("SELECT id, original FROM candidates").fetchall() == [(1, "premium")]
+    # survivor is the canonical row (id 1), now wearing the leftover's progress
+    assert conn.execute(
+        "SELECT candidate_id, strength, reviews FROM cards"
+    ).fetchall() == [(1, 4, 6)]
+
+
+def test_heal_keeps_active_if_any_variant_active(conn):
+    _seed_legacy_split(conn)
+    conn.execute("UPDATE cards SET state = 'sunk' WHERE candidate_id = 2")
+    conn.commit()
+    heal_casing_splits(conn)
+    # one casing was sunk, the other kept — the merged word stays active
+    assert conn.execute("SELECT state FROM cards").fetchone() == ("active",)
+
+
+def test_heal_keeps_sunk_when_all_variants_sunk(conn):
+    _seed_legacy_split(conn)
+    conn.execute("UPDATE cards SET state = 'sunk'")
+    conn.commit()
+    heal_casing_splits(conn)
+    # the user buried both casings — don't resurface the merged word
+    assert conn.execute("SELECT state FROM cards").fetchone() == ("sunk",)
+
+
+def test_heal_is_noop_and_idempotent_on_clean_db(conn):
+    for _ in range(3):
+        _add(conn, "hello", "zh", "你好")
+    promote_candidates(conn)
+    auto_promote_cards(conn)
+    before = conn.execute("SELECT original, strength FROM cards").fetchall()
+
+    assert heal_casing_splits(conn) == 0      # nothing to heal
+    assert heal_casing_splits(conn) == 0      # idempotent
+    assert conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0] == 1
+    assert conn.execute("SELECT original, strength FROM cards").fetchall() == before
 
 
 def test_promotion_is_idempotent_on_second_run(conn):

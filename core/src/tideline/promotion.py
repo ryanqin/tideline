@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 
@@ -226,6 +227,79 @@ def sink_card(conn: sqlite3.Connection, card_id: int) -> bool:
     )
     conn.commit()
     return cur.rowcount > 0
+
+
+def heal_casing_splits(conn: sqlite3.Connection) -> int:
+    """Collapse candidates that split on casing before `canonical_word` keyed
+    the table — a one-time, idempotent heal for databases that promoted
+    "PREMIUM" and "Premium" as two separate candidates (and two review cards)
+    under an older build. Each (canonical, target_lang) group folds onto a
+    single canonical candidate, carrying the strongest review progress forward
+    so the user never re-learns a word they already knew; occurrence counts and
+    evidence are left for `promote_candidates` to re-derive (it groups
+    case-insensitively). This is the lossless alternative to the only remedies
+    that existed before — a clean install or sinking the duplicate by hand.
+
+    A no-op once healed (no candidate has a non-canonical `original` left), so
+    it is safe to run in the boot sweep ahead of `promote_candidates`. Returns
+    the number of duplicate candidate rows removed.
+    """
+    groups: dict[tuple[str, str], list[tuple[int, str]]] = defaultdict(list)
+    for cid, original, target_lang in conn.execute(
+        "SELECT id, original, target_lang FROM candidates"
+    ):
+        groups[(canonical_word(original), target_lang)].append((cid, original))
+
+    removed = 0
+    for (canon, _target_lang), members in groups.items():
+        # Already healed: a lone candidate whose original is already canonical.
+        if len(members) == 1 and members[0][1] == canon:
+            continue
+        ids = [cid for cid, _ in members]
+
+        # The survivor is the row already in canonical form; if none is (the DB
+        # was only ever swept by pre-canonical code), rename the lowest id so a
+        # canonical row exists to fold the rest onto.
+        survivor = next((cid for cid, orig in members if orig == canon), None)
+        if survivor is None:
+            survivor = min(ids)
+            conn.execute(
+                "UPDATE candidates SET original = ? WHERE id = ?", (canon, survivor)
+            )
+
+        # Carry the strongest review progress onto the survivor's card: highest
+        # box wins (don't make a known word new again), then most reviews, then
+        # most recently seen. The merged word is active unless every variant was
+        # sunk — sinking one casing of a word shouldn't bury a kept one. Cards
+        # exist from a prior boot's auto-promote (the very rows we're healing),
+        # so the survivor's card is there to update.
+        placeholders = ",".join("?" * len(ids))
+        cards = conn.execute(
+            f"SELECT state, strength, due_at, last_reviewed_at, reviews "
+            f"FROM cards WHERE candidate_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        if cards:
+            best = max(cards, key=lambda c: (c[1] or 0, c[4] or 0, c[3] or ""))
+            state = "sunk" if all(c[0] == "sunk" for c in cards) else "active"
+            conn.execute(
+                "UPDATE cards SET original = ?, state = ?, strength = ?, due_at = ?, "
+                "last_reviewed_at = ?, reviews = ? WHERE candidate_id = ?",
+                (canon, state, best[1], best[2], best[3], best[4], survivor),
+            )
+
+        dups = [cid for cid in ids if cid != survivor]
+        if dups:
+            dup_ph = ",".join("?" * len(dups))
+            conn.execute(f"DELETE FROM cards WHERE candidate_id IN ({dup_ph})", dups)
+            conn.execute(
+                f"DELETE FROM candidate_evidence WHERE candidate_id IN ({dup_ph})", dups
+            )
+            conn.execute(f"DELETE FROM candidates WHERE id IN ({dup_ph})", dups)
+            removed += len(dups)
+
+    conn.commit()
+    return removed
 
 
 def main(argv: list[str] | None = None) -> int:
