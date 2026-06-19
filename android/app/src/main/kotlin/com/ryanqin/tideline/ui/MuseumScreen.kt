@@ -346,7 +346,10 @@ private fun WordBlock(
 @Composable
 private fun SceneBrowseSheet(scene: ThemeGroup, viewModel: TidelineTranslateViewModel) {
   var photo by remember(scene.sceneLabel) { mutableStateOf<android.graphics.Bitmap?>(null) }
-  val photoMember = scene.members.firstOrNull { it.hasImage }
+  // Prefer a member whose word-spot we know, so browse can cover it; fall back
+  // to any photo (it just shows plain).
+  val photoMember = scene.members.firstOrNull { it.hasImage && parseRegion(it.sourceRegion) != null }
+    ?: scene.members.firstOrNull { it.hasImage }
   LaunchedEffect(scene.sceneLabel) {
     photo = photoMember?.let { m ->
       viewModel.photoFor(m.id)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
@@ -365,7 +368,7 @@ private fun SceneBrowseSheet(scene: ThemeGroup, viewModel: TidelineTranslateView
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(10.dp))
-    photo?.let { CapturePhoto(it) }
+    photo?.let { MaskableCapturePhoto(it, parseRegion(photoMember?.sourceRegion)) }
     Spacer(Modifier.height(6.dp))
     scene.members.groupBy { it.translated }.forEach { (translated, ms) ->
       Row(
