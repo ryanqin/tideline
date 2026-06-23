@@ -125,7 +125,16 @@
           resultEl.textContent = `error: ${r.status}`;
         } else {
           const data = await r.json();
-          resultEl.textContent = data.translated;
+          if (data.recorded === false && data.guard) {
+            // Not a real translation into your language (the source was already
+            // yours, or the model just echoed it) — say so honestly and don't
+            // surface a wrong result (DESIGN §3.3). Shown as a muted aside.
+            resultEl.textContent = t('guard_' + data.guard);
+            resultEl.classList.add('result--note');
+          } else {
+            resultEl.classList.remove('result--note');
+            resultEl.textContent = data.translated;
+          }
         }
       } catch (e) {
         resultEl.textContent = `error: ${e}`;

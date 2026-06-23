@@ -235,6 +235,17 @@ output:empty {
   box-shadow: none;
 }
 
+/* Not a translation but an honest aside (the source was already your language,
+   or the model couldn't read it) — muted and accent-free so it never reads as
+   a result. */
+output.result--note {
+  color: var(--muted);
+  background: var(--surface);
+  border-left-color: var(--border);
+  font-size: 1rem;
+  font-style: italic;
+}
+
 .hint {
   margin-top: 3rem;
   color: var(--muted);

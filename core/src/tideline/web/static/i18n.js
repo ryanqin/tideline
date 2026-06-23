@@ -18,6 +18,9 @@ const I18N = {
     translate_ph: "Type text, paste a menu line, drop in a phrase...",
     into_first: "Into your first language",
     btn_translate: "Translate",
+    // the guard's honest verdict when a real translation didn't happen
+    guard_same_as_native: "This already looks like your language — nothing to translate.",
+    guard_not_translated: "Couldn't quite read this one — the text may be too complex or unclear.",
     index_hint:
       "Everything you translate is stored locally. After enough translations " +
       'pile up, wade into the shore — or head to the <a href="/learnings">' +
@@ -92,6 +95,9 @@ const I18N = {
     translate_ph: "输入文字,粘贴一行菜单,丢进一句话……",
     into_first: "译成你的第一语言",
     btn_translate: "翻译",
+    // the guard's honest verdict when a real translation didn't happen
+    guard_same_as_native: "这看起来已经是你的语言了——不用翻译。",
+    guard_not_translated: "这次没太认出来——文字可能太复杂或太模糊。",
     index_hint:
       "你翻译的一切都只存在本地。等翻译攒得够多,涉水走进海岸,或直接去" +
       '<a href="/learnings">货架</a>,看那些在后台悄悄成形的聚类。',
