@@ -125,12 +125,12 @@ def test_agent_translate_records_to_db(conn):
 
     result = agent.run("translate hello to zh")
 
-    # Mock translation = "[mock-translated to zh] hello"
-    assert "[mock-translated to zh] hello" in result
+    # Mock translation = "[mock-translated to zh] olleh"
+    assert "[mock-translated to zh] olleh" in result
     rows = conn.execute(
         "SELECT original, target_lang, translated FROM translations"
     ).fetchall()
-    assert rows == [("hello", "zh", "[mock-translated to zh] hello")]
+    assert rows == [("hello", "zh", "[mock-translated to zh] olleh")]
 
 
 def test_agent_translate_handles_quoted_text(conn):
@@ -181,7 +181,7 @@ def _cli(*extra: str) -> subprocess.CompletedProcess:
 def test_cli_translate_smoke():
     result = _cli("translate hello to zh")
     assert result.returncode == 0, result.stderr
-    assert "[mock-translated to zh] hello" in result.stdout
+    assert "[mock-translated to zh] olleh" in result.stdout
 
 
 # test_cli_step1_2_3_smoke_unchanged_after_step5 removed 2026-05-11: the

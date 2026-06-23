@@ -31,6 +31,7 @@ from tideline.promotion import (
     promote_to_card,
     sink_card,
 )
+from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
@@ -90,6 +91,13 @@ class TranslateRequest(BaseModel):
 class TranslateResponse(BaseModel):
     translated: str
     source: str = "text"
+    # When the guard judged this not a real foreign → first-language translation
+    # (the source was already your language, or the model just echoed it), the
+    # row is NOT sedimented: `recorded` is False and `guard` carries the verdict
+    # ("same_as_native" | "not_translated") so the UI can say, honestly, that
+    # this one was beyond reach. Both default to the happy path. (DESIGN §3.3.)
+    recorded: bool = True
+    guard: str | None = None
 
 
 class PromoteRequest(BaseModel):
@@ -295,15 +303,18 @@ def _fetch_clusters(
 def create_app(
     runtime_name: str = "mock",
     db_path: str | None = None,
+    runtime: ModelRuntime | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. Defaults match the CLI client.
 
     A single runtime instance is shared across requests so the LLM
     (when llama_cpp) only loads once. Each request opens its own DB
-    connection.
+    connection. A `runtime` instance can be passed directly (tests inject a
+    stub); otherwise it's resolved from `runtime_name`.
     """
     db = db_path or str(_DEFAULT_DB)
-    runtime = get_runtime(runtime_name)
+    if runtime is None:
+        runtime = get_runtime(runtime_name)
 
     # Startup sweep — same shape as cli/__main__.py
     boot_conn = _connect(db)
@@ -363,10 +374,11 @@ def create_app(
             # live translations co-occurs into a theme (DESIGN §3.2) instead of
             # landing session-less and invisible to the theme sweep.
             session_id = _live_session_id(conn, datetime.now())
+            context = {"db": conn, "source": "text", "session_id": session_id}
             agent = Agent(
                 runtime,
                 registry=registry,
-                context={"db": conn, "source": "text", "session_id": session_id},
+                context=context,
                 system_message=_TIDELINE_SYSTEM,
             )
             # Tideline turns every language into *yours*: the target is always
@@ -375,6 +387,12 @@ def create_app(
             native = get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)
             prompt = f"translate {req.text} to {native}"
             translated = agent.run(prompt)
+            # The guard inside AddTranslationTool may have refused to sediment a
+            # same-language source or an echo. If so, don't surface the wrong
+            # text — tell the user honestly that this one was beyond reach. The
+            # UI maps `guard` to a localized line. (DESIGN §3.3.)
+            outcome = context.get("translation_outcome")
+            guarded = outcome in ("same_as_native", "not_translated")
             # Live backfill so the new word shows up in learnings immediately.
             # Fail-soft: a backfill hiccup must never break the translation.
             try:
@@ -383,6 +401,10 @@ def create_app(
                 pass
         finally:
             conn.close()
+        if guarded:
+            return TranslateResponse(
+                translated="", source="text", recorded=False, guard=outcome
+            )
         return TranslateResponse(translated=translated, source="text")
 
     @app.get("/api/clusters")

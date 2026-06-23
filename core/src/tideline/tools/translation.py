@@ -21,6 +21,10 @@ import sqlite3
 from typing import Any
 
 from tideline.intelligence.source_language import detect_script, normalize_language
+from tideline.intelligence.translation_guard import (
+    TranslationOutcome,
+    judge_translation,
+)
 from tideline.tools.base import Tool
 
 
@@ -131,6 +135,27 @@ class AddTranslationTool(Tool):
         source_lang = normalize_language(args.get("source_lang")) or detect_script(
             args["original"]
         )
+        # Tideline only translates INTO your first language (DESIGN §3.3), so a
+        # same-language source or a plain echo isn't a real result — judge it
+        # and refuse to sediment a non-translation, keeping the emergence loop
+        # clean. We pass the app's best read of the source language (the agent's
+        # report, else the deterministic script check), so the same-language
+        # case is caught even when the model didn't label it. The verdict rides
+        # back on the context so the HTTP layer can tell the user, honestly,
+        # that this one was beyond reach. (Mirrors the Android shell's
+        # TranslationGuard: fail empty, never with a wrong answer.)
+        outcome = judge_translation(
+            source=args["original"],
+            translated=args["translated"],
+            reported_lang=source_lang,
+            native_lang=args["target_lang"],
+        )
+        context["translation_outcome"] = outcome.value
+        if outcome is not TranslationOutcome.TRANSLATED:
+            return (
+                f"not recorded ({outcome.value}): no real translation into "
+                f"{args['target_lang']} to sediment"
+            )
         cursor = conn.execute(
             "INSERT INTO translations "
             "(original, target_lang, translated, source_lang, source, "

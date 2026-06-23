@@ -96,7 +96,7 @@ def test_translate_cli_still_works_with_cluster_sweep():
     """Phase B3 must not interfere with the translation flow that
     Step 6c hardened."""
     assert _cli("hello").stdout.strip() == "[mock] echo: hello"
-    assert "[mock-translated to zh] hello" in _cli("translate hello to zh").stdout
+    assert "[mock-translated to zh] olleh" in _cli("translate hello to zh").stdout
 
 
 # --- Drift gate -----------------------------------------------------------

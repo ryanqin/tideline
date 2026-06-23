@@ -62,7 +62,12 @@ class MockRuntime(ModelRuntime):
         if match:
             original = match.group(1).strip().strip("'\"")
             target_lang = match.group(2).strip().strip("'\"").lower()
-            translated = f"[mock-translated to {target_lang}] {original}"
+            # A stand-in "translation": the target tag plus the source REVERSED,
+            # never the source verbatim. The translation guard flags output that
+            # still IS the input (an echo), so a mock translation must not embed
+            # the original — yet reversing keeps each word mapping to a distinct
+            # output, so distinct concepts don't fuse on identical text.
+            translated = f"[mock-translated to {target_lang}] {original[::-1]}"
             return (
                 f"{TOOL_CALL_OPEN}call:add_translation{{"
                 f"original:{STRING_DELIM}{original}{STRING_DELIM},"
