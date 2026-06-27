@@ -334,9 +334,13 @@ private fun WordBlock(
     }
     // The lived moments — the captures this word grew from (§3.2), each the
     // same row the shore and the web show: glyph, photo, "今天 · 看到的". The
-    // stack of rows IS the "六次相遇", richer than a bare count.
+    // stack of rows IS the "六次相遇", richer than a bare count. This is the
+    // museum (browse), so each moment's photo covers its word, tap to reveal —
+    // parity with the web momentRow and the scene photo's browse mask (续27).
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      moments.forEach { m -> MomentRow(m, onPlayAudio = { viewModel.playRecording(it) }) }
+      moments.forEach { m ->
+        MomentRow(m, onPlayAudio = { viewModel.playRecording(it) }, browse = true)
+      }
     }
   }
 }

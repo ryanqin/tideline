@@ -54,9 +54,19 @@ private fun momentSrcIcon(source: String?): ImageVector = when (source) {
  * web's momentRow: a capture with material leads with it — the photo whole, as
  * seen — then its quiet "今天 · 看到的"; a silent one keeps only that line, so a
  * card of silent moments stays a tidy log. The recording behind a heard moment
- * is playable on tap. */
+ * is playable on tap.
+ *
+ * In [browse] (the museum) the photo covers the one word it held, tap to reveal
+ * — the look-at-the-place-and-reach game (mirrors the web momentRow's
+ * `currentOpts.review ? capturePhoto : photoFigure`). In review the photo comes
+ * whole: the word is the SHOWN question (§3.3), so masking its pixels would
+ * fight the card. */
 @Composable
-internal fun MomentRow(moment: TranslationEntity, onPlayAudio: (ByteArray) -> Unit) {
+internal fun MomentRow(
+  moment: TranslationEntity,
+  onPlayAudio: (ByteArray) -> Unit,
+  browse: Boolean = false,
+) {
   val photo = moment.sourceImage?.let { bytes ->
     remember(moment.id) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
   }
@@ -67,7 +77,10 @@ internal fun MomentRow(moment: TranslationEntity, onPlayAudio: (ByteArray) -> Un
     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    photo?.let { CapturePhoto(it) }
+    photo?.let {
+      if (browse) MaskableCapturePhoto(it, parseRegion(moment.sourceRegion))
+      else CapturePhoto(it)
+    }
     moment.contextSnippet?.takeIf { it.isNotBlank() }?.let {
       Text(
         it,
