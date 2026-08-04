@@ -9,7 +9,6 @@ async runtime.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import sqlite3
 from datetime import datetime
@@ -21,27 +20,23 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from tideline.agent import Agent
-from tideline.boot import startup_sweep
-from tideline.cluster import cluster_sweep
+from tideline.boot import light_sweep, startup_sweep
 from tideline.cluster import init_db as init_cluster_db
-from tideline.promotion import (
-    auto_promote_cards,
-    heal_casing_splits,
-    promote_candidates,
-    promote_to_card,
-    sink_card,
-)
-from tideline.intelligence.translation_guard import TranslationOutcome
-from tideline.prompts import TIDELINE_SYSTEM
+from tideline.reading import fetch_candidates, fetch_clusters, parse_region
+from tideline.promotion import promote_to_card, sink_card
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
-from tideline.session import live_session_id
-from tideline.tagging import tag_source_langs
-from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
+from tideline.translate_flow import translate_capture
+from tideline.tools import init_all_tables
 from tideline.tools.card import review_card
 from tideline.tools.theme_review import review_states, review_theme
-from tideline.tools.settings import DEFAULT_NATIVE_LANG, get_setting, set_setting
+from tideline.tools.settings import (
+    DEFAULT_NATIVE_LANG,
+    UI_LOCALES,
+    derived_ui_locale,
+    get_setting,
+    set_setting,
+)
 
 
 _DEFAULT_DB = Path(".tideline") / "drawers.db"
@@ -126,18 +121,6 @@ class UiLocaleRequest(BaseModel):
     locale: str
 
 
-# The interface languages Tideline ships (DESIGN: multilingual UI, zh + en
-# first). The UI language is its OWN setting, independent of the first language
-# (which only sets the translation target, §3.3) — but until the user picks one
-# it follows the first language, so a Chinese-first user gets a Chinese UI for
-# free. Mirrors the frontend's localeFor.
-_UI_LOCALES = ("zh", "en")
-
-
-def _derived_ui_locale(native_lang: str) -> str:
-    return "zh" if native_lang == "Chinese" else "en"
-
-
 def _connect(db_path: str) -> sqlite3.Connection:
     if db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -148,122 +131,6 @@ def _connect(db_path: str) -> sqlite3.Connection:
     init_all_tables(conn)
     init_cluster_db(conn)
     return conn
-
-
-def _light_sweep(conn: sqlite3.Connection) -> None:
-    """Live, model-free backfill run right after a translation, so the
-    learnings view reflects new words between restarts: promote by frequency,
-    auto-generate cards, and tag source_lang deterministically (kana → Japanese,
-    hangul → Korean).
-
-    Deliberately model-free. The expensive model sweeps — clustering, native
-    gloss, Latin-script language id — stay in the startup sweep: running them
-    in the translate path would add model latency to every translation (against
-    principle 1, "translation first, learning is a passive byproduct") and, with
-    a shared llama_cpp runtime, risk a re-entrant model call from a concurrent
-    request."""
-    promote_candidates(conn)
-    auto_promote_cards(conn)
-    tag_source_langs(conn, runtime=None)  # deterministic only — no model here
-
-
-# Candidates with their source language derived live from the translations they
-# came from. The single source of truth for language metadata is `translations`;
-# candidates/cards/clusters never carry a copy, they derive it — so a re-detect
-# on the drawer flows everywhere for free.
-_CANDIDATES_SQL = """
-    SELECT id, original, target_lang, translated, occurrence_count,
-        (SELECT t.source_lang FROM translations t
-         WHERE t.original = candidates.original
-           AND t.target_lang = candidates.target_lang
-         ORDER BY t.id DESC LIMIT 1) AS source_lang
-    FROM candidates ORDER BY occurrence_count DESC, original
-"""
-
-
-def _fetch_candidates(
-    conn: sqlite3.Connection, limit: int | None = None
-) -> list[dict[str, Any]]:
-    """The emergent vocabulary, frequency-ranked. Shared by /api/candidates
-    (flat list) and /api/clusters/by-language (the same rows, bucketed by
-    source language) so the language derivation lives in exactly one place."""
-    sql = _CANDIDATES_SQL
-    if limit is not None:
-        sql += f" LIMIT {int(limit)}"
-    rows = conn.execute(sql).fetchall()
-    return [
-        {"id": cid, "original": o, "source_lang": sl, "target_lang": tl,
-         "translated": tr, "count": cnt}
-        for cid, o, tl, tr, cnt, sl in rows
-    ]
-
-
-def _parse_region(raw: str | None) -> list[float] | None:
-    """A stored word box ("[x0,y0,x1,y1]" normalized) as a list, or None —
-    malformed JSON degrades to no mask, never to an error."""
-    if not raw:
-        return None
-    try:
-        box = json.loads(raw)
-    except (TypeError, ValueError):
-        return None
-    if isinstance(box, list) and len(box) == 4:
-        try:
-            return [float(v) for v in box]
-        except (TypeError, ValueError):
-            return None
-    return None
-
-
-def _fetch_clusters(
-    conn: sqlite3.Connection, vote_type: str
-) -> list[dict[str, Any]]:
-    """Clusters of one relation, each with its members. Shared by
-    /api/clusters (vote_type='concept' — synonym aggregation) and /api/themes
-    (vote_type='theme' — B7 relatedness). Scoping by vote_type is what keeps
-    the two relations' clusters out of each other's view now that they share
-    the clusters table."""
-    rows = conn.execute(
-        "SELECT id, title FROM clusters WHERE vote_type = ? ORDER BY id",
-        (vote_type,),
-    ).fetchall()
-    result: list[dict[str, Any]] = []
-    for cid, title in rows:
-        members = conn.execute(
-            """
-            SELECT t.original, t.translated, t.context_snippet, t.source_lang,
-                   t.scene_label, t.id, t.source_image IS NOT NULL, t.source_region
-            FROM cluster_members cm
-            JOIN translations t ON t.id = cm.translation_id
-            WHERE cm.cluster_id = ?
-            ORDER BY t.id
-            """,
-            (cid,),
-        ).fetchall()
-        # A theme IS one scene type, so all its members share a scene_label —
-        # the stable key its review schedule hangs on (theme_review), unlike the
-        # cluster id which the night-watch sweep rebuilds. Concept members span
-        # scene types, so this is only meaningful (single-valued) for themes.
-        scene_labels = {m[4] for m in members if m[4]}
-        scene_label = next(iter(scene_labels)) if len(scene_labels) == 1 else None
-        result.append({
-            "id": cid,
-            # A theme shows its B6 scene-type name when the night-watch has
-            # named it (a warm caption for the kind of place); until then it
-            # falls back to the plain scene label. scene_label stays the key.
-            "title": title or scene_label,
-            "scene_label": scene_label,
-            "members": [
-                # `id`/`has_image` point recall back at the captured material
-                # (the photo behind /api/translations/{id}/image), so opening
-                # a scene can show what was actually lived, not just words.
-                {"original": o, "translated": tr, "context": ctx or "",
-                 "source_lang": sl, "id": tid, "has_image": bool(img),
-                 "region": _parse_region(region)}
-                for o, tr, ctx, sl, _label, tid, img, region in members
-            ],
-        })
-    return result
 
 
 def create_app(
@@ -307,90 +174,26 @@ def create_app(
 
     @app.post("/api/translate", response_model=TranslateResponse)
     def translate(req: TranslateRequest) -> TranslateResponse:
+        """Transport only: validate, hand the capture to the flow, serialize."""
         if not req.text.strip():
             raise HTTPException(status_code=400, detail="text is empty")
         conn = _connect(db)
         try:
-            registry = ToolRegistry()
-            registry.register(AddTranslationTool)
-            # Stamp this capture with its sitting's session id, so a burst of
-            # live translations co-occurs into a theme (DESIGN §3.2) instead of
-            # landing session-less and invisible to the theme sweep.
-            session_id = live_session_id(conn, datetime.now())
-            context = {"db": conn, "source": "text", "session_id": session_id}
-            agent = Agent(
-                runtime,
-                registry=registry,
-                context=context,
-                system_message=TIDELINE_SYSTEM,
-            )
-            # Tideline turns every language into *yours*: the target is always
-            # the user's first language (from settings), never a per-request
-            # A→B picker — that's what separates it from a generic translator.
-            native = get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)
-            prompt = f"translate {req.text} to {native}"
-            try:
-                result = agent.run_result(prompt)
-            except Exception:
-                # Nothing inside a run is worth a 500 to the person who just
-                # typed a word. Whatever broke, this capture was beyond reach.
-                logger.exception("translate run failed")
-                result = None
-            # The ROW is the result, not the loop's closing words. A capture
-            # counts as translated when the tool actually wrote it and the guard
-            # let it through — not merely when nothing objected. The distinction
-            # is load-bearing in both directions: a model that answers in prose
-            # without calling the tool leaves `translation_outcome` unset, and
-            # calling that recorded=True showed a translation while sedimenting
-            # nothing (the word never entered the emergence loop, and no log said
-            # so); while a model that records a good translation and then talks
-            # itself out of turns has still given us the answer, and throwing it
-            # away would be the same lie pointing the other way. Everything with
-            # no row behind it gets the honest line, localized by the UI from
-            # `guard`. (DESIGN §3.3: fail empty, never with a wrong answer.)
-            outcome = context.get("translation_outcome")
-            recorded_id = context.get("translation_recorded_id")
-            if outcome == TranslationOutcome.TRANSLATED.value and recorded_id:
-                guard = None
-                # A clean run's closing text is the translation; when the run
-                # ran out of turns instead, fall back to the row it wrote.
-                if result is not None and result.finish_reason == "stop" and result.text:
-                    translated = result.text
-                else:
-                    logger.warning(
-                        "translate recorded #%s but did not finish cleanly: %r",
-                        recorded_id, req.text,
-                    )
-                    translated = context.get("translation_text", "")
-            else:
-                translated = ""
-                if outcome and outcome != TranslationOutcome.TRANSLATED.value:
-                    guard = outcome  # the guard spoke: same_as_native / echo
-                else:
-                    guard = "not_translated"
-                    if result is None:
-                        pass  # already logged with its traceback
-                    elif result.finish_reason == "budget_exhausted":
-                        logger.warning(
-                            "translate exhausted its turn budget: %r", req.text
-                        )
-                    else:
-                        logger.warning(
-                            "translate produced no tool call: %r", req.text
-                        )
+            capture = translate_capture(conn, runtime, req.text, source="text")
             # Live backfill so the new word shows up in learnings immediately.
             # Fail-soft: a backfill hiccup must never break the translation.
             try:
-                _light_sweep(conn)
+                light_sweep(conn)
             except Exception:
                 logger.exception("light sweep after translate failed")
         finally:
             conn.close()
-        if guard is not None:
-            return TranslateResponse(
-                translated="", source="text", recorded=False, guard=guard
-            )
-        return TranslateResponse(translated=translated, source="text")
+        return TranslateResponse(
+            translated=capture.translated,
+            source="text",
+            recorded=capture.recorded,
+            guard=capture.guard,
+        )
 
     @app.get("/api/clusters")
     def clusters() -> list[dict[str, Any]]:
@@ -398,7 +201,7 @@ def create_app(
         theme clusters never leak into the By-concept view."""
         conn = _connect(db)
         try:
-            return _fetch_clusters(conn, "concept")
+            return fetch_clusters(conn, "concept")
         finally:
             conn.close()
 
@@ -415,7 +218,7 @@ def create_app(
         `strength` is internal. The museum ignores both (it shows every scene)."""
         conn = _connect(db)
         try:
-            result = _fetch_clusters(conn, "theme")
+            result = fetch_clusters(conn, "theme")
             states = review_states(conn, datetime.now())
             for theme in result:
                 label = theme.get("scene_label")
@@ -432,7 +235,7 @@ def create_app(
     def candidates() -> list[dict[str, Any]]:
         conn = _connect(db)
         try:
-            return _fetch_candidates(conn, limit=50)
+            return fetch_candidates(conn, limit=50)
         finally:
             conn.close()
 
@@ -450,7 +253,7 @@ def create_app(
         conn = _connect(db)
         try:
             buckets: dict[str, dict[str, Any]] = {}
-            for cand in _fetch_candidates(conn):
+            for cand in fetch_candidates(conn):
                 key = cand["source_lang"] or "Unknown"
                 bucket = buckets.setdefault(
                     key, {"lang": key, "members": [], "total": 0}
@@ -519,7 +322,7 @@ def create_app(
                     "moments": [
                         {"translated": m_tr, "source": m_src or "", "context": m_ctx or "",
                          "at": m_at, "id": m_id, "has_image": bool(m_img),
-                         "region": _parse_region(m_region), "has_audio": bool(m_aud)}
+                         "region": parse_region(m_region), "has_audio": bool(m_aud)}
                         for m_tr, m_src, m_ctx, m_at, m_id, m_img, m_region, m_aud in moments
                     ],
                 })
@@ -650,7 +453,7 @@ def create_app(
             stored = get_setting(conn, "ui_locale", "")
             return {
                 "native_lang": native,
-                "ui_locale": stored or _derived_ui_locale(native),
+                "ui_locale": stored or derived_ui_locale(native),
                 "ui_locale_set": bool(stored),
             }
         finally:
@@ -676,7 +479,7 @@ def create_app(
         After this the UI no longer follows the first language — the user owns
         it (the smart default only seeds the first, unset state)."""
         loc = req.locale.strip()
-        if loc not in _UI_LOCALES:
+        if loc not in UI_LOCALES:
             raise HTTPException(status_code=400, detail="unsupported ui locale")
         conn = _connect(db)
         try:

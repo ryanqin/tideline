@@ -73,3 +73,20 @@ def startup_sweep(
             "cluster_theme", lambda: cluster_sweep(conn, runtime, vote_type="theme")
         ),
     }
+
+
+def light_sweep(conn: sqlite3.Connection) -> None:
+    """Live, model-free backfill run right after a translation, so the
+    learnings view reflects new words between restarts: promote by frequency,
+    auto-generate cards, and tag source_lang deterministically (kana → Japanese,
+    hangul → Korean).
+
+    Deliberately model-free. The expensive model sweeps — clustering, native
+    gloss, Latin-script language id — stay in the startup sweep: running them
+    in the translate path would add model latency to every translation (against
+    principle 1, "translation first, learning is a passive byproduct") and, with
+    a shared llama_cpp runtime, risk a re-entrant model call from a concurrent
+    request."""
+    promote_candidates(conn)
+    auto_promote_cards(conn)
+    tag_source_langs(conn, runtime=None)  # deterministic only — no model here

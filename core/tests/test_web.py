@@ -642,9 +642,12 @@ def test_drift_every_runner_uses_the_one_system_prompt():
     import tideline.bench.agent.runner as agent_bench
     import tideline.cli.__main__ as cli_main
     import tideline.prompts as prompts
-    import tideline.web.app as web_app
+    import tideline.translate_flow as translate_flow
 
-    assert web_app.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
+    # The three places an Agent is constructed with the production prompt.
+    # (web/app.py is no longer one of them — it hands captures to
+    # translate_flow, which is the point of that extraction.)
+    assert translate_flow.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
     assert cli_main.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
     assert agent_bench.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
     # And it really is the narrowed engine prompt, not the old assistant one.

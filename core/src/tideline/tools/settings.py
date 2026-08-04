@@ -52,3 +52,15 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         (key, value),
     )
     conn.commit()
+
+
+# The interface languages Tideline ships (DESIGN: multilingual UI, zh + en
+# first). The UI language is its OWN setting, independent of the first language
+# (which only sets the translation target, §3.3) — but until the user picks one
+# it follows the first language, so a Chinese-first user gets a Chinese UI for
+# free. Mirrors the frontend's localeFor.
+UI_LOCALES = ("zh", "en")
+
+
+def derived_ui_locale(native_lang: str) -> str:
+    return "zh" if native_lang == "Chinese" else "en"
