@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -31,6 +32,7 @@ from tideline.promotion import (
     promote_to_card,
     sink_card,
 )
+from tideline.intelligence.translation_guard import TranslationOutcome
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
@@ -80,6 +82,11 @@ _TIDELINE_SYSTEM = (
     "with only the translated text — no preamble, no quotation marks, no "
     "commentary."
 )
+
+# Startup sweeps and the translate path fail soft — which is right, but silent
+# fail-soft leaves nothing to look at when a user reports "scenes never get
+# names". Everything swallowed now says so here.
+logger = logging.getLogger("tideline.web")
 
 
 class TranslateRequest(BaseModel):
@@ -386,24 +393,66 @@ def create_app(
             # A→B picker — that's what separates it from a generic translator.
             native = get_setting(conn, "native_lang", DEFAULT_NATIVE_LANG)
             prompt = f"translate {req.text} to {native}"
-            translated = agent.run(prompt)
-            # The guard inside AddTranslationTool may have refused to sediment a
-            # same-language source or an echo. If so, don't surface the wrong
-            # text — tell the user honestly that this one was beyond reach. The
-            # UI maps `guard` to a localized line. (DESIGN §3.3.)
+            try:
+                result = agent.run_result(prompt)
+            except Exception:
+                # Nothing inside a run is worth a 500 to the person who just
+                # typed a word. Whatever broke, this capture was beyond reach.
+                logger.exception("translate run failed")
+                result = None
+            # The ROW is the result, not the loop's closing words. A capture
+            # counts as translated when the tool actually wrote it and the guard
+            # let it through — not merely when nothing objected. The distinction
+            # is load-bearing in both directions: a model that answers in prose
+            # without calling the tool leaves `translation_outcome` unset, and
+            # calling that recorded=True showed a translation while sedimenting
+            # nothing (the word never entered the emergence loop, and no log said
+            # so); while a model that records a good translation and then talks
+            # itself out of turns has still given us the answer, and throwing it
+            # away would be the same lie pointing the other way. Everything with
+            # no row behind it gets the honest line, localized by the UI from
+            # `guard`. (DESIGN §3.3: fail empty, never with a wrong answer.)
             outcome = context.get("translation_outcome")
-            guarded = outcome in ("same_as_native", "not_translated")
+            recorded_id = context.get("translation_recorded_id")
+            if outcome == TranslationOutcome.TRANSLATED.value and recorded_id:
+                guard = None
+                # A clean run's closing text is the translation; when the run
+                # ran out of turns instead, fall back to the row it wrote.
+                if result is not None and result.finish_reason == "stop" and result.text:
+                    translated = result.text
+                else:
+                    logger.warning(
+                        "translate recorded #%s but did not finish cleanly: %r",
+                        recorded_id, req.text,
+                    )
+                    translated = context.get("translation_text", "")
+            else:
+                translated = ""
+                if outcome and outcome != TranslationOutcome.TRANSLATED.value:
+                    guard = outcome  # the guard spoke: same_as_native / echo
+                else:
+                    guard = "not_translated"
+                    if result is None:
+                        pass  # already logged with its traceback
+                    elif result.finish_reason == "budget_exhausted":
+                        logger.warning(
+                            "translate exhausted its turn budget: %r", req.text
+                        )
+                    else:
+                        logger.warning(
+                            "translate produced no tool call: %r", req.text
+                        )
             # Live backfill so the new word shows up in learnings immediately.
             # Fail-soft: a backfill hiccup must never break the translation.
             try:
                 _light_sweep(conn)
             except Exception:
-                pass
+                logger.exception("light sweep after translate failed")
         finally:
             conn.close()
-        if guarded:
+        if guard is not None:
             return TranslateResponse(
-                translated="", source="text", recorded=False, guard=outcome
+                translated="", source="text", recorded=False, guard=guard
             )
         return TranslateResponse(translated=translated, source="text")
 

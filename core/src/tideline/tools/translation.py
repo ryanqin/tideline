@@ -110,6 +110,16 @@ class AddTranslationTool(Tool):
 
     def run(self, args: dict[str, Any], context: dict[str, Any]) -> str:
         conn: sqlite3.Connection = context["db"]
+        # One capture sediments once. A model that keeps re-emitting the call
+        # (it happens — the loop then runs to its turn budget) would otherwise
+        # write the same word five times and quietly inflate its
+        # occurrence_count toward promotion. The phone writes one row per
+        # capture; so do we.
+        if context.get("translation_recorded_id") is not None:
+            return (
+                f"already recorded as #{context['translation_recorded_id']} "
+                "in this capture"
+            )
         # Source / session priority: explicit arg from the LLM > context-
         # injected default from the client (CLI, HTTP, Android shell) > None.
         # This lets the keyboard CLI default to source="text", the image
@@ -174,6 +184,11 @@ class AddTranslationTool(Tool):
             ),
         )
         conn.commit()
+        # What was actually sedimented, for the caller. The HTTP layer shows
+        # this when the loop recorded a good translation but then failed to
+        # wrap up — the row is the result, the loop's closing words are not.
+        context["translation_recorded_id"] = cursor.lastrowid
+        context["translation_text"] = args["translated"]
         return f"translation #{cursor.lastrowid} recorded: {args['translated']}"
 
 
