@@ -141,12 +141,16 @@
 
 ## 6. Pitfalls deliberately avoided (others have stepped on these)
 
-| Pitfall | This project's mitigation |
+These are the pitfalls this project set out to avoid. The right-hand column
+says where each one actually stands today — a mitigation that only exists in
+this table is not a mitigation.
+
+| Pitfall | Where this project actually stands |
 |---|---|
-| Hermes 594KB single file | **Hard limit <500 lines/file**, CI-enforced |
-| OpenClaw 40+ provider hooks | **ModelRuntime interface ceiling: 5–8 methods** |
-| OpenClaw 5-layer retry inside orchestrator | **Retry pushed down to runtime layer** |
-| Claw-code word-split token estimation | Use **Gemma SentencePiece real tokenizer** |
+| Hermes 594KB single file | **<500 lines/file** — a self-imposed guideline, **checked by hand, not enforced**. There is no CI in this repo. 9 tracked files are over it today (worst: `TidelineTranslateViewModel.kt` 1254, `cluster.py` 880, `web/app.py` 706) |
+| OpenClaw 40+ provider hooks | Held. `ModelRuntime` has **exactly 1 method** (`generate`); the 5–8 figure is the ceiling I won't cross, not the current size |
+| OpenClaw 5-layer retry inside orchestrator | **Not applicable yet — there is no retry anywhere.** `LlamaCppRuntime.generate` is a single bare call. The intent stands (when retry lands it belongs in the runtime, not the loop), but nothing has been pushed down because nothing exists |
+| Claw-code word-split token estimation | **Not applicable — nothing counts tokens at all.** No SentencePiece, no tokenizer dependency; the loop caps *turns* (`max_turns=5`), not tokens, so there is no budget to estimate |
 
 ---
 
