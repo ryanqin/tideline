@@ -69,6 +69,12 @@ def test_drift_cli_imports_only_public_surface():
         # on untagged rows (deterministic script + model fallback). Same
         # background-lifecycle rationale as promotion / cluster above.
         "tideline.tagging",
+        # The production system message, which the CLI previously carried its
+        # own copy of. Three copies had already drifted (a53c650 taught only
+        # the web's copy to ask for source_lang), so the string moved to one
+        # module that every runner imports — deliberately widening this
+        # surface by one read-only constant to close a drift hole.
+        "tideline.prompts",
     }
     imports: set[str] = set()
     for node in ast.walk(tree):

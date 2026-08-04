@@ -16,6 +16,7 @@ from typing import Any
 
 from tideline.agent import Agent
 from tideline.bench.agent.cases import CASES, AgentCase, ToolCallExpectation
+from tideline.prompts import TIDELINE_SYSTEM
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
@@ -23,15 +24,8 @@ from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 _BUDGET_EXHAUSTED_SENTINEL = "[agent] turn budget exhausted"
 
-# Mirror the CLI's production system message + registered tools exactly.
-# Bench numbers reflect what users actually experience post-scope-narrowing.
-_TIDELINE_SYSTEM = (
-    "You are Tideline, a local-first translation engine. "
-    "When the user provides text to translate: first call the add_translation "
-    "tool with (original, target_lang, translated), then respond to the user "
-    "with only the translated text — no preamble, no quotation marks, no "
-    "commentary."
-)
+# The production system message itself, not a copy of it — that is the
+# point of the bench: it measures the prompt users actually run.
 
 
 class RecordingRegistry(ToolRegistry):
@@ -92,7 +86,7 @@ def _build_agent(runtime: ModelRuntime) -> tuple[Agent, RecordingRegistry, sqlit
         runtime,
         registry=registry,
         context={"db": conn, "source": "text"},
-        system_message=_TIDELINE_SYSTEM,
+        system_message=TIDELINE_SYSTEM,
     )
     return agent, registry, conn
 

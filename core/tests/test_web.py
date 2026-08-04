@@ -628,6 +628,45 @@ def test_drift_agent_stays_transport_agnostic():
         )
 
 
+def test_drift_every_runner_uses_the_one_system_prompt():
+    """Identity, not equality: all three production runners must hold the SAME
+    object, so a change reaches every one of them or none.
+
+    There were three copies. Commit a53c650 (2026-06-08) taught the web's copy
+    to ask for source_lang and left the CLI's and the agent bench's behind, with
+    a commit message saying "system prompt asks for it" — singular. Nothing was
+    red, because nothing was checking. This is the check.
+
+    Mirrors the convention intelligence/ already set (test_source_language.py
+    pins the A3 atom's prompt to the bench's the same way)."""
+    import tideline.bench.agent.runner as agent_bench
+    import tideline.cli.__main__ as cli_main
+    import tideline.prompts as prompts
+    import tideline.web.app as web_app
+
+    assert web_app.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
+    assert cli_main.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
+    assert agent_bench.TIDELINE_SYSTEM is prompts.TIDELINE_SYSTEM
+    # And it really is the narrowed engine prompt, not the old assistant one.
+    assert "source_lang" in prompts.TIDELINE_SYSTEM
+    assert "translation engine" in prompts.TIDELINE_SYSTEM
+
+
+def test_drift_translate_bench_prompt_stays_separate_on_purpose():
+    """The translate bench does NOT share the production prompt, and that is a
+    decision, not an oversight: its published BLEU/chrF numbers were measured
+    under a wider instruction and six registered tools, so adopting the
+    production prompt would void them. If someone unifies it, these numbers
+    must be re-measured — which is what this test is here to make them notice."""
+    import tideline.bench.runner as translate_bench
+    import tideline.prompts as prompts
+
+    assert (
+        translate_bench._TRANSLATE_BENCH_SYSTEM is not prompts.TIDELINE_SYSTEM
+    )
+    assert "translation assistant" in translate_bench._TRANSLATE_BENCH_SYSTEM
+
+
 def test_drift_web_app_runs_same_startup_sweep_as_cli():
     """Both clients must invoke promote_candidates and cluster_sweep on
     startup; otherwise web and CLI users would see different state."""

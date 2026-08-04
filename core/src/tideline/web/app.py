@@ -33,6 +33,7 @@ from tideline.promotion import (
     sink_card,
 )
 from tideline.intelligence.translation_guard import TranslationOutcome
+from tideline.prompts import TIDELINE_SYSTEM
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
@@ -73,15 +74,6 @@ def _render_page(filename: str) -> HTMLResponse:
 
 # L0 identity: the user's first language now persists in the settings table
 # (DEFAULT_NATIVE_LANG until they pick one) and is read/written via /api/identity.
-
-_TIDELINE_SYSTEM = (
-    "You are Tideline, a local-first translation engine. "
-    "When the user provides text to translate: first call the add_translation "
-    "tool with (original, source_lang, target_lang, translated) — source_lang "
-    "is the language the original text is written in — then respond to the user "
-    "with only the translated text — no preamble, no quotation marks, no "
-    "commentary."
-)
 
 # Startup sweeps and the translate path fail soft — which is right, but silent
 # fail-soft leaves nothing to look at when a user reports "scenes never get
@@ -386,7 +378,7 @@ def create_app(
                 runtime,
                 registry=registry,
                 context=context,
-                system_message=_TIDELINE_SYSTEM,
+                system_message=TIDELINE_SYSTEM,
             )
             # Tideline turns every language into *yours*: the target is always
             # the user's first language (from settings), never a per-request

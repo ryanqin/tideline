@@ -7,23 +7,13 @@ from tideline.agent import Agent
 from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
 from tideline.promotion import auto_promote_cards, heal_casing_splits, promote_candidates
+from tideline.prompts import TIDELINE_SYSTEM
 from tideline.runtimes import get_runtime
 from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
 _DEFAULT_DB = Path(".tideline") / "drawers.db"
-
-# Tideline is a translation engine, not a chatbot. The system message is
-# tight on purpose: one job (translate + record), strict output discipline
-# (no preamble, no commentary), no invitation to converse.
-_TIDELINE_SYSTEM = (
-    "You are Tideline, a local-first translation engine. "
-    "When the user provides text to translate: first call the add_translation "
-    "tool with (original, target_lang, translated), then respond to the user "
-    "with only the translated text — no preamble, no quotation marks, no "
-    "commentary."
-)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -99,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime,
         registry=registry,
         context={"db": conn, "source": "text"},
-        system_message=_TIDELINE_SYSTEM,
+        system_message=TIDELINE_SYSTEM,
     )
     print(agent.run(args.prompt))
     conn.close()

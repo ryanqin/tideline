@@ -33,8 +33,14 @@ from tideline.tools import (
 _DATA_DIR = Path(__file__).resolve().parent / "data"
 _TIERS = ("phrases", "sentences")
 
-# Same system message the CLI uses, so bench results reflect production behavior.
-_TIDELINE_SYSTEM = (
+# NOT the production system message — deliberately. This bench measures
+# translation QUALITY (BLEU/chrF) under a wider, older instruction, and it
+# registers six tools where production registers one. Its published E2B/E4B
+# numbers are only comparable to each other; swapping in prompts.TIDELINE_SYSTEM
+# would void them, so the swap is a decision to make on purpose and re-measure,
+# not a tidy-up. What it does NOT measure is production behaviour, which is the
+# agent bench's job (bench/agent/, which does use the production prompt).
+_TRANSLATE_BENCH_SYSTEM = (
     "You are Tideline, a local-first translation assistant. "
     "When the user explicitly asks to translate text, perform the translation "
     "yourself, then call the add_translation tool to record "
@@ -103,7 +109,7 @@ def _build_agent(runtime: ModelRuntime) -> tuple[Agent, sqlite3.Connection]:
         runtime,
         registry=registry,
         context={"db": conn},
-        system_message=_TIDELINE_SYSTEM,
+        system_message=_TRANSLATE_BENCH_SYSTEM,
     )
     return agent, conn
 

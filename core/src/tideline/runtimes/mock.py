@@ -68,9 +68,20 @@ class MockRuntime(ModelRuntime):
             # the original — yet reversing keeps each word mapping to a distinct
             # output, so distinct concepts don't fuse on identical text.
             translated = f"[mock-translated to {target_lang}] {original[::-1]}"
+            # The production prompt asks for source_lang and a real model does
+            # report it (E2B fills it on every capture). Mock used to omit the
+            # field entirely, so every mock-driven test skipped the normalize
+            # step that real captures go through. It emits a deliberately
+            # unrecognizable placeholder rather than faking a language name:
+            # normalize_language drops it, detect_script decides, and a Latin
+            # word still lands NULL — which is exactly what happens when a real
+            # model can't tell either, and what the startup tag sweep exists to
+            # backfill. Faking "Spanish" for every capture would seed dev
+            # databases with a wrong bucket key.
             return (
                 f"{TOOL_CALL_OPEN}call:add_translation{{"
                 f"original:{STRING_DELIM}{original}{STRING_DELIM},"
+                f"source_lang:{STRING_DELIM}mock-source{STRING_DELIM},"
                 f"target_lang:{STRING_DELIM}{target_lang}{STRING_DELIM},"
                 f"translated:{STRING_DELIM}{translated}{STRING_DELIM}"
                 f"}}{TOOL_CALL_CLOSE}"
