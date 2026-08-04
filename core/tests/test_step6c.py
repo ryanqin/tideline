@@ -137,3 +137,42 @@ def test_translate_cli_still_works_with_auto_promote():
     """Auto-promote on startup must not interfere with the translation flow."""
     assert _cli("hello").stdout.strip() == "[mock] echo: hello"
     assert "[mock-translated to zh] olleh" in _cli("translate hello to zh").stdout
+
+
+# --- Occasion boundaries reach the CLI too -------------------------------
+
+
+def test_cli_captures_share_a_sitting_instead_of_promoting_on_repetition(tmp_path):
+    """Three captures of one word at the CLI are ONE occasion, not three.
+
+    The CLI stamped no session_id, and NULL is not neutral here: promotion
+    counts DISTINCT sessions and falls back to a per-row pseudo-session when
+    the id is missing (`COALESCE(session_id, 'row#' || id)`). So typing the
+    same word three times promoted it straight to a card, while the identical
+    three captures on the web — one sitting, one session — correctly counted
+    as one. The threshold is meant to mean "met on three occasions"; without a
+    session id it meant "typed three times".
+    """
+    db = tmp_path / "cli.db"
+    for _ in range(3):
+        result = _cli("translate ラーメン to Chinese", db=str(db))
+        assert result.returncode == 0, result.stderr
+
+    conn = sqlite3.connect(db)
+    try:
+        sessions = conn.execute(
+            "SELECT DISTINCT session_id FROM translations "
+            "WHERE original = 'ラーメン'"
+        ).fetchall()
+        assert len(sessions) == 1, f"one sitting, one session id; got {sessions}"
+        assert sessions[0][0] is not None, "CLI captures must carry a session"
+
+        promoted = conn.execute(
+            "SELECT COUNT(*) FROM candidates WHERE original = 'ラーメン'"
+        ).fetchone()[0]
+        assert promoted == 0, (
+            "three captures in one sitting are one occasion — the word should "
+            "not have crossed the promotion threshold yet"
+        )
+    finally:
+        conn.close()

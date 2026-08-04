@@ -53,6 +53,7 @@ def test_drift_cli_imports_only_public_surface():
         "sys",
         "sqlite3",
         "pathlib",
+        "datetime",  # "now", for the session boundary below
         "tideline.agent",
         "tideline.runtimes",
         "tideline.tools",
@@ -69,6 +70,10 @@ def test_drift_cli_imports_only_public_surface():
         # on untagged rows (deterministic script + model fallback). Same
         # background-lifecycle rationale as promotion / cluster above.
         "tideline.tagging",
+        # Occasion boundaries. The CLI stamped no session_id at all, and
+        # promotion counts DISTINCT sessions — a NULL falls back to a per-row
+        # pseudo-session, so CLI captures promoted on repetition alone.
+        "tideline.session",
         # The startup sweep those three now live behind. It was written out in
         # both the CLI and the web app, with a comment in each promising they
         # matched; they had drifted on connection settings. One function, two

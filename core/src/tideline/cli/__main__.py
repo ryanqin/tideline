@@ -1,6 +1,7 @@
 import argparse
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from tideline.agent import Agent
@@ -8,6 +9,7 @@ from tideline.boot import startup_sweep
 from tideline.cluster import init_db as init_cluster_db
 from tideline.prompts import TIDELINE_SYSTEM
 from tideline.runtimes import get_runtime
+from tideline.session import live_session_id
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
@@ -51,10 +53,21 @@ def main(argv: list[str] | None = None) -> int:
 
     # source="text" is the CLI's input modality. Future Android/HTTP entry
     # points override this to "image" or "audio" via their own context.
+    #
+    # session_id was missing here, and its absence wasn't neutral: promotion
+    # counts DISTINCT sessions and falls back to a per-row pseudo-session when
+    # the id is NULL (promotion.py, `COALESCE(session_id, 'row#' || id)`), so
+    # the same word typed three times at the CLI read as three separate
+    # occasions and promoted straight to a card — where the same three
+    # captures in one sitting on the web correctly count as one.
     agent = Agent(
         runtime,
         registry=registry,
-        context={"db": conn, "source": "text"},
+        context={
+            "db": conn,
+            "source": "text",
+            "session_id": live_session_id(conn, datetime.now()),
+        },
         system_message=TIDELINE_SYSTEM,
     )
     print(agent.run(args.prompt))
