@@ -114,8 +114,8 @@
 ## 5. Three borrowings (standing on shoulders)
 
 ### From **OpenClaw**
-- ✓ **Capability-indexed tool registry**: tools indexed by **capability class** (e.g. `search` / `translate`), not by plugin id
-- ✓ **Delivery vs. Events dual channel**: user-facing output and debug stream are split
+- 🪦 **Capability-indexed tool registry** — *built, then removed 2026-08-04.* Tools were indexed by capability class alongside name. Nothing ever read that index: `get_by_capability` had zero callers outside tests, and the five that existed only asserted the index was there. Six of the seven tools declared the same capability (`memory`), so the dimension had no discriminating power to offer even if something had asked. Dispatch is by name, which is what the model emits. `Tool.capability` stays as a label on the class; the second index it fed is gone. **The lesson kept: an index needs a reader before it needs a design.**
+- 🪦 **Delivery vs. Events dual channel** — *never built.* `Agent.run` returns a string; there is no event stream and no inspector. The need it was meant to serve is real (a tool's bookkeeping line can currently reach the user as if it were the answer under the mock runtime), but nothing here implements it.
 
 ### From **Hermes** (most aligned with our product principle)
 - ✓ **Memory-as-tools**: agent decides what to remember via explicit tools like `add_drawer`

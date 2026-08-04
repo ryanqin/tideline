@@ -5,10 +5,9 @@ Functional gates:
 - ListDrawersTool reads rows back, ordered by id
 - End-to-end via Mock + Agent: "remember: hello" then "list drawers" both work
 
-Drift gates:
-- Two tools sharing capability "memory" both surface from get_by_capability —
-  the real-world pressure test that capability-indexed registry holds up
-  when more than one tool occupies the same capability slot.
+The capability gate that used to sit here — two tools sharing "memory"
+both surfacing from get_by_capability — went with the index in 2026-08-04.
+It read as a pressure test and was in fact the index's only consumer.
 """
 
 from __future__ import annotations
@@ -61,21 +60,6 @@ def test_list_drawers_returns_in_id_order(conn):
 
 
 # --- Drift gate: capability-indexed under multi-tool pressure -------------
-
-
-def test_drift_memory_capability_holds_two_tools():
-    """Add and list both register under 'memory'. get_by_capability must
-    return both — the real check on whether L2's capability index works
-    when a capability has multiple inhabitants (not just multi-tool noop
-    via test scaffolding, but actual production tools)."""
-    registry = ToolRegistry()
-    registry.register(AddDrawerTool)
-    registry.register(ListDrawersTool)
-
-    memory_tools = registry.get_by_capability("memory")
-    assert len(memory_tools) == 2
-    assert AddDrawerTool in memory_tools
-    assert ListDrawersTool in memory_tools
 
 
 def test_drift_memory_tools_have_distinct_names():

@@ -3,8 +3,12 @@
 A row lands here only when the user *explicitly* promotes a candidate (the
 "nod" from DESIGN.md §3.1 — cards are the only tier that enters the review
 system; drawers and candidates never do). This file owns the table schema and
-the read-back tool; the promotion writer (`tideline.promotion.promote_to_card`)
+the review schedule; the promotion writer (`tideline.promotion.promote_to_card`)
 is separate, mirroring how the candidates table and its night-watch writer split.
+
+It used to also carry a ListCardsTool. Nothing ever registered it — not the
+CLI, not the web, not a test — because the deck is read by the UI straight
+from SQL and was never meant to arrive through dialogue (DESIGN.md §3.1).
 
 **Episodic anchoring (DESIGN.md §3.2):** a card stores `candidate_id`, so its
 provenance — the stack of lived moments — is reachable live through
@@ -19,7 +23,6 @@ import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
 
-from tideline.tools.base import Tool
 
 
 # Spaced-repetition schedule (DESIGN §10.3): a gentle Leitner ladder mapping a
@@ -155,24 +158,3 @@ def due_cards(
         }
         for r in rows
     ]
-
-
-class ListCardsTool(Tool):
-    name = "list_cards"
-    capability = "memory"
-    schema: dict[str, str] = {}
-    description = (
-        "List cards the user has promoted for review — the terms they have "
-        "explicitly chosen to learn. Use when the user asks what they are "
-        "actively studying."
-    )
-
-    def run(self, args: dict[str, Any], context: dict[str, Any]) -> str:
-        conn: sqlite3.Connection = context["db"]
-        rows = conn.execute(
-            "SELECT original, target_lang, translated FROM cards "
-            "WHERE state = 'active' ORDER BY created_at DESC, original"
-        ).fetchall()
-        if not rows:
-            return "no cards yet"
-        return "\n".join(f"'{r[0]}' → ({r[1]}) '{r[2]}'" for r in rows)

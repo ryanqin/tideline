@@ -5,10 +5,13 @@ turn loop (Mock emits a tool_call, registry dispatches noop, result feeds
 back, Mock wraps up) and returns "noop done" within the turn budget.
 
 Drift gates:
-1. Registry is **capability-indexed** — get_by_capability returns a list,
-   not a single tool. Multiple tools per capability is the OpenClaw promise.
-2. The OpenAI JSON-schema interlayer is gone. Catches accidental reintroduction
-   of `from openai`, `model_json_schema(`, or `json_schema` anywhere in src/.
+- The OpenAI JSON-schema interlayer is gone. Catches accidental reintroduction
+  of `from openai`, `model_json_schema(`, or `json_schema` anywhere in src/.
+
+A capability-index gate used to sit here too, asserting that
+get_by_capability returned a list. It was removed with the index it
+guarded (2026-08-04): the index had no reader in src/, and these gates
+were the only thing keeping it alive. See ARCHITECTURE §5.
 """
 
 from __future__ import annotations
@@ -69,32 +72,6 @@ def test_registry_all_declarations_includes_registered_tool():
 
 
 # --- Drift gates ----------------------------------------------------------
-
-
-def test_drift_registry_indexed_by_capability():
-    """Multiple tools per capability all surface via get_by_capability."""
-
-    class AltNoop(Tool):
-        name = "noop_alt"
-        capability = "noop"
-        schema: dict[str, str] = {}
-        description = "An alternative no-op."
-
-        def run(self, args: dict[str, Any]) -> str:
-            return "alt noop done"
-
-    reg = ToolRegistry()
-    reg.register(NoopTool)
-    reg.register(AltNoop)
-
-    by_cap = reg.get_by_capability("noop")
-    assert isinstance(by_cap, list)
-    assert NoopTool in by_cap
-    assert AltNoop in by_cap
-    assert len(by_cap) == 2
-
-    by_cap_missing = reg.get_by_capability("does_not_exist")
-    assert by_cap_missing == []
 
 
 def test_drift_no_openai_schema_dependency():

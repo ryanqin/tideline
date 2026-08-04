@@ -1,9 +1,15 @@
-"""Tool base class and capability-indexed registry.
+"""Tool base class and registry.
 
-Registry indexes by **capability class**, not just by name (the OpenClaw
-borrow). Tools sharing a capability all surface via `get_by_capability()`.
-Name lookup is also exposed because the model emits a specific
-`call:NAME{...}` and we need to dispatch on that exact name.
+Dispatch is by name, because that is what the model emits: a specific
+`call:NAME{...}` that has to reach a specific tool.
+
+There used to be a second index, by "capability class" — borrowed from
+OpenClaw and advertised in ARCHITECTURE as this project's headline
+borrowing. It was never read: `get_by_capability` had zero callers in
+src/, and its only five uses were tests asserting the index existed. Six
+of seven tools declared the same capability ("memory"), so the dimension
+had no discriminating power either. `Tool.capability` survives as a label
+worth keeping on the class; the index it fed does not.
 
 Tools receive a `context` dict at invocation time — that's where shared
 resources (DB connection, http client, etc.) get threaded through. The
@@ -37,19 +43,14 @@ class Tool(ABC):
 class ToolRegistry:
     def __init__(self) -> None:
         self._by_name: dict[str, type[Tool]] = {}
-        self._by_capability: dict[str, list[type[Tool]]] = {}
 
     def register(self, tool_class: type[Tool]) -> None:
         if tool_class.name in self._by_name:
             raise ValueError(f"Tool name '{tool_class.name}' already registered")
         self._by_name[tool_class.name] = tool_class
-        self._by_capability.setdefault(tool_class.capability, []).append(tool_class)
 
     def get_by_name(self, name: str) -> type[Tool] | None:
         return self._by_name.get(name)
-
-    def get_by_capability(self, capability: str) -> list[type[Tool]]:
-        return list(self._by_capability.get(capability, []))
 
     def all_declarations(self) -> str:
         return "\n".join(

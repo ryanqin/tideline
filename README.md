@@ -58,14 +58,26 @@ Two abstract interfaces hold this together: `ModelRuntime` (LlamaCpp / MediaPipe
 
 **Middle ring — the six-layer agent framework** (this is the part I'm actually here to build):
 
+This was the plan. Three of the six layers were never built, and one was built
+and removed — so here is the plan with what actually stands under it, because
+a diagram that describes an intention reads as a description of the code:
+
 ```
-  L6  Rules-as-Data            markdown rules, hot-reload
-  L5  Delivery / Events        user-facing output vs inspector stream
-  L4  Memory-as-Tools          agent decides what to remember, via tools
-  L3  Orchestrator             turn loop + token budget + permission ctx
-  L2  Tool System              capability-indexed registry
-  L1  Runtime Abstraction      5–8 method ceiling, provider fallback
+  L6  Rules-as-Data            ✗ never built — thresholds are constants in code
+  L5  Delivery / Events        ✗ never built — Agent.run returns a string
+  L4  Memory-as-Tools          ✓ add_translation; the agent holds custody
+  L3  Orchestrator             ~ turn loop only; no token budget, no permissions
+  L2  Tool System              ✓ registry, by name (capability index removed —
+                                 nothing ever read it; ARCHITECTURE §5)
+  L1  Runtime Abstraction      ✓ one method, `generate` — well under the ceiling
+                                 (no provider fallback chain; there is one impl)
 ```
+
+The honest summary is that the framework is a ~60-line turn loop, a registry,
+and a one-method runtime interface. That is enough for what this product asks
+of it — the load is carried by deterministic engineering, with single-shot
+model calls as garnish — and the layers above L4 were solving problems this
+product turned out not to have.
 
 **Inner ring — four-layer memory** with the deliberate property that **99% of captured content stays in `drawers` and is never promoted**. SRS only kicks in for `cards` that the user has explicitly nodded at.
 
@@ -76,10 +88,12 @@ Two abstract interfaces hold this together: `ModelRuntime` (LlamaCpp / MediaPipe
                                                           └─ cards (SRS-eligible, user-confirmed)
 ```
 
-Three projects I'm explicitly borrowing shape from, with notes in [ARCHITECTURE.md §5](ARCHITECTURE.md):
-- **OpenClaw** — capability-indexed tool registry, Delivery/Events split
-- **Hermes** — memory-as-tools, rules-as-markdown, provider fallback chain
-- **Claw-code** — turn-based loop with token budgeting, `ToolPermissionContext`
+Three projects I read for shape. What survived contact is a shorter list than
+what I set out to take — [ARCHITECTURE.md §5](ARCHITECTURE.md) keeps the
+tombstones, which are the more useful half:
+- **OpenClaw** — capability-indexed registry (built, then removed: nothing read it), Delivery/Events split (never built)
+- **Hermes** — memory-as-tools ✓; rules-as-markdown and the provider fallback chain never built
+- **Claw-code** — the turn loop ✓; token budgeting and `ToolPermissionContext` never built
 
 ---
 

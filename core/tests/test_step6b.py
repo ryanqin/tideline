@@ -372,19 +372,6 @@ def test_list_candidates_sorted_by_count_desc(conn):
 # --- Drift gates ----------------------------------------------------------
 
 
-def test_drift_memory_capability_now_houses_five_tools():
-    registry = ToolRegistry()
-    registry.register(AddDrawerTool)
-    registry.register(ListDrawersTool)
-    registry.register(AddTranslationTool)
-    registry.register(ListTranslationsTool)
-    registry.register(ListCandidatesTool)
-
-    memory_tools = registry.get_by_capability("memory")
-    assert len(memory_tools) == 5
-    assert ListCandidatesTool in memory_tools
-
-
 def test_drift_agent_has_no_candidate_or_translation_knowledge():
     """agent.py must contain no product-domain vocabulary. Translation already
     proven absent in Step 5; this gate extends to candidate/promotion."""

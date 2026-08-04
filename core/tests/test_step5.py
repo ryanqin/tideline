@@ -81,22 +81,6 @@ def test_list_translations_returns_in_id_order(conn):
 # --- Drift gates ----------------------------------------------------------
 
 
-def test_drift_memory_capability_now_houses_four_tools():
-    """Multi-tool drift gate at production scale: 4 tools share `memory`."""
-    registry = ToolRegistry()
-    registry.register(AddDrawerTool)
-    registry.register(ListDrawersTool)
-    registry.register(AddTranslationTool)
-    registry.register(ListTranslationsTool)
-
-    memory_tools = registry.get_by_capability("memory")
-    assert len(memory_tools) == 4
-    assert AddDrawerTool in memory_tools
-    assert ListDrawersTool in memory_tools
-    assert AddTranslationTool in memory_tools
-    assert ListTranslationsTool in memory_tools
-
-
 def test_drift_agent_has_no_translation_knowledge():
     """agent.py must not encode product-level translation semantics —
     those live in the CLI's system message and tool descriptions."""
