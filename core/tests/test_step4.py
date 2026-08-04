@@ -47,33 +47,107 @@ def llama_cpp_runtime():
 
 @requires_gemma
 def test_real_gemma_loads_and_generates(llama_cpp_runtime):
-    """Smoke: model loads via llama-cpp-python and produces non-empty text."""
+    """Smoke: model loads via llama-cpp-python and produces real text.
+
+    `len(output) > 0` alone would pass for a prompt echo, which is what a
+    broken framing produces — so this also insists the reply isn't just the
+    prompt handed back."""
     output = llama_cpp_runtime.generate(
         "<|turn>user\nhello<turn|>\n<|turn>model\n"
     )
     assert isinstance(output, str)
-    assert len(output) > 0
+    assert output.strip(), "empty generation"
+    assert "<|turn>user" not in output, "model echoed the prompt framing back"
+
+
+@requires_gemma
+def test_protocol_delimiters_are_single_tokens_in_the_shipped_weights():
+    """The one guard that turns red the moment the model package changes.
+
+    format.py frames every turn with literals like `<|turn>` and `<|tool_call>`
+    and assumes the model sees each as ONE control token, not as a handful of
+    subwords it has to spell. That assumption is a property of the GGUF, not of
+    our code: Gemma 3's `<start_of_turn>` splits into 7 pieces in Gemma 4's
+    vocabulary, so a re-quantized or re-packaged model can quietly invalidate
+    the whole protocol while every mock-driven test stays green.
+
+    `<turn|>` being end-of-generation is the other half: it is what makes the
+    loop stop cleanly at the end of a model turn instead of running on into the
+    next role.
+
+    Criterion fixed before running: every delimiter exactly one token.
+    """
+    import llama_cpp
+
+    from tideline import format as fmt
+
+    vocab_only = llama_cpp.Llama(
+        model_path=str(GEMMA_PATH), vocab_only=True, verbose=False
+    )
+    delimiters = {
+        name: getattr(fmt, name)
+        for name in (
+            "STRING_DELIM", "TURN_OPEN", "TURN_CLOSE",
+            "TOOL_CALL_OPEN", "TOOL_CALL_CLOSE",
+            "TOOL_DECL_OPEN", "TOOL_DECL_CLOSE",
+            "TOOL_RESPONSE_OPEN", "TOOL_RESPONSE_CLOSE",
+        )
+    }
+    split = {}
+    for name, literal in delimiters.items():
+        tokens = vocab_only.tokenize(literal.encode(), add_bos=False, special=True)
+        if len(tokens) != 1:
+            split[name] = (literal, tokens)
+    assert not split, (
+        f"these protocol delimiters are no longer single control tokens in "
+        f"{GEMMA_PATH.name}: {split}. The framing in format.py assumes the "
+        f"model reads them as tokens, not as text it has to spell."
+    )
+
+    close = vocab_only.tokenize(
+        fmt.TURN_CLOSE.encode(), add_bos=False, special=True
+    )[0]
+    assert llama_cpp.llama_vocab_is_eog(vocab_only._model.vocab, close), (
+        f"{fmt.TURN_CLOSE} is no longer end-of-generation; the agent loop "
+        f"relies on it to stop at the end of a model turn."
+    )
 
 
 @requires_gemma
 def test_real_gemma_full_agent_loop(llama_cpp_runtime):
     """The Mock-first strategy validation: real Gemma + our parser + our
-    registry should drive a noop tool call when asked. If our fixture format
-    matches reality, this passes; if not, it reveals exactly what's different.
+    registry drive an actual tool call when asked.
+
+    This used to assert only that the budget sentinel was absent, which a run
+    that never called a tool at all also satisfies — a model replying "Sure, I
+    would call the noop tool now." passed it while the protocol was completely
+    broken. What it has to check is that the tool RAN.
     """
     from tideline.agent import Agent
     from tideline.tools import NoopTool, ToolRegistry
 
-    registry = ToolRegistry()
-    registry.register(NoopTool)
-    agent = Agent(llama_cpp_runtime, registry=registry, max_turns=3)
+    calls: list[str] = []
 
-    result = agent.run("Please call the noop tool.")
-    assert "[agent] turn budget exhausted" not in result, (
-        "Agent ran out of turns — real Gemma likely didn't emit a parseable "
-        "tool_call. Check raw output to see how the format diverges from our "
-        "fixture assumptions."
+    class _CountingRegistry(ToolRegistry):
+        def invoke(self, name, args, context=None):
+            calls.append(name)
+            return super().invoke(name, args, context)
+
+    registry = _CountingRegistry()
+    registry.register(NoopTool)
+    result = Agent(llama_cpp_runtime, registry=registry, max_turns=3).run_result(
+        "Please call the noop tool."
     )
+
+    assert result.finish_reason == "stop", (
+        "Agent ran out of turns — real Gemma likely didn't emit a parseable "
+        "tool_call. Check raw output to see how the format diverges."
+    )
+    assert calls == ["noop"], (
+        f"the noop tool was never invoked (calls={calls}); real Gemma's output "
+        f"did not parse into a tool call our registry could dispatch."
+    )
+    assert not result.tool_errors, f"tool dispatch errored: {result.tool_errors}"
 
 
 def test_runtime_registry_recognizes_llama_cpp_name():
