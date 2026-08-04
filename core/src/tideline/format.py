@@ -125,11 +125,47 @@ def _coerce_scalar(s: str) -> Any:
     return s
 
 
-def serialize_tool_declaration(name: str, schema: dict[str, str]) -> str:
-    parts = [
-        f"{key}:{STRING_DELIM}{type_}{STRING_DELIM}"
+def serialize_tool_declaration(
+    name: str,
+    schema: dict[str, str],
+    description: str = "",
+    required: tuple[str, ...] = (),
+) -> str:
+    """Render a tool the way Gemma 4's own chat template renders one.
+
+    The shape here is lifted from `format_function_declaration` in the
+    template embedded in the GGUF:
+
+        declaration:NAME{description:<|"|>…<|"|>,parameters:{
+            properties:{arg:{type:<|"|>STRING<|"|>},…},
+            required:[<|"|>arg<|"|>,…],type:<|"|>OBJECT<|"|>}}
+
+    It used to emit a flat `{arg:<|"|>string<|"|>,…}` — field names and the
+    word "string", eight times over, and nothing else. The model was never
+    told what the tool is FOR or which arguments it must fill, even though
+    both were written down on the Tool class and simply never sent. For a
+    small model choosing a tool and filling its arguments, that is the load
+    it needs most.
+
+    `description` and `required` can't be added without the nesting: dropped
+    into the flat form, `description` reads as one more parameter name.
+    """
+    properties = ",".join(
+        f"{key}:{{type:{STRING_DELIM}{type_.upper()}{STRING_DELIM}}}"
         for key, type_ in schema.items()
-    ]
+    )
+    parts = []
+    if description:
+        parts.append(f"description:{STRING_DELIM}{description}{STRING_DELIM}")
+    inner = []
+    if properties:
+        inner.append(f"properties:{{{properties}}}")
+    if required:
+        names = ",".join(f"{STRING_DELIM}{r}{STRING_DELIM}" for r in required)
+        inner.append(f"required:[{names}]")
+    if inner:
+        inner.append(f"type:{STRING_DELIM}OBJECT{STRING_DELIM}")
+        parts.append(f"parameters:{{{','.join(inner)}}}")
     body = ",".join(parts)
     return f"{TOOL_DECL_OPEN}declaration:{name}{{{body}}}{TOOL_DECL_CLOSE}"
 

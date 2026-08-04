@@ -67,9 +67,9 @@ def test_translation_cases_expect_add_translation():
 
 
 def test_translation_arg_check_accepts_lang_variants():
-    """T1 expects add_translation with target_lang signaling Chinese.
+    """T1P1 expects add_translation with target_lang signaling Chinese.
     'zh', 'chinese', 'Chinese' should all match."""
-    t1 = next(c for c in CASES if c.id == "T1")
+    t1 = next(c for c in CASES if c.id == "T1P1")
     add_tr = next(e for e in t1.expected_tool_calls if e.name == "add_translation")
     assert add_tr.args_check is not None
     assert add_tr.args_check({"original": "hello", "target_lang": "zh"})
@@ -80,8 +80,8 @@ def test_translation_arg_check_accepts_lang_variants():
 
 
 def test_translation_arg_check_handles_quoted_original():
-    """T4 has prompt with 'thank you' in quotes; the matcher should strip."""
-    t4 = next(c for c in CASES if c.id == "T4")
+    """T4P2 has prompt with 'thank you' in quotes; the matcher should strip."""
+    t4 = next(c for c in CASES if c.id == "T4P2")
     add_tr = next(e for e in t4.expected_tool_calls if e.name == "add_translation")
     assert add_tr.args_check({"original": "thank you", "target_lang": "german"})
     assert add_tr.args_check({"original": "'thank you'", "target_lang": "de"})
@@ -125,11 +125,11 @@ def test_recording_registry_args_are_copied_not_referenced():
 
 def test_run_case_returns_populated_result():
     runtime = get_runtime("mock")
-    case = next(c for c in CASES if c.id == "T1")
+    case = next(c for c in CASES if c.id == "T1P1")
     result = run_case(runtime, case)
 
     assert isinstance(result, CaseResult)
-    assert result.case_id == "T1"
+    assert result.case_id == "T1P1"
     assert result.category == "translation_flow"
     assert result.prompt == case.prompt
     assert result.num_tool_calls >= 1   # Mock fires add_translation
@@ -139,11 +139,12 @@ def test_run_case_returns_populated_result():
 
 
 def test_mock_passes_simple_translation_pattern():
-    """T1-T3, T5 use the literal 'translate X to Y' shape Mock's regex handles.
-    Not all T cases (T4 uses 'into' instead of 'to') — Mock is a unit-test
-    stub, not an NLP-quality parser. Real models are what the bench measures."""
+    """The P1 phrasing ("translate X to Y") is the literal shape Mock's regex
+    handles, and it is also the one production sends. The other four phrasings
+    are deliberately outside it — Mock is a unit-test stub, not an NLP-quality
+    parser, and real models are what the bench measures."""
     runtime = get_runtime("mock")
-    for case_id in ("T1", "T2", "T3", "T5"):
+    for case_id in ("T1P1", "T2P1", "T3P1", "T5P1"):
         case = next(c for c in CASES if c.id == case_id)
         result = run_case(runtime, case)
         assert result.expected_tools_called, (

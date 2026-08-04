@@ -60,7 +60,12 @@ def test_registry_invoke_unknown_tool_raises():
 def test_registry_all_declarations_includes_registered_tool():
     reg = ToolRegistry()
     reg.register(NoopTool)
-    assert "<|tool>declaration:noop{}<tool|>" in reg.all_declarations()
+    # NoopTool has no schema and no required args, so all the declaration
+    # carries is what the tool is for — which is exactly the part that
+    # never used to be sent at all.
+    decl = reg.all_declarations()
+    assert decl.startswith("<|tool>declaration:noop{description:")
+    assert NoopTool.description in decl
 
 
 # --- Drift gates ----------------------------------------------------------

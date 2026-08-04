@@ -68,8 +68,20 @@ WEATHER_RESPONSE = (
 
 # --- Tool declarations (sent in the system turn / prompt header) -----------
 
-# How a single tool's schema appears in the prompt. Note the same
-# mini-grammar — types are written as quoted strings via <|"|>.
+# How a single tool's schema appears in the prompt, per the published
+# mini-grammar. Note the same grammar — types are written as quoted strings.
+#
+# VERIFIED 2026-08-04, and the docs are a simplification: the jinja template
+# actually embedded in gemma-4-E2B-it-Q4_K_M.gguf emits a richer form from its
+# `format_function_declaration` macro —
+#
+#   declaration:NAME{description:<|"|>…<|"|>,parameters:{
+#       properties:{arg:{type:<|"|>STRING<|"|>},…},
+#       required:[<|"|>arg<|"|>,…],type:<|"|>OBJECT<|"|>}}
+#
+# That is the shape the model was trained on, so it is the one
+# format.serialize_tool_declaration emits. This constant is kept as the
+# documented grammar it came from, not as the target.
 WEATHER_DECLARATION = (
     '<|tool>declaration:get_current_weather{'
     'location:<|"|>string<|"|>}<tool|>'

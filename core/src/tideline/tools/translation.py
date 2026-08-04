@@ -107,6 +107,7 @@ class AddTranslationTool(Tool):
         "e.g. 拉面店 / 车站 / 咖啡馆 — the same kind of place gets the same "
         "label so it clusters across visits)."
     )
+    required = ("original", "source_lang", "target_lang", "translated")
 
     def run(self, args: dict[str, Any], context: dict[str, Any]) -> str:
         conn: sqlite3.Connection = context["db"]

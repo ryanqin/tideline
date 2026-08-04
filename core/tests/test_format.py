@@ -74,9 +74,29 @@ def test_serialize_tool_declaration_empty_schema():
     assert out == "<|tool>declaration:noop{}<tool|>"
 
 
-def test_serialize_tool_declaration_with_string_param():
-    out = serialize_tool_declaration("get_current_weather", {"location": "string"})
-    assert out == '<|tool>declaration:get_current_weather{location:<|"|>string<|"|>}<tool|>'
+def test_serialize_tool_declaration_matches_the_shipped_chat_template():
+    """The declaration shape comes from `format_function_declaration` in the
+    jinja template embedded in the Gemma 4 GGUF — the form the model was
+    trained to read — not from the simplified `declaration:NAME{key:type}`
+    written in the docs (see the note on WEATHER_DECLARATION)."""
+    out = serialize_tool_declaration(
+        "get_current_weather",
+        {"location": "string"},
+        description="Get the weather somewhere.",
+        required=("location",),
+    )
+    assert out == (
+        '<|tool>declaration:get_current_weather{'
+        'description:<|"|>Get the weather somewhere.<|"|>,'
+        'parameters:{properties:{location:{type:<|"|>STRING<|"|>}},'
+        'required:[<|"|>location<|"|>],type:<|"|>OBJECT<|"|>}}<tool|>'
+    )
+
+
+def test_serialize_tool_declaration_omits_what_it_was_not_given():
+    """A tool with no description and no required list still renders."""
+    out = serialize_tool_declaration("noop", {})
+    assert out == "<|tool>declaration:noop{}<tool|>"
 
 
 def test_serialize_tool_response():

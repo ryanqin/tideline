@@ -179,19 +179,53 @@ moved to the atomic bench's Tier B (direct LLM operations, no harness).
 - **budget_exhaustion_rate**: cases that hit max_turns without resolving
 - **mean num_tool_calls / response_words**: distributional shape
 
-## Reference numbers — E2B vs E4B, 2026-05-11 (post-narrowing)
+## Reference numbers
 
-| Metric | n | E2B | E4B |
+**The 2026-05-11 numbers (n=5, E2B 80.0%) are void.** Not because they were
+wrong, but because n=5 meant one case was 20 points: that instrument could
+only report in ±20% steps, so it could never have told a real change from a
+coin flip. It is 30 cases now — 6 terms (Latin, accented, kana, kanji, hangul,
+multi-word) × 5 phrasings, with P1 being the phrasing production actually
+sends.
+
+### E2B, 30 cases, 2026-08-04
+
+| Metric | before | after | Δ |
 |---|---:|---:|---:|
-| task_success_rate | 5 | 80.0% | **100.0%** |
-| wrong_tool_rate | 5 |  20.0% |   0.0% |
-| budget_exhaustion_rate | 5 |   0.0% |   0.0% |
-| mean num_tool_calls | 5 | 1.00 | 1.00 |
-| mean response_words | 5 | 3.0 | 1.0 |
+| task_success_rate | 76.7% (23/30) | **83.3% (25/30)** | **+2 cases** |
+| wrong_tool_rate | 6.7% | 6.7% | 0 |
+| budget_exhaustion_rate | 0.0% | 0.0% | 0 |
+| mean num_tool_calls | 0.83 | 0.90 | +0.07 |
+| declaration length | 268 chars | 1095 chars | ×4.1 |
 
-E4B is uniformly stronger; the same E4B "high gear" pattern from translate
-bench holds for tool-call correctness. The single E2B wrong-tool case is
-likely an OCR-style off-by-one on the `original` arg.
+"Before" and "after" are the tool declaration: it used to send eight field
+names and the word `string` eight times, and nothing else. It now sends what
+the tool is FOR and which arguments are required — both of which were written
+on the Tool class all along and simply never reached the model — in the shape
+`format_function_declaration` emits in the GGUF's own jinja template.
+
+**This measurement was pre-registered.** The decision rule (adopt at ≥+2
+cases with no rise in wrong-tool or budget-exhaustion; revert at ≤−2; revert
+as underpowered in between) was fixed in writing before the change was
+implemented, and the baseline was run twice first to size the noise. Both
+baseline runs were identical, and both treatment runs were identical:
+**run-to-run variance is 0 cases**, so +2 is the whole signal.
+
+The cost is real and is the reason this needed measuring rather than
+assuming: every prompt carries ~830 more characters, which on-device is
+latency. It bought two cases; a bigger description would not necessarily buy
+more.
+
+Not separable, by construction: `description` cannot be added to the old flat
+`{arg:<|"|>string<|"|>}` form without reading as another parameter name, so
+shape and content had to move together. If this ever regresses, back out one
+at a time.
+
+### E4B
+
+Not re-measured at n=30. The old n=5 reading (100%) is void along with the
+rest; E4B has never been the default and the E2B result is what governs
+whether this ships.
 
 ## Regression caught by this bench (worth recording)
 

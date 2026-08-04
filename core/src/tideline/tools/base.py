@@ -24,6 +24,10 @@ class Tool(ABC):
     capability: ClassVar[str]
     schema: ClassVar[dict[str, str]] = {}
     description: ClassVar[str] = ""
+    # Which of `schema`'s keys the model must fill. Sent to the model as
+    # part of the declaration — a small model filling arguments needs to
+    # know which ones aren't optional.
+    required: ClassVar[tuple[str, ...]] = ()
 
     @abstractmethod
     def run(self, args: dict[str, Any], context: dict[str, Any]) -> Any:
@@ -49,7 +53,9 @@ class ToolRegistry:
 
     def all_declarations(self) -> str:
         return "\n".join(
-            serialize_tool_declaration(cls.name, cls.schema)
+            serialize_tool_declaration(
+                cls.name, cls.schema, cls.description, cls.required
+            )
             for cls in self._by_name.values()
         )
 

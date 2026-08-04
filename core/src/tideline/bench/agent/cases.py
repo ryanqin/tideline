@@ -52,79 +52,60 @@ def _and(*checks: Callable[[dict], bool]) -> Callable[[dict], bool]:
     return lambda args: all(c(args) for c in checks)
 
 
-CASES: tuple[AgentCase, ...] = (
-    # --- translation_flow -------------------------------------------------
-    AgentCase(
-        id="T1",
-        category="translation_flow",
-        prompt="translate hello to Chinese",
-        expected_tool_calls=(
-            ToolCallExpectation(
-                name="add_translation",
-                args_check=_and(
-                    _original_is("hello"),
-                    lambda a: _lang_match(a.get("target_lang", ""), "chin", "zh"),
-                ),
-            ),
-        ),
-    ),
-    AgentCase(
-        id="T2",
-        category="translation_flow",
-        prompt="translate ラーメン to English",
-        expected_tool_calls=(
-            ToolCallExpectation(
-                name="add_translation",
-                args_check=_and(
-                    _original_is("ラーメン"),
-                    lambda a: _lang_match(a.get("target_lang", ""), "eng", "en"),
-                ),
-            ),
-        ),
-    ),
-    AgentCase(
-        id="T3",
-        category="translation_flow",
-        prompt="translate good morning to French",
-        expected_tool_calls=(
-            ToolCallExpectation(
-                name="add_translation",
-                args_check=_and(
-                    _original_is("good morning"),
-                    lambda a: _lang_match(a.get("target_lang", ""), "fren", "fr"),
-                ),
-            ),
-        ),
-    ),
-    AgentCase(
-        id="T4",
-        category="translation_flow",
-        prompt="could you translate 'thank you' into German",
-        expected_tool_calls=(
-            ToolCallExpectation(
-                name="add_translation",
-                args_check=_and(
-                    _original_is("thank you"),
-                    lambda a: _lang_match(a.get("target_lang", ""), "germ", "de"),
-                ),
-            ),
-        ),
-    ),
-    AgentCase(
-        id="T5",
-        category="translation_flow",
-        prompt="translate the bill to Japanese",
-        expected_tool_calls=(
-            ToolCallExpectation(
-                name="add_translation",
-                args_check=_and(
-                    _original_is("the bill"),
-                    lambda a: _lang_match(a.get("target_lang", ""), "japan", "ja"),
-                ),
-            ),
-        ),
-    ),
+# Six terms, chosen so the script varies (Latin, accented Latin, kana, kanji,
+# hangul, a multi-word phrase) — a small model's tool call can come apart on
+# the argument it has to copy verbatim, not just on the instruction.
+_TERMS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("hello", "Chinese", ("chin", "zh")),
+    ("ラーメン", "English", ("eng", "en")),
+    ("good morning", "French", ("fren", "fr")),
+    ("thank you", "German", ("germ", "de")),
+    ("the bill", "Japanese", ("japan", "ja")),
+    ("한글", "English", ("eng", "en")),
 )
+
+# Five phrasings. P1 is the one production actually sends (web/app.py builds
+# `translate {text} to {native}`), so it carries the most weight when reading
+# a regression; the rest are the CLI's and any future client's freedom, and
+# they are where instruction-following usually breaks first.
+_PHRASINGS: tuple[tuple[str, str], ...] = (
+    ("P1", "translate {term} to {lang}"),
+    ("P2", "could you translate '{term}' into {lang}"),
+    ("P3", "what is {term} in {lang}?"),
+    ("P4", "{term} -> {lang}"),
+    ("P5", "Please translate the following into {lang}: {term}"),
+)
+
+
+def _build_cases() -> tuple[AgentCase, ...]:
+    out: list[AgentCase] = []
+    for term_idx, (term, lang, tokens) in enumerate(_TERMS, start=1):
+        for phrasing_id, template in _PHRASINGS:
+            out.append(
+                AgentCase(
+                    id=f"T{term_idx}{phrasing_id}",
+                    category="translation_flow",
+                    prompt=template.format(term=term, lang=lang),
+                    expected_tool_calls=(
+                        ToolCallExpectation(
+                            name="add_translation",
+                            args_check=_and(
+                                _original_is(term),
+                                lambda a, tk=tokens: _lang_match(
+                                    a.get("target_lang", ""), *tk
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+            )
+    return tuple(out)
+
+
+# 30 cases. It was 5, which meant one case was 20 points and no measurement
+# could tell a real change from a coin flip — an instrument that can only
+# report ±20% cannot be used to decide anything about a prompt.
+CASES: tuple[AgentCase, ...] = _build_cases()
 
 
 def cases_by_category() -> dict[str, list[AgentCase]]:
