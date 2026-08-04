@@ -154,9 +154,13 @@ class TidelineTranslateViewModel(application: Application) : AndroidViewModel(ap
 
   // --- review deck (the shore's job, on the phone) -------------------------
 
-  /** Everything due now: word cards first (the concrete drill), then whole
-   * scenes (the occasion recalled as one) — the same two review units the web
-   * shore surfaces, each weakest-first within its kind. */
+  /** Everything due now: word cards and whole scenes, each weakest-first
+   * within its kind (DESIGN §10.5.1 rule 1 — the shore then mixes them).
+   *
+   * "Each weakest-first" was written here before it was true: dueThemes sorted
+   * scenes by strength, but dueCards had no strength term at all, so the
+   * spaced-repetition principle §10.3 rests on did not reach word cards on the
+   * phone. Fixed in EmergenceDao. */
   suspend fun reviewDeck(): List<ReviewItem> {
     val now = System.currentTimeMillis()
     val words = emergence.dueCards(now).map { ReviewItem.Word(it) }

@@ -15,16 +15,26 @@ import androidx.room.Query
 @Dao
 interface EmergenceDao {
 
-  // New cards (NULL due) first, then most overdue; among equally-new cards
-  // the words met most often come first — without the tiebreak the order
-  // degraded to GROUP BY's alphabetical accident ("75%" sorting before
-  // ALCOHOL on a wipes package).
+  // Weakest first (DESIGN §10.5.1 rule 1): the words you're shakiest on take
+  // the scarce slots, so one you keep getting right yields to one you don't.
+  // strength is the spaced-repetition box and 0 means new, so never-reviewed
+  // cards still lead — the old `due_at IS NULL DESC` head stays as a tiebreak
+  // rather than as the rule.
+  //
+  // This ORDER BY had no strength term at all, which meant §10.3's core
+  // principle did not exist on the phone — the production surface — while
+  // dueThemes (Themes.kt) had it for scenes and reviewDeck's own docstring
+  // claimed both kinds had it.
+  //
+  // Then most overdue; among equally-placed cards the words met most often
+  // come first — without that tiebreak the order degraded to GROUP BY's
+  // alphabetical accident ("75%" sorting before ALCOHOL on a wipes package).
   @Query(
     "SELECT cards.* FROM cards " +
       "JOIN candidates ON candidates.id = cards.candidate_id " +
       "WHERE cards.state = 'active' " +
       "AND (cards.due_at IS NULL OR cards.due_at <= :nowMs) " +
-      "ORDER BY cards.due_at IS NULL DESC, cards.due_at ASC, " +
+      "ORDER BY cards.strength ASC, cards.due_at IS NULL DESC, cards.due_at ASC, " +
       "candidates.occurrence_count DESC, cards.id DESC LIMIT :limit"
   )
   suspend fun dueCards(nowMs: Long, limit: Int = 20): List<CardEntity>

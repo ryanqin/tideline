@@ -249,6 +249,49 @@ Tie the metaphor to §3.1's substrate: **the sea is the sediment.** Every transl
 - **Swipe a shell back into the sea → sink** (the one curation gesture; it rests in the sediment, may return).
 - **Toss a finished translation down into the surf → it joins the sea / sediment** (the visible form of "every translation writes to sediment").
 
+#### 10.5.1 What washes ashore — the one specification (locked 2026-08-04)
+
+The shore exists on two ends, and they had drifted into six differences: same
+sediment, different creatures, different count, different order. Neither end
+was simply wrong — each had solved something the other hadn't — so this is the
+merge, and **this section is the only source of truth**. Both ends implement
+it; neither end is the reference implementation.
+
+**1. Order — weakest first.** Among due review units, the ones you are
+shakiest on come ashore first: sort by `strength` ascending (the
+spaced-repetition box; 0 = new). A word or scene you keep getting right yields
+its scarce slot to one you don't. This is §10.3 made operative, and it applies
+to both kinds. *(Came from the web. The phone ordered word cards by
+overdue-ness and had no strength term at all, so §10.3 did not exist on the
+production surface — while its own docstring claimed "each weakest-first
+within its kind". Its scenes were already correct.)*
+
+**2. Count — a calm few.** Five slots. Never a wall; grading one lets the next
+wash in.
+
+**3. Quota — scenes first, up to two.** Scenes take at most 2 of the 5; words
+fill whatever remains. Scenes are listed before words: a scene represents a
+whole occasion, and meeting it first frames the words that follow.
+
+**4. A scene folds a word it already contains.** A word card whose
+`(original, target_lang)` belongs to an ashore scene does not also take a slot
+— one occasion must not fill the beach with itself. The folded word isn't
+starved: its content rides ashore inside the scene, and once that scene is
+graded and rests, the word washes up on a later tide.
+
+**5. A scene folds a scene it contains (or is contained by).** Sameness is
+containment, not equality: a 4-word photo of a package is the 5-word photo
+minus one guarded term, so a scene whose word set is a subset or superset of
+an already-ashore scene **in the same source language** folds into it. Each
+keeps its own review state; only the beach refuses the rerun. *(Rules 4 and 5
+came from the phone, where both were found — they answer real capture
+patterns, not hypotheticals.)*
+
+**Not part of this specification:** the web additionally drops to 3 slots on a
+viewport under 480px. That is responsive layout for a fluid page, not a rule
+about learning, and the phone — laid out for a phone at five — does not mirror
+it. Recorded here so the difference reads as a decision rather than as drift.
+
 ### 10.6 Time and sky
 
 - **v1 — device local time drives the sky** (dawn / day / golden-hour / night gradients; the golden-hour palette already shipped is simply the *dusk frame* of this cycle) and **the date drives the moon phase.** Zero permissions, ships immediately. The user can also **set time / timezone by hand** (for travel, or just to walk the shore through the day); that manual scrub is also the natural demo + test handle.

@@ -78,7 +78,8 @@ def fetch_clusters(
         members = conn.execute(
             """
             SELECT t.original, t.translated, t.context_snippet, t.source_lang,
-                   t.scene_label, t.id, t.source_image IS NOT NULL, t.source_region
+                   t.scene_label, t.id, t.source_image IS NOT NULL, t.source_region,
+                   t.target_lang
             FROM cluster_members cm
             JOIN translations t ON t.id = cm.translation_id
             WHERE cm.cluster_id = ?
@@ -103,10 +104,13 @@ def fetch_clusters(
                 # `id`/`has_image` point recall back at the captured material
                 # (the photo behind /api/translations/{id}/image), so opening
                 # a scene can show what was actually lived, not just words.
+                # target_lang so the shore can fold a word card into the
+                # scene that already carries it, keyed the same way on both
+                # ends (DESIGN §10.5.1 rule 4).
                 {"original": o, "translated": tr, "context": ctx or "",
-                 "source_lang": sl, "id": tid, "has_image": bool(img),
-                 "region": parse_region(region)}
-                for o, tr, ctx, sl, _label, tid, img, region in members
+                 "source_lang": sl, "target_lang": tl, "id": tid,
+                 "has_image": bool(img), "region": parse_region(region)}
+                for o, tr, ctx, sl, _label, tid, img, region, tl in members
             ],
         })
     return result

@@ -210,17 +210,58 @@
       // opens. Still drop cards without a translation (nothing to reach for).
       const glass = dueWeakestFirst(cards.filter((c) => c.translated && c.translated.trim()))
         .map((c) => ({ id: 'card-' + c.id, kind: 'glass', label: c.original, data: c }));
-      // Only a calm few wash up — never a wall; that restraint is what fixes the
-      // deck overload (DESIGN §10.5). Due cards (the review work) get a
-      // guaranteed share so consolidation never starves behind the due scenes
-      // (crabs); the rest fills with those scenes. The exact rhythm of the mix
-      // is a later polish pass.
-      // Fewer ashore on a narrow phone — wider columns give each name room to
-      // breathe (the calm-few rule, tuned to the screen).
+      // Only a calm few wash up — never a wall (DESIGN §10.5.1). The mix is
+      // specified there and implemented the same way on both ends; this used
+      // to be its own arrangement (words first, two of them, scenes filling
+      // the rest, no folding at all), which meant the same sediment produced
+      // different creatures in different order on phone and desktop.
+      //
+      // Fewer ashore on a narrow viewport — wider columns give each name room
+      // to breathe. Explicitly NOT part of the shared spec: it's responsive
+      // layout for a fluid page, and the phone doesn't mirror it.
       const CALM = (window.innerWidth || 1024) < 480 ? 3 : 5;
-      const cardSlots = Math.min(glass.length, Math.max(1, Math.floor(CALM / 2)));
-      const structure = crabs.slice(0, CALM - cardSlots);
-      return [...glass.slice(0, cardSlots), ...structure];
+
+      // Rule 3: scenes take at most two slots, and come first — a scene
+      // represents a whole occasion, so meeting it frames the words after it.
+      // Rule 5: a scene whose words are a subset (or superset) of an ashore
+      // scene's, in the same language, is the same occasion shot again — a
+      // 4-word photo of a package is the 5-word one minus a guarded term. It
+      // folds; only the beach refuses the rerun, its review state is untouched.
+      // /api/themes carries no top-level source_lang — a scene's language
+      // lives on its members (and a scene is one language by construction),
+      // so read it from the first one. Comparing the absent top-level field
+      // would have compared undefined to undefined and folded scenes ACROSS
+      // languages, which is precisely what rule 5 forbids.
+      const sceneWords = (s) => new Set((s.data.members || []).map((m) => m.original));
+      const sceneLang = (s) => ((s.data.members || [])[0] || {}).source_lang || null;
+      const covers = (a, b) => [...a].every((w) => b.has(w));
+
+      const scenes = [];
+      for (const c of crabs) {
+        if (scenes.length === 2) break;
+        const words = sceneWords(c);
+        const rerun = scenes.some((k) => {
+          if (sceneLang(k) !== sceneLang(c)) return false;
+          const kw = sceneWords(k);
+          return covers(words, kw) || covers(kw, words);
+        });
+        if (!rerun) scenes.push(c);
+      }
+      // Rule 4: a word already riding ashore inside a scene doesn't also take
+      // a slot of its own — one occasion must not fill the beach with itself.
+      // It isn't starved: once that scene is graded and rests, the word washes
+      // up on a later tide. Keyed on (original, target_lang) like the phone,
+      // though target_lang is effectively constant — Tideline only ever
+      // translates into your one first language (§3.3).
+      const covered = new Set(
+        scenes.flatMap((s) =>
+          (s.data.members || []).map((m) => m.original + ' ' + (m.target_lang || ''))
+        )
+      );
+      const words = glass.filter(
+        (g) => !covered.has(g.data.original + ' ' + (g.data.target_lang || ''))
+      );
+      return [...scenes, ...words.slice(0, Math.max(0, CALM - scenes.length))];
     }
 
     function paintShore() {
