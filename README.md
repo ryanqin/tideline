@@ -38,7 +38,7 @@ The agent doesn't *collect* learning material. It just lets translation recede. 
 - **No post-training, no fine-tuning.** Everything is prompt + tool design + memory design on stock weights.
 - **No third-party translation APIs.** All translation goes through the local Gemma runtime. Offline-first is non-negotiable.
 - **Android only** for the mobile shell. iOS is out of scope for this milestone.
-- **<500 lines per file** as a self-imposed guideline, checked by hand — I've read the codebases (Hermes, OpenClaw) where this discipline broke down, and I'd rather feel the constraint early. Nothing enforces it: there is no CI here. Nine tracked files are over the line today (worst: `TidelineTranslateViewModel.kt` at 1254), so read this as a direction I hold myself to, not a property the repo has.
+- **<500 lines per file** as a self-imposed guideline, checked by hand — I've read the codebases (Hermes, OpenClaw) where this discipline broke down, and I'd rather feel the constraint early. Nothing enforces it: there is no CI here. Eight tracked files are over the line today (worst: `TidelineTranslateViewModel.kt` at 1254), so read this as a direction I hold myself to, not a property the repo has.
 
 ---
 
