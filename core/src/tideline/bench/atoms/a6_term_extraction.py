@@ -3,10 +3,19 @@
 Future image / audio pipelines will hand the agent OCR output ("ラーメン
 850円 とんこつ") or transcript fragments. The agent needs to pick out the
 **translatable term**, not the price or measurement. This atom measures
-that selection ability — Mock can't do it; real models should, with
-plenty of room for engineering to sharpen prompts.
+that selection ability, with plenty of room for engineering to sharpen
+prompts.
 
 Lenient eval: response contains the expected term as a substring.
+
+Known weakness, documented rather than hidden: the expected term sits inside
+the snippet, and the snippet sits inside the prompt, so **any reply that
+echoes the prompt scores a hit**. Mock does exactly that and lands 10/10 — the
+line that used to sit here, "Mock can't do it", was measurably false. The
+mock-baseline gate in tests/test_bench_atoms.py pins that 100% in place so it
+stays a known constant instead of becoming a surprise. Tightening the judge
+would move real-model scores too, so that is a re-measurement to run on
+purpose, not a tidy-up to slip in alongside something else.
 """
 
 from __future__ import annotations

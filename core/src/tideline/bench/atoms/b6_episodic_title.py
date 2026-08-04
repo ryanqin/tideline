@@ -116,22 +116,55 @@ def build_prompt(case: dict) -> str:
     return episodic_title.build_prompt(case["items"], case.get("native_lang", "English"))
 
 
+# The category labels B6 exists to reject. Not a synonym dragnet — this is
+# the SYSTEM_PROMPT's own avoid-list ("Avoid category labels ('vocabulary',
+# 'words', '<language> X')") read back as a scoring rule.
+_TAXONOMY_LABELS = frozenset({
+    "vocabulary", "vocab", "words", "word", "terms", "term",
+    "list", "phrases", "glossary",
+})
+
+# The prompt asks for 3-7 words. Anything much longer isn't a title — it's a
+# paragraph, or the prompt handed back — and no token it happens to contain
+# should buy it a pass.
+_MAX_TITLE_WORDS_TO_PASS = 10
+
+
 def evaluate(case: dict, response: str) -> bool:
-    """Episodic-token hit using word-boundary matching.
+    """Does the model's reply anchor a remembered moment?
 
-    A response passes if it word-boundary-matches either a case-specific
-    episodic token OR a universal episodic marker. Universal markers
-    cover plain-narrative episodic titles ("the night the connection
-    broke") that scaffold a remembered moment without scene-specific
-    vocabulary.
+    Judged on the title production would actually STORE (via the shared
+    parse_response), not on the raw reply — the bench should measure what the
+    product does with the answer.
 
-    Substring matching falsely accepts generic taxonomy answers — e.g.
-    "Japanese words" hits the token "japan" by substring even though
-    "Japanese" is exactly the kind of categorical label B6 is meant to
-    reject. Word-boundary anchoring requires the token to appear as its
-    own word (or multi-word phrase) in the response.
+    Three ways to fail, then the token hit:
+
+    1. Nothing parseable comes back.
+    2. It isn't a title. A reply longer than `_MAX_TITLE_WORDS_TO_PASS` words
+       is a paragraph or an echo of the prompt; the prompt's own template says
+       "captures **their** shared episodic moment", and "their" is a universal
+       marker, so an echo used to score a pass on the strength of the question.
+    3. It's a category label. `"Japanese words"` was correctly rejected, but
+       `"Your Japanese words"` passed — the SYSTEM_PROMPT tells the model to
+       "Lead with ... a possessive ('your', 'our')", so the marker list was
+       rewarding a model for copying a surface format instruction rather than
+       for anchoring anything. A possessive can no longer rescue a taxonomy
+       answer.
+
+    Then: a word-boundary hit on a case-specific episodic token OR a universal
+    episodic marker. The universal set covers plain-narrative titles ("the
+    night the connection broke") that scaffold a moment without scene-specific
+    vocabulary. Word boundaries (not substrings) are what keep "Japanese" from
+    hitting the token "japan".
     """
-    low = response.lower()
+    title = episodic_title.parse_response(response)
+    if not title:
+        return False
+    low = title.lower()
+    if len(low.split()) > _MAX_TITLE_WORDS_TO_PASS:
+        return False
+    if any(re.search(rf"\b{label}\b", low) for label in _TAXONOMY_LABELS):
+        return False
     candidates = set(case["episodic_tokens"]) | _UNIVERSAL_EPISODIC_MARKERS
     return any(
         re.search(rf"\b{re.escape(token)}\b", low)

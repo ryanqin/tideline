@@ -239,23 +239,58 @@ from harness effects.
 A4 (tool-call correctness) is not a direct-prompt atom — it's measured
 by the agent bench's translation_flow cases above.
 
-## Reference numbers — E2B vs E4B, 2026-05-11
+## Reference numbers — E2B vs E4B, re-measured 2026-08-04
 
-| Atom | n | E2B | E4B | Δ |
-|---|---:|---:|---:|---:|
-| A1 word translation | 12 | **100.0%** | 100.0% | 0 |
-| A2 sentence translation | 10 | 80.0% | 90.0% | +10 |
-| A3 source language ID | 12 | **100.0%** | 91.7% | −8 |
-| A5 output discipline | 10 | **100.0%** | 100.0% | 0 |
-| A6 term extraction | 10 | 70.0% | **90.0%** | +20 |
-| B1 concept match | 12 | **100.0%** | 83.3% | −17 |
-| B2 register classification | 12 | 83.3% | 83.3% | 0 |
-| B3 ambiguity detection | 12 | 91.7% | **100.0%** | +8 |
-| B4 common theme | 10 | 70.0% | 60.0% | −10 |
-| B5 complexity tier | 12 | 75.0% | **91.7%** | +17 |
-| B6 episodic title | 5 | 100.0% | 100.0% | 0 (small sample) |
+Both models re-run after B6's judge was tightened (see below). The `mock`
+column is the zero baseline: Mock is not a model, it answers by rule, and
+where a rule happens to align with a judge it scores. **An atom's real signal
+is its score minus that column**, and `tests/test_bench_atoms.py` pins these
+mock numbers so a future prompt or judge change that moves one has to say so.
 
-Wall time (CPU only, ~117 cases): E2B ~35s, E4B ~58s.
+| Atom | n | mock | E2B | E4B | Δ |
+|---|---:|---:|---:|---:|---:|
+| A1 word translation | 12 | 0.0% | **100.0%** | 100.0% | 0 |
+| A2 sentence translation | 10 | 0.0% | 80.0% | 90.0% | +10 |
+| A3 source language ID | 12 | 25.0% | **100.0%** | 91.7% | −8 |
+| A5 output discipline | 10 | 0.0% | **100.0%** | 100.0% | 0 |
+| A6 term extraction | 10 | **100.0%** | 70.0% | **90.0%** | +20 |
+| B1 concept match | 12 | 0.0% | **100.0%** | 83.3% | −17 |
+| B2 register classification | 12 | 33.3% | 83.3% | 83.3% | 0 |
+| B3 ambiguity detection | 12 | 50.0% | 91.7% | **100.0%** | +8 |
+| B4 common theme | 10 | 10.0% | 70.0% | 60.0% | −10 |
+| B5 complexity tier | 12 | 33.3% | 75.0% | **91.7%** | +17 |
+| B6 episodic title | 5 | 0.0% | 100.0% | 100.0% | 0 (small sample) |
+| B7 topic relatedness | 36 | 0.0% | 83.3% | **94.4%** | +11 |
+
+Wall time (CPU only): E2B ~2:00, E4B ~2:30.
+
+**A6's mock score is 100%, and that is the atom to distrust, not Mock.** The
+expected term sits inside the snippet, the snippet sits inside the prompt, and
+Mock's fallback echoes the prompt — so the judge scores a hit on an answer that
+selected nothing. A6's real numbers are measured by the same permeable judge.
+Fixing it would move the real scores too, so it is a re-measurement to run on
+purpose rather than a tidy-up. B2/B3/B5 carry smaller versions of the same
+thing (a rule aligning with a multiple-choice judge).
+
+### What moved, and what didn't
+
+**B6's judge was tightened** (2026-08-04). It accepted `"Your Japanese words"`
+while correctly rejecting `"Japanese words"` — and B6's own SYSTEM_PROMPT tells
+the model to "Lead with … a possessive ('your', 'our')", so the judge was
+paying out for copying a surface format instruction onto the exact category
+label the atom exists to reject. It also accepted a plain echo of the prompt,
+because the prompt template contains "captures **their** shared episodic
+moment" and `their` was a universal marker. It now judges the title production
+would actually store, rejects category labels, and rejects replies too long to
+be titles.
+
+**Neither model's B6 score moved: both were and remain 100%.** The bypass was
+real but unused — E2B's and E4B's answers were genuine episodic titles all
+along. Mock's B6 went 100.0% → 0.0%, which is the whole of the change.
+
+Every other atom reproduced its 2026-05-11 value to the decimal on both
+models, so the rest of this table is three months old and still current.
+B7 is new here; it wasn't in the original table.
 
 ## Reading the atomic bench — actionable findings
 

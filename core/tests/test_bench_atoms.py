@@ -318,3 +318,73 @@ def test_cli_all_suite_includes_atoms_section():
     assert "scenario" in result.stdout    # translate
     assert "category" in result.stdout    # agent
     assert "atom" in result.stdout        # atoms
+
+
+# --- Mock baseline gate ---------------------------------------------------
+#
+# Mock is not a model. It answers by rule, and where a rule happens to align
+# with an atom's judge it scores — A6 lands 10/10 purely because Mock echoes
+# the prompt and the expected term is inside the prompt. bench/README.md has
+# said "Mock atom scores are infrastructure noise" since the first commit, but
+# saying it left the numbers free to move unnoticed.
+#
+# Pinning them turns that noise into an instrument. The value is not the scores
+# themselves; it is that changing a prompt or a judge and NOT expecting a shift
+# now fails loudly. This gate caught nothing on the way in — it exists for the
+# next person, who will be mid-way through something else.
+#
+# When a number here changes on purpose, update it in the same commit as the
+# change that moved it, and say which. B6 moved 100.0 → 0.0 when its judge
+# stopped accepting a prompt echo and a possessive-prefixed category label.
+
+_MOCK_BASELINE = {
+    "A1": 0.0,    "A2": 0.0,    "A3": 25.0,   "A5": 0.0,    "A6": 100.0,
+    "B1": 0.0,    "B2": 33.3,   "B3": 50.0,   "B4": 10.0,   "B5": 33.3,
+    "B6": 0.0,    "B7": 0.0,
+}
+
+
+def test_mock_baseline_does_not_drift():
+    """Every atom's score under MockRuntime, pinned."""
+    from tideline.bench.atoms.metrics import summarize
+    from tideline.bench.atoms.runner import run
+
+    actual = {
+        s.atom_id: round(s.accuracy * 100, 1) for s in summarize(run("mock"))
+    }
+    assert set(actual) == set(_MOCK_BASELINE), (
+        f"atom set changed: {set(actual) ^ set(_MOCK_BASELINE)}"
+    )
+    drifted = {
+        atom: (_MOCK_BASELINE[atom], actual[atom])
+        for atom in _MOCK_BASELINE
+        if abs(actual[atom] - _MOCK_BASELINE[atom]) > 0.05
+    }
+    assert not drifted, (
+        f"mock baseline moved (atom: expected → actual): {drifted}. "
+        f"A prompt or a judge changed. If that was intentional, update "
+        f"_MOCK_BASELINE in this commit and note what moved it; if it wasn't, "
+        f"you just found an accident."
+    )
+
+
+def test_b6_judge_rejects_a_possessive_dressed_up_category_label():
+    """The bypass this gate was built around.
+
+    B6's SYSTEM_PROMPT tells the model to "Lead with ... a possessive ('your',
+    'our')", and the judge treated possessives as evidence of episodic framing
+    — so a model could earn the point by copying a surface format instruction
+    onto the exact category label B6 exists to reject."""
+    from tideline.bench.atoms import b6_episodic_title as b6
+
+    case = b6.CASES[0]
+    assert b6.evaluate(case, "Japanese words") is False
+    assert b6.evaluate(case, "Your Japanese words") is False, (
+        "adding a possessive still buys a pass for a category label"
+    )
+    assert b6.evaluate(case, "Our vocabulary list") is False
+    # And the real thing still passes.
+    assert b6.evaluate(case, "the night the connection broke") is True
+    assert b6.evaluate(case, "your Tokyo lunches") is True
+    # An echo of the question is not an answer to it.
+    assert b6.evaluate(case, b6.build_prompt(case)) is False
