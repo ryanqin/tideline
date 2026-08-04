@@ -141,9 +141,9 @@ def _migrate_vote_type(conn: sqlite3.Connection) -> None:
 # One vote/cluster schema, two clustering relations selected by `vote_type`:
 #   • 'concept' — B1 concept_match: "same concept?" (ラーメン ≡ ramen).
 #     Aggregates synonyms; feeds the by-language lens + existing clusters.
-#   • 'theme'   — B7 relatedness: "same specific setting/cuisine?"
-#     (ramen ~ sushi, but ramen / croissant → no). Groups related-but-
-#     distinct terms; feeds album-style thematic recall.
+#   • 'theme'   — scene TYPE, grouped deterministically by the capture model's
+#     `scene_label`. **It does not vote.** See the tombstone on the theme
+#     Voter below.
 # A Voter only adapts a (original, target_lang, translated) row pair to its
 # atom's shared prompt module — prompt + parser stay in intelligence/, never
 # duplicated here. Adding a relation later = registering one Voter; the
@@ -170,6 +170,15 @@ _VOTERS: dict[str, _Voter] = {
         ),
         parse=concept_match.parse_response,
     ),
+    # TOMBSTONE (2026-06-13): this voter has no reader. Themes stopped being
+    # built from votes when they became scene TYPES grouped on the capture
+    # model's `scene_label` — `_vote_edges` is only ever called with 'concept'.
+    # Votes cast here are written to the table and read by nobody. Kept because
+    # B7 relatedness is still a measured atom (bench b7) and because the shape
+    # is the template for any future relation; the CLI can no longer reach it.
+    # If DESIGN.md §3.2's "merge near-duplicate scene types" is ever built, it
+    # wants votes on scene LABELS, not on word pairs — the word-pair form is
+    # exactly what the 2026-06-03 on-device probe judged unusable.
     "theme": _Voter(
         system_prompt=relatedness.SYSTEM_PROMPT,
         # Relatedness judges the surface terms only — no language slot; the
@@ -543,12 +552,15 @@ def rebuild_clusters(
         and `vote_threshold` are ignored for theme.
     Then DELETE this vote_type's clusters/members and INSERT the new ones.
     """
-    if not (0.0 <= vote_threshold <= 1.0):
-        raise ValueError(f"vote_threshold must be in [0,1], got {vote_threshold}")
-    if min_votes < 1:
-        raise ValueError(f"min_votes must be >= 1, got {min_votes}")
+    if vote_type != "theme":
+        # Only validated on the path that reads them. The docstring above says
+        # theme ignores both, and it does — so rejecting a value theme never
+        # looks at was the code contradicting its own contract.
+        if not (0.0 <= vote_threshold <= 1.0):
+            raise ValueError(f"vote_threshold must be in [0,1], got {vote_threshold}")
+        if min_votes < 1:
+            raise ValueError(f"min_votes must be >= 1, got {min_votes}")
 
-    uf = _UnionFind()
     if vote_type == "theme":
         # A theme is a SCENE TYPE — a kind of place clustered ACROSS visits, not
         # one occasion. The handle is the short scene label the capture model
@@ -581,6 +593,7 @@ def rebuild_clusters(
     else:
         # Concept edges: deterministic same-concept pairs + concept votes that
         # cleared the threshold, all kept inside one source language (§3.3).
+        uf = _UnionFind()
         for a, b in _concept_edges(conn, vote_threshold, min_votes):
             uf.union(a, b)
         groups = defaultdict(list)
@@ -824,12 +837,27 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Minimum vote count per pair to consider "
              f"(default: {_DEFAULT_MIN_VOTES})",
     )
+    # Written out rather than derived from _VOTERS: the two sets are not the
+    # same thing. _VOTERS is "relations that can vote"; this is "relations the
+    # CLI can act on". theme belongs in the second and not the first — it
+    # rebuilds and names, it just doesn't vote.
     parser.add_argument(
-        "--vote-type", default="concept", choices=sorted(_VOTERS),
+        "--vote-type", default="concept", choices=("concept", "theme"),
         help="Clustering relation: 'concept' (synonyms, default) or "
-             "'theme' (B7 relatedness — groups related-but-distinct terms)",
+             "'theme' (scene types, grouped by the capture model's scene_label)",
     )
     args = parser.parse_args(argv)
+
+    # Voting on themes writes rows nobody reads: theme clusters are grouped
+    # deterministically on scene_label. Left open, this burns on-device
+    # inference and then prints "Voted on N pairs: N yes" — a reading that
+    # means nothing, which is worse than no reading at all.
+    if args.compare > 0 and args.vote_type == "theme":
+        parser.error(
+            "theme clusters don't vote — they group deterministically on the "
+            "capture model's scene_label. Use --rebuild (and --name-clusters) "
+            "instead; --compare only applies to --vote-type concept."
+        )
 
     if args.db != ":memory:":
         Path(args.db).parent.mkdir(parents=True, exist_ok=True)

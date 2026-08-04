@@ -1072,10 +1072,12 @@ def test_cluster_sweep_theme_end_to_end(conn):
     assert rows[0][1] is not None
 
 
-def test_cli_vote_type_theme_smoke(tmp_path):
-    """CLI accepts --vote-type theme and runs the theme relation end to end.
-    Mock voting falls through to echo (no parseable yes/no), so this proves
-    the wiring runs clean — not that clusters form."""
+def test_cli_refuses_to_vote_on_themes(tmp_path):
+    """Themes group deterministically on scene_label — `_vote_edges` is only
+    ever called with 'concept', so votes cast under 'theme' are written and
+    read by nobody. Left open, this spent real on-device inference and then
+    printed "Voted on 5 pairs: 5 yes" — a number that means nothing, which is
+    worse than no number. The CLI now says so instead of running."""
     import subprocess
     import sys
 
@@ -1087,8 +1089,43 @@ def test_cli_vote_type_theme_smoke(tmp_path):
     result = subprocess.run(
         [sys.executable, "-m", "tideline.cluster",
          "--db", str(db_path), "--runtime", "mock",
-         "--vote-type", "theme", "--compare", "5", "--rebuild", "--name-clusters"],
+         "--vote-type", "theme", "--compare", "5"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "scene_label" in result.stderr
+    assert "Voted on" not in result.stdout
+    # It bails before touching the DB, so the votes table may not even exist —
+    # either way, no theme vote was written.
+    check = sqlite3.connect(db_path)
+    exists = check.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='pair_similarity_votes'"
+    ).fetchone()
+    if exists:
+        votes = check.execute(
+            "SELECT COUNT(*) FROM pair_similarity_votes WHERE vote_type = 'theme'"
+        ).fetchone()[0]
+        assert votes == 0, "the refused command must not have written votes"
+    check.close()
+
+
+def test_cli_theme_rebuild_and_naming_still_work(tmp_path):
+    """The capability closing the voting door must not close: theme clusters
+    still rebuild and get named from the CLI, they just never vote."""
+    import subprocess
+    import sys
+
+    db_path = tmp_path / "test.db"
+    subprocess.run(
+        [sys.executable, "-m", "tideline.seed", "--db", str(db_path)],
+        capture_output=True, text=True, check=True,
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "tideline.cluster",
+         "--db", str(db_path), "--runtime", "mock",
+         "--vote-type", "theme", "--rebuild", "--name-clusters"],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert "Voted on" in result.stdout
+    assert "cluster(s)" in result.stdout
