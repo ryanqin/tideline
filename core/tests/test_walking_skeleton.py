@@ -69,6 +69,11 @@ def test_drift_cli_imports_only_public_surface():
         # on untagged rows (deterministic script + model fallback). Same
         # background-lifecycle rationale as promotion / cluster above.
         "tideline.tagging",
+        # The startup sweep those three now live behind. It was written out in
+        # both the CLI and the web app, with a comment in each promising they
+        # matched; they had drifted on connection settings. One function, two
+        # callers — this import is what replaced three of the entries above.
+        "tideline.boot",
         # The production system message, which the CLI previously carried its
         # own copy of. Three copies had already drifted (a53c650 taught only
         # the web's copy to ask for source_lang), so the string moved to one

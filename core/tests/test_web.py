@@ -668,19 +668,78 @@ def test_drift_translate_bench_prompt_stays_separate_on_purpose():
 
 
 def test_drift_web_app_runs_same_startup_sweep_as_cli():
-    """Both clients must invoke promote_candidates and cluster_sweep on
-    startup; otherwise web and CLI users would see different state."""
+    """Both clients run the SAME sweep — the same function object, not two
+    sequences that happen to match.
+
+    This used to check that four names appeared in both files' source. That is
+    a proxy, and a weak one: it passes for two copies that have drifted in any
+    way the four names don't spell out — which had happened (the web opened its
+    connection with busy_timeout set, the CLI without). Now there is one
+    implementation and the check is identity."""
+    import tideline.boot
     import tideline.cli.__main__ as cli_main
     import tideline.web.app as web_app
 
-    cli_src = inspect.getsource(cli_main)
-    web_src = inspect.getsource(web_app)
+    assert web_app.startup_sweep is tideline.boot.startup_sweep
+    assert cli_main.startup_sweep is tideline.boot.startup_sweep
+    # The steps themselves, asserted once, where they now live.
+    boot_src = inspect.getsource(tideline.boot)
     for token in (
-        "promote_candidates", "auto_promote_cards", "cluster_sweep",
-        "tag_source_langs",
+        "heal_casing_splits", "promote_candidates", "auto_promote_cards",
+        "cluster_sweep", "tag_source_langs",
     ):
-        assert token in cli_src, f"cli/__main__.py missing {token}"
-        assert token in web_src, f"web/app.py missing {token}"
+        assert token in boot_src, f"boot.py missing {token}"
+
+
+def test_startup_sweep_survives_a_dead_model():
+    """A boot with no working model still brings the deterministic half up to
+    date. Promotion and card generation don't need the model and must not be
+    taken down by it."""
+    from tideline.boot import startup_sweep
+    from tideline.cluster import init_db as init_cluster_db
+    from tideline.runtime import ModelRuntime
+    from tideline.tools import init_all_tables
+
+    class _Broken(ModelRuntime):
+        def generate(self, prompt: str) -> str:
+            raise RuntimeError("model unavailable")
+
+    conn = sqlite3.connect(":memory:")
+    init_all_tables(conn)
+    init_cluster_db(conn)
+    for _ in range(3):
+        conn.execute(
+            "INSERT INTO translations (original, target_lang, translated, session_id) "
+            "VALUES ('gare', 'Chinese', '车站', ?)",
+            (f"s{_}",),
+        )
+    conn.commit()
+
+    result = startup_sweep(conn, _Broken())
+
+    assert set(result) == {"tag_source_langs", "cluster_concept", "cluster_theme"}
+    assert conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0] >= 1
+    conn.close()
+
+
+def test_a_failing_boot_step_is_reported_and_logged_not_swallowed(caplog):
+    """The mechanism itself. Six bare `except: pass` meant a user reporting
+    "scenes never get names" left nothing behind to read; a caught step now
+    says which one it was and returns False so the caller can tell a clean
+    boot from a degraded one."""
+    import logging
+
+    from tideline.boot import _soft
+
+    def _explode():
+        raise RuntimeError("model unavailable")
+
+    with caplog.at_level(logging.ERROR, logger="tideline.boot"):
+        ok = _soft("cluster_concept", _explode)
+
+    assert ok is False, "a failing step must be reported, not silently skipped"
+    assert "cluster_concept" in caplog.text
+    assert "model unavailable" in caplog.text
 
 
 def test_drift_language_names_come_from_shared_i18n_helper():

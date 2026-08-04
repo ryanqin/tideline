@@ -120,11 +120,14 @@ def test_drift_auto_promote_lives_in_cli_not_agent():
     assert "promote" not in source
     assert "promotion" not in source
 
-    # And confirm CLI does import it (otherwise this test gives false confidence)
+    # And confirm the startup path really does run it (otherwise this test
+    # gives false confidence). The sweep moved out of the CLI into boot.py so
+    # web and CLI share one copy; the CLI reaches it through startup_sweep.
+    import tideline.boot
     import tideline.cli.__main__ as cli_main
 
-    cli_source = inspect.getsource(cli_main)
-    assert "promote_candidates" in cli_source
+    assert "promote_candidates" in inspect.getsource(tideline.boot)
+    assert "startup_sweep" in inspect.getsource(cli_main)
 
 
 # --- Surviving CLI smoke after scope narrowing ---------------------------

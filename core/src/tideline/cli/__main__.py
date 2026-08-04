@@ -4,12 +4,10 @@ import sys
 from pathlib import Path
 
 from tideline.agent import Agent
-from tideline.cluster import cluster_sweep
+from tideline.boot import startup_sweep
 from tideline.cluster import init_db as init_cluster_db
-from tideline.promotion import auto_promote_cards, heal_casing_splits, promote_candidates
 from tideline.prompts import TIDELINE_SYSTEM
 from tideline.runtimes import get_runtime
-from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 
 
@@ -43,42 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     init_all_tables(conn)
     init_cluster_db(conn)
 
-    # Heal casing splits an older build may have left (PREMIUM vs Premium as
-    # two candidates) before promoting — a no-op once healed.
-    heal_casing_splits(conn)
-
-    # Night-watch sweep: silently promote any drawer entries that crossed the
-    # repetition threshold during prior sessions. Idempotent, cheap, no output.
-    promote_candidates(conn)
-
-    # Opt-out card generation: every candidate gets a review card the user can
-    # later sink. Idempotent, deterministic — never resurrects a sunk card.
-    auto_promote_cards(conn)
-
-    # Tag sweep FIRST: backfill source_lang on untagged rows. Deterministic
-    # for non-Latin scripts (free); model fallback for Latin. Fail-soft.
-    # Concept clusters are scoped per language-pair (§3.3), so source_lang
-    # must be populated before the concept sweep reads it.
-    try:
-        tag_source_langs(conn, runtime)
-    except Exception:
-        pass
-
-    # Tier B sweep: budgeted background voting + cluster rebuild + naming.
-    # Two relations over the same tables — concept (synonym aggregation,
-    # feeds the by-language lens) and theme (B7 relatedness, feeds album-
-    # style recall). Each is wrapped fail-soft AND independently, because it
-    # calls the LLM: a glitch on one relation must never break the other or
-    # the user's primary translation flow. Both are "expensive" sweeps and
-    # belong here at startup, never in the per-translation hot path.
-    try:
-        cluster_sweep(conn, runtime)
-    except Exception:
-        pass
-    try:
-        cluster_sweep(conn, runtime, vote_type="theme")
-    except Exception:
-        pass
+    # The same startup sweep the web app runs (boot.py). It used to be
+    # written out in both places, with a comment promising they matched —
+    # and they had already drifted on connection settings.
+    startup_sweep(conn, runtime)
 
     registry = ToolRegistry()
     registry.register(AddTranslationTool)

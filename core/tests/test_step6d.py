@@ -115,8 +115,11 @@ def test_drift_cluster_sweep_lives_in_cli_not_agent():
             f"must stay product-domain-blank."
         )
 
-    # And confirm CLI does import it (otherwise this gate gives false confidence)
+    # And confirm the startup path really does run it (otherwise this gate
+    # gives false confidence). The sweep lives in boot.py now, shared by web
+    # and CLI; the CLI reaches it through startup_sweep.
+    import tideline.boot
     import tideline.cli.__main__ as cli_main
 
-    cli_source = inspect.getsource(cli_main)
-    assert "cluster_sweep" in cli_source
+    assert "cluster_sweep" in inspect.getsource(tideline.boot)
+    assert "startup_sweep" in inspect.getsource(cli_main)

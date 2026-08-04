@@ -12,10 +12,9 @@ import hashlib
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -23,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from tideline.agent import Agent
+from tideline.boot import startup_sweep
 from tideline.cluster import cluster_sweep
 from tideline.cluster import init_db as init_cluster_db
 from tideline.promotion import (
@@ -36,6 +36,7 @@ from tideline.intelligence.translation_guard import TranslationOutcome
 from tideline.prompts import TIDELINE_SYSTEM
 from tideline.runtime import ModelRuntime
 from tideline.runtimes import get_runtime
+from tideline.session import live_session_id
 from tideline.tagging import tag_source_langs
 from tideline.tools import AddTranslationTool, ToolRegistry, init_all_tables
 from tideline.tools.card import review_card
@@ -147,40 +148,6 @@ def _connect(db_path: str) -> sqlite3.Connection:
     init_all_tables(conn)
     init_cluster_db(conn)
     return conn
-
-
-# A live "sitting": translations within this gap of each other belong to one
-# capture session. Longer gap → a new session. Seed data carries explicit
-# sessions (a menu photo's items); a live text/photo burst only has time, so
-# time IS the session boundary here.
-_LIVE_SESSION_WINDOW = timedelta(minutes=30)
-
-
-def _live_session_id(conn: sqlite3.Connection, now: datetime) -> str:
-    """Sessionize live captures by inactivity gap so they can form themes
-    (DESIGN §3.2): a translation within `_LIVE_SESSION_WINDOW` of the last one
-    inherits its session; a longer gap mints a new one. Without this every live
-    row lands with a NULL session_id and the theme sweep — which groups by
-    session — never sees it, so scenes only ever emerged from seed data.
-
-    The current session id + last-seen time live in settings (local ISO, a
-    format we own — unlike translations.created_at, which SQLite stores in UTC
-    with a space separator). The id is a STABLE minted handle, not a read-time
-    time-bucket, because the theme review schedule (theme_review) hangs on it
-    and must not shift as new rows arrive."""
-    sid = get_setting(conn, "live_session_id", "")
-    last_at = get_setting(conn, "live_session_last_at", "")
-    if sid and last_at:
-        try:
-            if now - datetime.fromisoformat(last_at) <= _LIVE_SESSION_WINDOW:
-                set_setting(conn, "live_session_last_at", now.isoformat())
-                return sid
-        except ValueError:
-            pass  # corrupt timestamp → start a fresh session below
-    sid = "live-" + uuid4().hex[:12]
-    set_setting(conn, "live_session_id", sid)
-    set_setting(conn, "live_session_last_at", now.isoformat())
-    return sid
 
 
 def _light_sweep(conn: sqlite3.Connection) -> None:
@@ -315,33 +282,10 @@ def create_app(
     if runtime is None:
         runtime = get_runtime(runtime_name)
 
-    # Startup sweep — same shape as cli/__main__.py
+    # One startup sweep, shared with the CLI (boot.py) — it used to be
+    # written out here and there, with a comment promising they matched.
     boot_conn = _connect(db)
-    # Heal any casing splits an older build left behind (PREMIUM vs Premium as
-    # two candidates) BEFORE promoting, so the sweep re-derives counts on the
-    # one canonical row. A no-op once healed.
-    heal_casing_splits(boot_conn)
-    promote_candidates(boot_conn)
-    auto_promote_cards(boot_conn)
-    # Tag source languages BEFORE clustering — concept clusters are scoped
-    # per language-pair (a cluster never mixes two source languages, §3.3),
-    # so source_lang must be populated before the concept sweep reads it.
-    try:
-        tag_source_langs(boot_conn, runtime)
-    except Exception:
-        pass
-    # Tier B sweep — two relations over the same tables, each fail-soft and
-    # independent: concept (synonyms, feeds the by-language lens) and theme
-    # (B7 relatedness, feeds album-style recall). Both are expensive (LLM)
-    # sweeps and run only at startup, never in the per-translation path.
-    try:
-        cluster_sweep(boot_conn, runtime)
-    except Exception:
-        pass
-    try:
-        cluster_sweep(boot_conn, runtime, vote_type="theme")
-    except Exception:
-        pass
+    startup_sweep(boot_conn, runtime)
     boot_conn.close()
 
     app = FastAPI(title="Tideline", description="Local-first translation playground")
@@ -372,7 +316,7 @@ def create_app(
             # Stamp this capture with its sitting's session id, so a burst of
             # live translations co-occurs into a theme (DESIGN §3.2) instead of
             # landing session-less and invisible to the theme sweep.
-            session_id = _live_session_id(conn, datetime.now())
+            session_id = live_session_id(conn, datetime.now())
             context = {"db": conn, "source": "text", "session_id": session_id}
             agent = Agent(
                 runtime,
