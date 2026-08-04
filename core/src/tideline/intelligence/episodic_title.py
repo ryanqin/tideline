@@ -9,6 +9,13 @@ The atom bench (`bench/atoms/b6_episodic_title.py`) and the cluster
 naming engine (`tideline.cluster.name_clusters`) both import
 `SYSTEM_PROMPT`, `build_prompt`, and `parse_response` from here so the
 benchmark measures the exact prompts the production engine uses.
+
+Two parsers, one per prompt. `parse_response` reads the English-leaning
+episodic title; `parse_scene_response` reads the SCENE reply, which the
+prompt asks for in Chinese — so it needs Chinese preambles, full-width
+marks, an emoji strip, and a cap counted in characters rather than in
+space-delimited words. Cases live in `parity/vectors/scene_name.json`,
+shared with the phone's `SceneNaming.kt`.
 """
 
 from __future__ import annotations
@@ -124,4 +131,68 @@ def parse_response(response: str) -> str | None:
     words = cleaned.split()
     if len(words) > _MAX_TITLE_WORDS:
         cleaned = " ".join(words[:_MAX_TITLE_WORDS])
+    return cleaned
+
+
+# --- SCENE reply parsing ---------------------------------------------------
+# The SCENE prompt asks for a Chinese name, so every defence above misses:
+# the preamble arrives as 名字：/名称:, the marks around it are full-width, and
+# a rambling reply has no spaces to count. The phone hit all three on real
+# hardware first (SceneNaming.kt, 2026-06-15) — this is that fix, brought home.
+
+_SCENE_PREFIX_RE = re.compile(
+    r"^\s*(title|episodic title|cluster|name|名字|名称)\s*[:：\-]\s*",
+    re.IGNORECASE,
+)
+
+# A scene name is 3-6 characters; this is the rambling-answer backstop, counted
+# in characters because CJK isn't space-delimited (the episodic title above
+# caps by word, which is right for its English phrasing and wrong here).
+_MAX_SCENE_CHARS = 12
+
+# Marks a model wraps around a bare name, half- and full-width.
+_SCENE_TRIM = " \t\"'`*#.。：:「」“”《》"
+
+# Emoji / pictographs / dingbats the on-device model tacks onto a name
+# (超市 → "生活集市 🛒"). E4B on the desktop doesn't do this; the smaller E2B
+# on the phone does on roughly half its names. Ranges mirror SceneNaming.kt.
+_SCENE_DECORATION_RE = re.compile(
+    "["
+    "\U0001F000-\U0001FAFF"  # pictographs, emoji proper
+    "\u2600-\u27BF"          # misc symbols + dingbats
+    "\u2B00-\u2BFF"          # arrows / stars supplement
+    "\u2190-\u21FF"          # arrows
+    "\u2300-\u23FF"          # technical
+    "\uFE00-\uFE0F"          # variation selectors
+    "\u200D"                  # zero-width joiner
+    "]"
+)
+
+
+def parse_scene_response(response: str | None) -> str | None:
+    """Extract a clean scene name from a model reply.
+
+    Same shape as `parse_response` — first non-empty line, preamble stripped,
+    marks removed, length-capped — but tuned for the Chinese reply the SCENE
+    prompt asks for. Returns None when nothing nameable is left, and the
+    caller keeps the bare `scene_label` as the title.
+    """
+    if not response:
+        return None
+    first_line = ""
+    for line in response.splitlines():
+        stripped = line.strip()
+        if stripped:
+            first_line = stripped
+            break
+    if not first_line:
+        return None
+    cleaned = _SCENE_PREFIX_RE.sub("", first_line)
+    cleaned = cleaned.strip(_SCENE_TRIM)
+    # Strip the decoration, then re-trim the space it leaves behind.
+    cleaned = _SCENE_DECORATION_RE.sub("", cleaned).strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > _MAX_SCENE_CHARS:
+        cleaned = cleaned[:_MAX_SCENE_CHARS]
     return cleaned

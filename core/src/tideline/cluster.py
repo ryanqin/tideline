@@ -706,14 +706,21 @@ def name_clusters(
             if scene_label:
                 system = episodic_title.SCENE_SYSTEM_PROMPT
                 prompt = episodic_title.build_scene_prompt(scene_label, items, native)
+                # The SCENE prompt asks for a Chinese name, so it needs the
+                # parser that speaks Chinese — 名字：preambles, full-width
+                # marks, the emoji E2B decorates with, and a cap counted in
+                # characters. parse_response would let all four through.
+                parse = episodic_title.parse_scene_response
             else:
                 system = episodic_title.SYSTEM_PROMPT
                 prompt = episodic_title.build_prompt(items, native)
+                parse = episodic_title.parse_response
         else:
             system = episodic_title.SYSTEM_PROMPT
             prompt = episodic_title.build_prompt(items, native)
+            parse = episodic_title.parse_response
         response = _direct_generate(runtime, system, prompt)
-        title = episodic_title.parse_response(response)
+        title = parse(response)
         if not title:
             bad += 1
             continue

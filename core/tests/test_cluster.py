@@ -621,6 +621,41 @@ def test_name_clusters_does_not_overwrite_existing_titles(conn):
     assert row[0] == "original"
 
 
+def test_theme_naming_uses_the_chinese_scene_parser(conn):
+    """A scene theme is named by the SCENE prompt, which asks for a Chinese
+    name — so it must be read by the Chinese parser. The reply below is the
+    shape real on-device E2B produces (a 名字： preamble and a tacked-on emoji);
+    the English episodic parser lets both straight through into clusters.title,
+    where they surface on the shore."""
+    _add_translation(conn, "ラーメン", "Chinese", "拉面",
+                     source_lang="Japanese", scene_label="拉面店")
+    _add_translation(conn, "餃子", "Chinese", "煎饺",
+                     source_lang="Japanese", scene_label="拉面店")
+    assert rebuild_clusters(conn, vote_type="theme") == 1
+
+    stats = name_clusters(conn, _AlwaysFixedTitle("名字：暖汤馆 🍜"), vote_type="theme")
+
+    assert stats["named"] == 1
+    row = conn.execute("SELECT title FROM clusters WHERE vote_type = 'theme'").fetchone()
+    assert row[0] == "暖汤馆"
+    # The parser that used to read this reply would have stored it whole.
+    assert episodic_title.parse_response("名字：暖汤馆 🍜") == "名字：暖汤馆 🍜"
+
+
+def test_concept_naming_still_uses_the_episodic_parser(conn):
+    """The English path is untouched: a concept cluster keeps word-counted
+    capping and must not gain the Chinese preamble stripping."""
+    a = _add_translation(conn, "ramen", "en", "ramen")
+    b = _add_translation(conn, "udon", "en", "udon")
+    vote_on_pair(conn, _AlwaysYes(), a, b)
+    rebuild_clusters(conn, min_votes=1)
+
+    name_clusters(conn, _AlwaysFixedTitle("名字：your Tokyo lunches"))
+
+    row = conn.execute("SELECT title FROM clusters WHERE vote_type = 'concept'").fetchone()
+    assert row[0] == "名字：your Tokyo lunches"
+
+
 def test_name_clusters_safe_on_empty_db(conn):
     stats = name_clusters(conn, _AlwaysFixedTitle())
     assert stats == {"named": 0, "skipped": 0, "unparseable": 0}

@@ -1,0 +1,29 @@
+{
+  "rule": "B6 scene-name parsing — the model's reply for a scene TYPE, cleaned into a title",
+  "why": "Both ends run the same SCENE prompt and must land on the same name. The cases marked source=e2b-probe are verbatim on-device replies; they are the reason the parser strips emoji at all.",
+  "implementations": {
+    "core": "core/src/tideline/intelligence/episodic_title.py::parse_scene_response",
+    "android": "android/app/src/main/kotlin/com/ryanqin/tideline/intelligence/SceneNaming.kt::parseSceneName"
+  },
+  "note": "`expected: null` means the reply is unnameable and the caller keeps the bare scene_label as the title. Consumed by core/tests/test_episodic_title_scene.py; the Android JUnit suite still carries its own copy of these cases (SceneNamingTest.kt) — wiring it to read this file needs a Gradle sourceSets change and a device run.",
+  "cases": [
+    { "id": "SCENE-01", "input": "暖汤馆", "expected": "暖汤馆", "note": "clean reply passes straight through" },
+    { "id": "SCENE-02", "input": "\n  \n站途暖\n这是因为...\n", "expected": "站途暖", "note": "first non-empty line wins, reasoning below is dropped" },
+    { "id": "SCENE-03", "input": "Name: 暖汤馆", "expected": "暖汤馆", "note": "english preamble" },
+    { "id": "SCENE-04", "input": "名字：暖汤馆", "expected": "暖汤馆", "note": "chinese preamble, full-width colon" },
+    { "id": "SCENE-05", "input": "名称: 暖汤馆", "expected": "暖汤馆", "note": "chinese preamble, half-width colon" },
+    { "id": "SCENE-06", "input": "\"暖汤馆\"", "expected": "暖汤馆", "note": "half-width quotes" },
+    { "id": "SCENE-07", "input": "「暖汤馆」", "expected": "暖汤馆", "note": "full-width brackets" },
+    { "id": "SCENE-08", "input": "“暖汤馆”", "expected": "暖汤馆", "note": "full-width quotes" },
+    { "id": "SCENE-09", "input": "**暖汤馆**", "expected": "暖汤馆", "note": "markdown emphasis" },
+    { "id": "SCENE-10", "input": "生活集市 🛒", "expected": "生活集市", "note": "source=e2b-probe — the on-device model decorates roughly half its names" },
+    { "id": "SCENE-11", "input": "烘焙暖意 🍞", "expected": "烘焙暖意", "note": "source=e2b-probe" },
+    { "id": "SCENE-12", "input": "光影殿堂 🎬", "expected": "光影殿堂", "note": "source=e2b-probe" },
+    { "id": "SCENE-13", "input": "医心慰藉 🏥", "expected": "医心慰藉", "note": "source=e2b-probe" },
+    { "id": "SCENE-14", "input": "🍻", "expected": null, "note": "an emoji-only reply leaves nothing nameable" },
+    { "id": "SCENE-15", "input": "", "expected": null, "note": "empty reply" },
+    { "id": "SCENE-16", "input": "   \n  \n", "expected": null, "note": "whitespace-only reply" },
+    { "id": "SCENE-17", "input": "「」", "expected": null, "note": "brackets with nothing in them" },
+    { "id": "SCENE-18", "input": "这家店让我想起了很多很多温暖的回忆和故事", "expected": "这家店让我想起了很多很多", "note": "a rambling answer is capped at 12 CHARACTERS, not dropped — CJK has no spaces to count" }
+  ]
+}
