@@ -7,8 +7,19 @@ verified without a real model. Real-model accuracy is the atom bench's job.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
 from tideline.intelligence import source_language as sl
 from tideline.runtime import ModelRuntime
+
+
+_SCRIPT_VECTORS = json.loads(
+    (Path(__file__).resolve().parents[2] / "parity" / "vectors" / "script_lang.json")
+    .read_text(encoding="utf-8")
+)["cases"]
 
 
 class _Fixed(ModelRuntime):
@@ -46,6 +57,19 @@ def test_detect_script_latin_is_ambiguous():
     assert sl.detect_script("beurre") is None
     assert sl.detect_script("hello world") is None
     assert sl.detect_script("") is None
+
+
+def test_detect_script_answer_does_not_depend_on_word_order():
+    """The regression that started this: deciding on the first character seen
+    made the same two words answer differently depending on which came first,
+    and put core and the phone on opposite verdicts for one string."""
+    assert sl.detect_script("한글すし") == sl.detect_script("すし한글") == "Japanese"
+
+
+@pytest.mark.parametrize("case", _SCRIPT_VECTORS, ids=lambda c: c["id"])
+def test_detect_script_parity_vector(case):
+    """One list of cases, read by both ends — see parity/vectors/script_lang.json."""
+    assert sl.detect_script(case["input"]) == case["expected"]
 
 
 # --- parse_response canonicalization -------------------------------------

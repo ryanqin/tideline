@@ -40,13 +40,29 @@ def detect_script(text: str) -> str | None:
     a bare CJK run is genuinely ambiguous between Chinese and kanji-only Japanese
     (駅, 寿司) — guessing there would make the "reliable" path unreliable, so both
     defer to the model instead. The backbone stays trustworthy; the model picks
-    up the ambiguous remainder."""
+    up the ambiguous remainder.
+
+    The whole string is scanned before deciding, and kana outranks hangul:
+    Japanese text does occasionally carry hangul, Korean text almost never
+    carries kana. Deciding on the first character seen instead made the answer
+    depend on word order — 한글すし read as Korean, すし한글 as Japanese — which
+    is how this drifted away from the phone (ScriptLang.kt). Cases live in
+    `parity/vectors/script_lang.json`, shared with that file."""
+    saw_kana = False
+    saw_hangul = False
     for ch in text:
         cp = ord(ch)
-        if 0x3040 <= cp <= 0x30FF:  # hiragana + katakana → Japanese
-            return "Japanese"
-        if 0xAC00 <= cp <= 0xD7A3:  # hangul syllables → Korean
-            return "Korean"
+        if 0x3040 <= cp <= 0x30FF or 0x31F0 <= cp <= 0x31FF:
+            saw_kana = True  # hiragana, katakana, katakana phonetic extensions
+        elif 0xAC00 <= cp <= 0xD7A3 or 0x1100 <= cp <= 0x11FF:
+            # Precomposed syllables, plus the Jamo an NFD-decomposed 가 becomes.
+            # (The phone's upper bound is 0xD7AF; U+D7A4-D7AF is unassigned, so
+            # the two ranges cover exactly the same characters.)
+            saw_hangul = True
+    if saw_kana:
+        return "Japanese"
+    if saw_hangul:
+        return "Korean"
     return None
 
 

@@ -1,0 +1,23 @@
+{
+  "rule": "Deterministic script → language. Only a script that pins a language unambiguously gets an answer; everything else defers to the model.",
+  "why": "Both ends bucket a translation by source language. When they disagree, the same word lands in different buckets on phone and desktop — the museum's by-language lens and the concept clustering split apart. The mixed-script cases below are where they used to disagree.",
+  "implementations": {
+    "core": "core/src/tideline/intelligence/source_language.py::detect_script",
+    "android": "android/app/src/main/kotlin/com/ryanqin/tideline/intelligence/ScriptLang.kt::detectScriptLanguage"
+  },
+  "note": "`expected: null` means the script doesn't settle it (bare Han is ambiguous between Chinese and kanji-only Japanese; Latin spans dozens of languages) and the model's own report fills it in. Consumed by core/tests/test_source_language.py; the Android JUnit suite still carries its own copy — wiring it to read this file needs a Gradle sourceSets change and a device run.",
+  "cases": [
+    { "id": "SCRIPT-01", "input": "すし", "expected": "Japanese", "note": "hiragana pins it" },
+    { "id": "SCRIPT-02", "input": "ラーメン", "expected": "Japanese", "note": "katakana pins it" },
+    { "id": "SCRIPT-03", "input": "한글", "expected": "Korean", "note": "hangul syllables pin it" },
+    { "id": "SCRIPT-04", "input": "駅", "expected": null, "note": "bare Han is genuinely ambiguous — Chinese or kanji-only Japanese" },
+    { "id": "SCRIPT-05", "input": "gare", "expected": null, "note": "Latin is shared across dozens of languages" },
+    { "id": "SCRIPT-06", "input": "café", "expected": null, "note": "Latin with diacritics is still Latin" },
+    { "id": "SCRIPT-07", "input": "", "expected": null, "note": "nothing to go on" },
+    { "id": "SCRIPT-08", "input": "한글すし", "expected": "Japanese", "note": "THE divergence: kana outranks hangul, so the whole string must be scanned before deciding. Reading character by character and returning on the first hit answered Korean here." },
+    { "id": "SCRIPT-09", "input": "すし한글", "expected": "Japanese", "note": "same string, other order — the answer must not depend on which script comes first" },
+    { "id": "SCRIPT-10", "input": "駅한글", "expected": "Korean", "note": "Han + hangul and no kana: hangul settles it (the Han contributes nothing either way)" },
+    { "id": "SCRIPT-11", "input": "ㇰ", "expected": "Japanese", "note": "katakana phonetic extensions (U+31F0-31FF) count as kana" },
+    { "id": "SCRIPT-12", "input": "가", "expected": "Korean", "note": "NFD-decomposed 가 is Hangul Jamo (U+1100-11FF), not a precomposed syllable" }
+  ]
+}
