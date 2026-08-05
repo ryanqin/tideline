@@ -89,7 +89,15 @@ private const val MODEL_PATH = "/data/local/tmp/gemma-4-E2B-it.litertlm"
 private const val MODEL_PATH_E4B = "/data/local/tmp/gemma-4-E4B-it.litertlm"
 
 // Mirrors tideline/core/src/tideline/bench/atoms/a1_word_translation.py and a2_sentence_translation.py.
-// Same prompt is used by Tideline's Python core in production — keep them in sync.
+// NOT the core's prompt, and deliberately so — the comment that used to sit
+// here said "same prompt … keep them in sync", which stopped being true when
+// core's became a tool-calling instruction. The two ends record a translation
+// by different mechanisms: core asks the model to call add_translation, the
+// phone writes the row in Kotlin after the reply lands. So core's prompt
+// carries a tool protocol this one has no use for, and asking the phone's
+// model to emit tool calls it will never dispatch would only invite the
+// format to drift. What IS shared is the instruction that matters — reply
+// with the translation and nothing else.
 private const val SYSTEM_PROMPT =
   "You are a precise translator. Respond with only the translation — " +
     "no preamble, no explanation, no quotation marks."

@@ -207,14 +207,35 @@ on the Tool class all along and simply never reached the model — in the shape
 **This measurement was pre-registered.** The decision rule (adopt at ≥+2
 cases with no rise in wrong-tool or budget-exhaustion; revert at ≤−2; revert
 as underpowered in between) was fixed in writing before the change was
-implemented, and the baseline was run twice first to size the noise. Both
-baseline runs were identical, and both treatment runs were identical:
-**run-to-run variance is 0 cases**, so +2 is the whole signal.
+implemented, and the baseline was run twice first to size the noise.
 
-The cost is real and is the reason this needed measuring rather than
-assuming: every prompt carries ~830 more characters, which on-device is
-latency. It bought two cases; a bigger description would not necessarily buy
-more.
+Both baseline runs were identical and both treatment runs were identical —
+but read that carefully, because it is **not** a noise measurement. Generating
+the same prompt six times at `temperature=0.3` returns the same tokens six
+times: on short, heavily-constrained outputs this stack has no sampling noise
+to measure. So the +2 is exactly reproducible, which is a stronger claim than
+a noisy +2 — and it is also two specific cases flipping, not an estimate of a
+distribution. A different quantization, sampler, or temperature could land
+elsewhere, and nothing here speaks to that.
+
+**Where the cost lands, corrected.** The declaration grew from 92 to 263
+tokens, which on this Mac's CPU is ~2.9s → ~4.3s for a cold prefill; in a
+running server the system prefix is KV-cached across requests, so the
+steady-state cost is far smaller (small enough that per-word decode variance
+swamped it in measurement). This was first written up as a cost paid
+"on-device", which is wrong: **Android has no tool protocol at all** — no
+declarations, no `<|tool_call>`, its own plain prompt, and rows written in
+Kotlin after the reply lands. The tool-calling loop this bench measures runs
+in core only, so both the +2 and the tokens it costs land on the web/CLI
+surface, and the phone sees neither.
+
+That reframes what was bought, without changing the decision: a correctness
+gain on the reference implementation, paid for on a surface where latency is
+not the product promise. Worth having. But the description is prose, and most
+of it is optional-argument documentation — the part likely doing the work is
+"use this AFTER you have produced a translation" plus the required list. A
+trimmed version is 130 tokens instead of 263. Whether it holds the +2 is the
+obvious next experiment and has not been run.
 
 Not separable, by construction: `description` cannot be added to the old flat
 `{arg:<|"|>string<|"|>}` form without reading as another parameter name, so
