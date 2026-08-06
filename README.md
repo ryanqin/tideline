@@ -153,13 +153,41 @@ What's actually working on-device today, on a Galaxy S23 Ultra (Snapdragon 8 Gen
 ```bash
 cd android
 echo "sdk.dir=$ANDROID_HOME" > local.properties     # one-time
+
+# The unit tests need NO device and no emulator — 71 JVM tests in ~20s,
+# including the cross-language parity vectors (see below). Run these before
+# anything else; for a long stretch the phone's logic was the least-verified
+# code in the repo purely because nobody had wired a JDK onto PATH.
+./gradlew :app:testDebugUnitTest
+
 ./gradlew :app:assembleDebug                         # ~1 min first build
 adb push gemma-4-E2B-it.litertlm /data/local/tmp/   # one-time, ~2.4 GB
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.ryanqin.tideline/.MainActivity
 ```
 
-Prereqs: JDK 21 (Android Studio's bundled JBR works), Android SDK platform 35 + build-tools 35, an Android 12+ device with Snapdragon 8 Gen 2 or newer (GPU backend uses Google Play services TFLite).
+Prereqs: a JDK (Android Studio's bundled JBR works; so does `brew install openjdk@17`), Android SDK platform 35 + build-tools 35, and — only for the app itself, not for the tests — an Android 12+ device with Snapdragon 8 Gen 2 or newer (GPU backend uses Google Play services TFLite).
+
+Homebrew's `openjdk@17` is keg-only, so it stays off `PATH` even once installed and `java -version` keeps reporting nothing. Point Gradle at it explicitly rather than concluding there is no JDK:
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew :app:testDebugUnitTest
+# or Android Studio's:  JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+```
+
+### Parity vectors — one case list, both ends
+
+`parity/vectors/` holds shared test cases for the rules that exist twice, once
+in Python and once in Kotlin: script → language detection, and scene-name
+parsing. Both test suites read the same files — pytest via
+`core/tests/`, JUnit via `ParityVectorTest` with the directory on the
+unit-test classpath. Only the *cases* are shared; no runtime code crosses the
+core/Android boundary.
+
+The point is that a change moves both ends or neither. Flipping one case makes
+`pytest` and `gradlew test` fail together, each naming the same case id — which
+is how it was checked. Two copies of a case list is what let 한글すし answer
+Korean on one end and Japanese on the other for a year.
 
 ### Latency — GPU backend, plugged in, 20 back-to-back translations
 

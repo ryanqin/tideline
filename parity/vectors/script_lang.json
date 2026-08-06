@@ -5,7 +5,7 @@
     "core": "core/src/tideline/intelligence/source_language.py::detect_script",
     "android": "android/app/src/main/kotlin/com/ryanqin/tideline/intelligence/ScriptLang.kt::detectScriptLanguage"
   },
-  "note": "`expected: null` means the script doesn't settle it (bare Han is ambiguous between Chinese and kanji-only Japanese; Latin spans dozens of languages) and the model's own report fills it in. Consumed by core/tests/test_source_language.py; the Android JUnit suite still carries its own copy — wiring it to read this file needs a Gradle sourceSets change and a device run.",
+  "note": "`expected: null` means the script doesn't settle it (bare Han is ambiguous between Chinese and kanji-only Japanese; Latin spans dozens of languages) and the model's own report fills it in. Read by both ends: core/tests/test_source_language.py and the Android JUnit suite (ParityVectorTest, with parity/vectors on the unit-test classpath via app/build.gradle.kts). Change a case here and both suites move together — verified by flipping one and watching each turn red.",
   "cases": [
     { "id": "SCRIPT-01", "input": "すし", "expected": "Japanese", "note": "hiragana pins it" },
     { "id": "SCRIPT-02", "input": "ラーメン", "expected": "Japanese", "note": "katakana pins it" },

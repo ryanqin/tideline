@@ -41,6 +41,13 @@ android {
     named("main") {
       java.srcDirs("src/main/kotlin")
     }
+    // The cross-language parity vectors, on the unit-test classpath. They
+    // live outside this module on purpose: they belong to neither end.
+    // Both suites read the same file rather than each carrying a copy of
+    // the cases — copies are what drifted in the first place.
+    named("test") {
+      resources.srcDir("../../parity/vectors")
+    }
   }
 
   packaging {
@@ -93,4 +100,5 @@ dependencies {
   implementation(libs.mlkit.text.recognition)
 
   testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.serialization.json)
 }

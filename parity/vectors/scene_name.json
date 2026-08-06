@@ -5,7 +5,7 @@
     "core": "core/src/tideline/intelligence/episodic_title.py::parse_scene_response",
     "android": "android/app/src/main/kotlin/com/ryanqin/tideline/intelligence/SceneNaming.kt::parseSceneName"
   },
-  "note": "`expected: null` means the reply is unnameable and the caller keeps the bare scene_label as the title. Consumed by core/tests/test_episodic_title_scene.py; the Android JUnit suite still carries its own copy of these cases (SceneNamingTest.kt) — wiring it to read this file needs a Gradle sourceSets change and a device run.",
+  "note": "`expected: null` means the reply is unnameable and the caller keeps the bare scene_label as the title. Read by both ends: core/tests/test_episodic_title_scene.py and the Android JUnit suite (ParityVectorTest, with parity/vectors on the unit-test classpath via app/build.gradle.kts). Change a case here and both suites move together — verified by flipping one and watching each turn red.",
   "cases": [
     { "id": "SCENE-01", "input": "暖汤馆", "expected": "暖汤馆", "note": "clean reply passes straight through" },
     { "id": "SCENE-02", "input": "\n  \n站途暖\n这是因为...\n", "expected": "站途暖", "note": "first non-empty line wins, reasoning below is dropped" },
