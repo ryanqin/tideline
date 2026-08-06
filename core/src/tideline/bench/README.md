@@ -190,19 +190,35 @@ sends.
 
 ### E2B, 30 cases, 2026-08-04
 
-| Metric | before | after | Δ |
-|---|---:|---:|---:|
-| task_success_rate | 76.7% (23/30) | **83.3% (25/30)** | **+2 cases** |
-| wrong_tool_rate | 6.7% | 6.7% | 0 |
-| budget_exhaustion_rate | 0.0% | 0.0% | 0 |
-| mean num_tool_calls | 0.83 | 0.90 | +0.07 |
-| declaration length | 268 chars | 1095 chars | ×4.1 |
+Three variants of the tool declaration, same 30 cases, same weights:
 
-"Before" and "after" are the tool declaration: it used to send eight field
-names and the word `string` eight times, and nothing else. It now sends what
-the tool is FOR and which arguments are required — both of which were written
-on the Tool class all along and simply never reached the model — in the shape
-`format_function_declaration` emits in the GGUF's own jinja template.
+| Metric | no description | full description | **short description** |
+|---|---:|---:|---:|
+| task_success_rate | 76.7% (23/30) | 83.3% (25/30) | **86.7% (26/30)** |
+| wrong_tool_rate | 6.7% | 6.7% | **3.3%** |
+| budget_exhaustion_rate | 0.0% | 0.0% | 0.0% |
+| mean num_tool_calls | 0.83 | 0.90 | 0.90 |
+| declaration tokens | 92 | 263 | **146** |
+
+The first column is where this started: eight field names and the word
+`string` eight times, and nothing else. What the tool was FOR and which
+arguments were mandatory had been written on the Tool class the whole time and
+never reached the model. Adding them, in the shape
+`format_function_declaration` emits in the GGUF's own jinja template, bought
+two cases.
+
+**Then trimming the description bought another one.** The "full" version was
+prose: purpose, plus a paragraph documenting every optional argument. The
+short version keeps only what the model cannot get elsewhere — when to call,
+and what `source_lang` means — and drops the optional-argument catalogue
+entirely; which arguments are mandatory is carried structurally by
+`required:[…]`, so saying it again in English was redundant. That is 117 fewer
+tokens **and one more case**, with the wrong-tool rate halved.
+
+The lesson is not "shorter is better". It is that the catalogue was costing
+tokens to make the model slightly *less* accurate — a tool description is
+context the model has to hold while choosing, and documenting arguments it
+was never going to need is noise competing with the instruction that matters.
 
 **This measurement was pre-registered.** The decision rule (adopt at ≥+2
 cases with no rise in wrong-tool or budget-exhaustion; revert at ≤−2; revert
@@ -231,11 +247,14 @@ surface, and the phone sees neither.
 
 That reframes what was bought, without changing the decision: a correctness
 gain on the reference implementation, paid for on a surface where latency is
-not the product promise. Worth having. But the description is prose, and most
-of it is optional-argument documentation — the part likely doing the work is
-"use this AFTER you have produced a translation" plus the required list. A
-trimmed version is 130 tokens instead of 263. Whether it holds the +2 is the
-obvious next experiment and has not been run.
+not the product promise.
+
+The trim experiment this paragraph used to propose has since been run, with
+its criterion fixed in advance (adopt at ≥25/30, keep the long version at
+24/30 or below). It returned 26/30 — better than the version it replaced,
+at 146 tokens instead of 263 — and reproduced exactly on a second run. Both
+halves of the guess were wrong in the same direction: the prose was not
+carrying the gain, it was costing a little of it.
 
 Not separable, by construction: `description` cannot be added to the old flat
 `{arg:<|"|>string<|"|>}` form without reading as another parameter name, so

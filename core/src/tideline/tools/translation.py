@@ -95,17 +95,18 @@ class AddTranslationTool(Tool):
         "session_id": "string",
         "scene_label": "string",
     }
+    # Deliberately short, and measured. A version four times longer — this plus
+    # a paragraph documenting every optional argument — scored WORSE on the
+    # agent bench (25/30 vs 26/30, and twice the wrong-tool rate) at 263
+    # declaration tokens against 146. The optional-argument catalogue was
+    # costing tokens to make the model slightly less accurate. What the model
+    # needs is when to call, which arguments are mandatory (carried
+    # structurally by `required` below, not repeated here), and the one gloss
+    # it can't infer: what source_lang means. See bench/README.
     description = (
-        "Record a completed translation. Use this AFTER you have produced "
-        "a translation, to silently sediment the original-text + translated-"
-        "text pair into the user's sediment layer. Required args: original, "
-        "source_lang (the language the original text is written in), "
-        "target_lang, translated. Optional args: source (image/audio/text), "
-        "context_snippet (surrounding text from OCR or transcript), "
-        "session_id (groups translations from one outing/session), "
-        "scene_label (a short 2-4 char type of place/scene this was met in, "
-        "e.g. 拉面店 / 车站 / 咖啡馆 — the same kind of place gets the same "
-        "label so it clusters across visits)."
+        "Record a completed translation. Call this AFTER you have produced "
+        "the translation. source_lang is the language the original text is "
+        "written in."
     )
     required = ("original", "source_lang", "target_lang", "translated")
 
