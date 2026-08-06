@@ -26,6 +26,15 @@ def init_all_tables(conn: sqlite3.Connection) -> None:
     # Cluster engine tables (Tier B). Init here so any code path that calls
     # init_all_tables (CLI, bench, tests) gets the full schema; the cluster
     # engine itself also has its own init_db for direct callers.
+    #
+    # Imported here rather than at module level, deliberately. It is NOT a
+    # circular-import guard — hoisting it works, verified. It is that
+    # cluster.naming reads tools.settings, so a module-level import would
+    # make tools ⇄ cluster a real cycle at import time. Python resolves that
+    # one today only because settings.py needs nothing back from this
+    # package; a one-line change there would turn a working import into an
+    # ImportError far from its cause. The deferral costs one lookup per DB
+    # open and keeps the two packages orderable.
     from tideline.cluster import init_db as _init_clusters
     _init_clusters(conn)
 

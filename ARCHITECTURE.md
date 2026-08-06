@@ -147,7 +147,7 @@ this table is not a mitigation.
 
 | Pitfall | Where this project actually stands |
 |---|---|
-| Hermes 594KB single file | **<500 lines/file** — a self-imposed guideline, **checked by hand, not enforced**. There is no CI in this repo. 8 tracked files are over it today (worst: `TidelineTranslateViewModel.kt` 1254, `styles.css` 1225, `cluster.py` 908). `web/app.py` came back under it by moving the orchestration it had accumulated into `translate_flow.py` / `boot.py` / `reading.py` |
+| Hermes 594KB single file | **<500 lines/file** — a self-imposed guideline, **checked by hand, not enforced**. There is no CI in this repo. 7 tracked files are over it today (worst: `TidelineTranslateViewModel.kt` 1266, `styles.css` 1225, `test_cluster.py` 1131) — **all of them tests, stylesheets, browser JS, or Kotlin; no Python source file in `core/` is over the line any more.** `web/app.py` got back under it by moving the orchestration it had accumulated into `translate_flow.py` / `boot.py` / `reading.py`, and `cluster.py` (909) by becoming the `cluster/` package |
 | OpenClaw 40+ provider hooks | Held. `ModelRuntime` has **exactly 1 method** (`generate`); the 5–8 figure is the ceiling I won't cross, not the current size |
 | OpenClaw 5-layer retry inside orchestrator | **Not applicable yet — there is no retry anywhere.** `LlamaCppRuntime.generate` is a single bare call. The intent stands (when retry lands it belongs in the runtime, not the loop), but nothing has been pushed down because nothing exists |
 | Claw-code word-split token estimation | **Not applicable — nothing counts tokens at all.** No SentencePiece, no tokenizer dependency; the loop caps *turns* (`max_turns=5`), not tokens, so there is no budget to estimate |
