@@ -131,6 +131,14 @@ def _concept_partition(conn: sqlite3.Connection) -> dict[int, int]:
     return partition
 
 
+# This function stays whole, deliberately. It was on a list of things to split
+# — "two unrelated algorithms sharing only a persistence tail" — and measuring
+# it says otherwise: the theme branch is ~24 lines (most of them the KNOWN
+# LIMITATION note), the concept branch is 6, and the tail they share is 51.
+# The bulk IS the shared part, because the per-relation work already lives in
+# `_concept_edges` / `_concept_partition` above. Extracting a 6-line branch
+# would leave a reader hopping between three functions to follow one rebuild.
+# Split it when a third relation arrives, not before.
 def rebuild_clusters(
     conn: sqlite3.Connection,
     vote_threshold: float = _DEFAULT_VOTE_THRESHOLD,
