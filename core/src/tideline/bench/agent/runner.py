@@ -123,5 +123,18 @@ def run_case(runtime: ModelRuntime, case: AgentCase) -> CaseResult:
 
 
 def run(runtime_name: str = "mock") -> list[CaseResult]:
+    """Every case judged on its own.
+
+    The runtime is shared (loading the weights 30 times would be absurd)
+    but its cache is cleared between cases. A backend that carries KV
+    state gives measurably different answers depending on what it has
+    already seen — enough to move three of the twelve atom scores on E2B —
+    so without this, case 17's verdict is partly a function of cases 1-16
+    and adding a case silently reshuffles the rest. (No-op for Mock.)
+    """
     runtime = get_runtime(runtime_name)
-    return [run_case(runtime, case) for case in CASES]
+    out: list[CaseResult] = []
+    for case in CASES:
+        runtime.reset()
+        out.append(run_case(runtime, case))
+    return out

@@ -87,5 +87,12 @@ def run(runtime_name: str = "mock") -> list[CaseResult]:
     runtime = get_runtime(runtime_name)
     out: list[CaseResult] = []
     for atom in load_atoms():
+        # Each atom starts cold. Without this an atom's score is a reading
+        # of the atom PLUS whatever ran before it: a backend with a KV
+        # cache gives measurably different answers depending on the state
+        # it arrives in, and four of these twelve move by a case or two.
+        # A number that shifts when someone reorders the suite is not a
+        # measurement of the atom. (No-op for cacheless backends.)
+        runtime.reset()
         out.extend(run_atom(runtime, atom))
     return out

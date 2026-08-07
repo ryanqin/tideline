@@ -79,6 +79,10 @@ class LlamaCppRuntime(ModelRuntime):
         self._max_tokens = max_tokens
         self._temperature = temperature
 
+    def reset(self) -> None:
+        """Drop the KV cache so the next generate starts cold."""
+        self._llm.reset()
+
     def generate(self, prompt: str) -> str:
         response = self._llm(
             prompt,

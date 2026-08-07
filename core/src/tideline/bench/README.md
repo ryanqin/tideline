@@ -166,9 +166,11 @@ Scores agent-loop behavior on the end-to-end translation flow. Post-
 model, given a user translation request, both produce a correct
 translation AND call `add_translation` with correctly-shaped args?
 
-5 canonical cases (T1-T5) cover variations in phrasing ("translate X
-to Y", "could you translate 'X' into Y", direction switches) and source
-script. Earlier S* (chatbot-style tool selection) and N* (off-task
+30 cases: 6 terms (Latin, accented Latin, kana, kanji, hangul, a
+multi-word phrase) × 5 phrasings, of which P1 — `translate X to Y` — is
+the one production actually sends. It was 5 cases until 2026-08-04, which
+meant one case was 20 points; an instrument that reports in ±20% steps
+cannot decide anything about a prompt. Earlier S* (chatbot-style tool selection) and N* (off-task
 restraint) cases were retired with the chatbot scope — their roles
 moved to the atomic bench's Tier B (direct LLM operations, no harness).
 
@@ -225,14 +227,27 @@ cases with no rise in wrong-tool or budget-exhaustion; revert at ≤−2; revert
 as underpowered in between) was fixed in writing before the change was
 implemented, and the baseline was run twice first to size the noise.
 
-Both baseline runs were identical and both treatment runs were identical —
-but read that carefully, because it is **not** a noise measurement. Generating
-the same prompt six times at `temperature=0.3` returns the same tokens six
-times: on short, heavily-constrained outputs this stack has no sampling noise
-to measure. So the +2 is exactly reproducible, which is a stronger claim than
+Both baseline runs were identical and both treatment runs were identical.
+This sentence has now been wrong twice and is on its third wording, which is
+worth saying out loud, because each correction came from measuring rather than
+from thinking harder.
+
+It first read "run-to-run variance is 0", implying a noise measurement. It
+isn't one: generating the same prompt six times at `temperature=0.3` returns
+the same tokens six times, so there is no sampling noise here **to** measure.
+
+That second version was still wrong, in a way the atom bench later exposed:
+identical output holds for the same prompt *from the same cache state*. Change
+what the runtime processed beforehand and the same prompt can produce a
+different answer — enough to move three of twelve atom scores on E2B. These
+runs were comparable because both arms walked the same 30 cases in the same
+order, and both benches now clear the cache between units, but "deterministic"
+was never the right word for it. "Reproducible under a fixed procedure" is.
+
+So the +2 is exactly reproducible under this procedure, which is stronger than
 a noisy +2 — and it is also two specific cases flipping, not an estimate of a
-distribution. A different quantization, sampler, or temperature could land
-elsewhere, and nothing here speaks to that.
+distribution. A different quantization, sampler, temperature, or cache state
+could land elsewhere, and nothing here speaks to that.
 
 **Where the cost lands, corrected.** The declaration grew from 92 to 263
 tokens, which on this Mac's CPU is ~2.9s → ~4.3s for a cold prefill; in a
@@ -261,11 +276,47 @@ Not separable, by construction: `description` cannot be added to the old flat
 shape and content had to move together. If this ever regresses, back out one
 at a time.
 
-### E4B
+### E4B at n=30 — and why the aggregate is the wrong number to quote
 
-Not re-measured at n=30. The old n=5 reading (100%) is void along with the
-rest; E4B has never been the default and the E2B result is what governs
-whether this ships.
+| Metric | E2B | E4B |
+|---|---:|---:|
+| task_success_rate | **86.7% (26/30)** | 70.0% (21/30) |
+| wrong_tool_rate | 6.7% | **0.0%** |
+| mean num_tool_calls | 0.93 | 0.70 |
+| mean response_words | 1.5 | 2.2 |
+
+Read alone, that says the bigger model is five cases worse at calling a tool,
+which would refute what this file used to claim from n=5 — "E4B is uniformly
+stronger; the same high-gear pattern holds for tool-call correctness".
+
+The per-phrasing split says something more useful:
+
+| phrasing | E2B | E4B |
+|---|---:|---:|
+| `translate X to Y` — **what production sends** | 5/6 | 4/6 |
+| `could you translate 'X' into Y` | 6/6 | 6/6 |
+| `what is X in Y?` | 5/6 | **0/6** |
+| `X -> Y` | 5/6 | 5/6 |
+| `Please translate the following into Y: X` | 5/6 | **6/6** |
+
+**The entire five-case gap is one phrasing.** On the other four E4B ties or
+wins. Asked "what is 한글 in English?" it answers the question — correctly,
+in prose, without calling `add_translation`. Its wrong-tool rate is 0%: it
+never picks the wrong tool, it declines to treat an interrogative as an
+instruction. E2B doesn't draw that distinction and pattern-matches every
+translate-shaped request into a tool call, which here is the behaviour the
+harness wants.
+
+Two things follow. The old n=5 claim is refuted, but not by "E4B is worse" —
+by "n=5 could not have found this", since those five cases were all
+imperative. And **the aggregate is a weighted average whose weights I chose**:
+six of thirty cases use a phrasing production never sends, and those six
+decide the whole comparison. Quote the split, not the total. (The same caveat
+applies, more weakly, to the description A/B above: those deltas are
+within-model, but they are aggregates over this same case mix.)
+
+On the phrasing that actually ships, the two models are within one case of
+each other — so nothing here argues against E2B carrying translation.
 
 ## Regression caught by this bench (worth recording)
 
@@ -313,13 +364,18 @@ from harness effects.
 A4 (tool-call correctness) is not a direct-prompt atom — it's measured
 by the agent bench's translation_flow cases above.
 
-## Reference numbers — E2B vs E4B, re-measured 2026-08-04
+## Reference numbers — E2B vs E4B, re-measured 2026-08-07
 
-Both models re-run after B6's judge was tightened (see below). The `mock`
-column is the zero baseline: Mock is not a model, it answers by rule, and
-where a rule happens to align with a judge it scores. **An atom's real signal
-is its score minus that column**, and `tests/test_bench_atoms.py` pins these
-mock numbers so a future prompt or judge change that moves one has to say so.
+Every atom now starts with the model's cache cleared (see below). These
+numbers are a property of the atom, the prompts and the weights, and nothing
+else — verified by running the suite in reverse order and getting all twelve
+back identical.
+
+The `mock` column is the zero baseline: Mock is not a model, it answers by
+rule, and where a rule happens to align with a judge it scores. **An atom's
+real signal is its score minus that column**, and `tests/test_bench_atoms.py`
+pins these mock numbers so a future prompt or judge change that moves one has
+to say so.
 
 | Atom | n | mock | E2B | E4B | Δ |
 |---|---:|---:|---:|---:|---:|
@@ -327,44 +383,67 @@ mock numbers so a future prompt or judge change that moves one has to say so.
 | A2 sentence translation | 10 | 0.0% | 80.0% | 90.0% | +10 |
 | A3 source language ID | 12 | 25.0% | **100.0%** | 91.7% | −8 |
 | A5 output discipline | 10 | 0.0% | **100.0%** | 100.0% | 0 |
-| A6 term extraction | 10 | **100.0%** | 70.0% | **90.0%** | +20 |
+| A6 term extraction | 10 | **100.0%** | 50.0% | **90.0%** | +40 |
 | B1 concept match | 12 | 0.0% | **100.0%** | 83.3% | −17 |
-| B2 register classification | 12 | 33.3% | 83.3% | 83.3% | 0 |
+| B2 register classification | 12 | 33.3% | 66.7% | **83.3%** | +17 |
 | B3 ambiguity detection | 12 | 50.0% | 91.7% | **100.0%** | +8 |
-| B4 common theme | 10 | 10.0% | 70.0% | 60.0% | −10 |
-| B5 complexity tier | 12 | 33.3% | 75.0% | **91.7%** | +17 |
+| B4 common theme | 10 | 10.0% | **70.0%** | 60.0% | −10 |
+| B5 complexity tier | 12 | 33.3% | 66.7% | **91.7%** | +25 |
 | B6 episodic title | 5 | 0.0% | 100.0% | 100.0% | 0 (small sample) |
-| B7 topic relatedness | 36 | 0.0% | 83.3% | **94.4%** | +11 |
+| B7 topic relatedness | 36 | 0.0% | 83.3% | **91.7%** | +8 |
 
 Wall time (CPU only): E2B ~2:00, E4B ~2:30.
 
-**A6's mock score is 100%, and that is the atom to distrust, not Mock.** The
-expected term sits inside the snippet, the snippet sits inside the prompt, and
-Mock's fallback echoes the prompt — so the judge scores a hit on an answer that
-selected nothing. A6's real numbers are measured by the same permeable judge.
-Fixing it would move the real scores too, so it is a re-measurement to run on
-purpose rather than a tidy-up. B2/B3/B5 carry smaller versions of the same
-thing (a rule aligning with a multiple-choice judge).
+### The bench was measuring the wrong thing, and here is how much
 
-### What moved, and what didn't
+Until 2026-08-07 the suite ran every atom through one shared runtime. A
+backend with a KV cache carries state between calls, so an atom's score was a
+reading of **the atom plus whatever ran before it**:
+
+| Atom | in-suite (warm) | isolated | |
+|---|---:|---:|---|
+| A6 (E2B) | 7/10 | 5/10 | −2 |
+| B2 (E2B) | 10/12 | 8/12 | −2 |
+| B5 (E2B) | 9/12 | 8/12 | −1 |
+| B7 (E4B) | 34/36 | 33/36 | −1 |
+
+Same weights, same prompts, same judge. Asked to extract the term from
+"Préchauffer le four à 180 degrés", E2B answers `four` from a cold cache and
+`Préchauffer` with four atoms' worth of history behind it. Three of twelve
+atoms move on E2B; one on E4B.
+
+That is not noise in the usual sense — each reading reproduces exactly, four
+runs out of four. It is that floating-point differences from a different cache
+state flip a sampling decision on cases where the model is near its decision
+boundary. **Cache sensitivity is therefore a readout of how many cases a model
+is genuinely unsure about** — five across the table for E2B, one for E4B,
+which is its own quiet argument about the two models.
+
+The published table before this fix was internally consistent (2026-08-04
+reproduced 2026-05-11 to the decimal) only because nobody had reordered the
+suite in between. Adding an atom would have silently moved four scores.
+
+`ModelRuntime.reset()` — a no-op by default, `Llama.reset()` on llama.cpp — is
+now called before each atom, and before each case in the agent bench for the
+same reason.
+
+### What else moved, and what didn't
 
 **B6's judge was tightened** (2026-08-04). It accepted `"Your Japanese words"`
 while correctly rejecting `"Japanese words"` — and B6's own SYSTEM_PROMPT tells
 the model to "Lead with … a possessive ('your', 'our')", so the judge was
 paying out for copying a surface format instruction onto the exact category
-label the atom exists to reject. It also accepted a plain echo of the prompt,
-because the prompt template contains "captures **their** shared episodic
-moment" and `their` was a universal marker. It now judges the title production
-would actually store, rejects category labels, and rejects replies too long to
-be titles.
+label the atom exists to reject. Neither model's B6 score moved: both were and
+remain 100%. The bypass was real but unused. Mock's B6 went 100% → 0%.
 
-**Neither model's B6 score moved: both were and remain 100%.** The bypass was
-real but unused — E2B's and E4B's answers were genuine episodic titles all
-along. Mock's B6 went 100.0% → 0.0%, which is the whole of the change.
-
-Every other atom reproduced its 2026-05-11 value to the decimal on both
-models, so the rest of this table is three months old and still current.
-B7 is new here; it wasn't in the original table.
+**A6's judge was examined and deliberately left alone.** It is a substring
+test, so a prompt echo passes it — which is why Mock scores 100%. Scoring the
+same real responses under a stricter judge drops E2B 5→3 and E4B 9→5, but
+every divergence is the model returning a longer noun phrase *containing* the
+gold (`Beurre demi-sel` for `Beurre`, `Datenbank-Verbindung` for `Datenbank`),
+and in each case arguably the better answer. The gold span is one defensible
+choice among several; the leniency is what absorbs that. See the module
+docstring.
 
 ## Reading the atomic bench — actionable findings
 

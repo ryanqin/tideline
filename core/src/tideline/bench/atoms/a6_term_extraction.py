@@ -8,14 +8,34 @@ prompts.
 
 Lenient eval: response contains the expected term as a substring.
 
-Known weakness, documented rather than hidden: the expected term sits inside
-the snippet, and the snippet sits inside the prompt, so **any reply that
-echoes the prompt scores a hit**. Mock does exactly that and lands 10/10 — the
-line that used to sit here, "Mock can't do it", was measurably false. The
-mock-baseline gate in tests/test_bench_atoms.py pins that 100% in place so it
-stays a known constant instead of becoming a surprise. Tightening the judge
-would move real-model scores too, so that is a re-measurement to run on
-purpose, not a tidy-up to slip in alongside something else.
+The leniency is load-bearing, and it took a measurement to find out why.
+
+The judge is permeable in principle: the expected term sits inside the
+snippet, the snippet sits inside the prompt, so any reply that echoes the
+prompt scores a hit. Mock does exactly that and lands 10/10 — the line that
+used to sit here, "Mock can't do it", was measurably false.
+
+The obvious next thought is that real models must be exploiting it too, and
+that the 50-90% figures are soft. They are not, and looking at the answers
+says why. Scoring the same responses under a stricter judge — must contain the
+term AND none of the snippet's other content words, i.e. must have *selected*
+— drops E2B 5→3 and E4B 9→5. But every single divergence is one shape:
+
+    gold `Beurre`     model `Beurre demi-sel`        (Beurre demi-sel — 250g)
+    gold `合同`        model `合同金额`                (合同金额: ¥50000)
+    gold `会议`        model `会议时间`                (会议时间: 周一上午 10:00)
+    gold `Datenbank`  model `Datenbank-Verbindung`   (Datenbank-Verbindung fehl…)
+
+Not regurgitation — a longer noun phrase containing the gold, and in each case
+arguably the better answer. `Beurre demi-sel` is the product; `Beurre` is just
+"butter". `Datenbank-Verbindung` is the compound; `Datenbank` is half of it.
+
+So the gold span is one defensible choice among several, and the lenient judge
+is what absorbs that. Tightening it would stop measuring "did it extract the
+term" and start measuring "did it pick my span", which is a worse question. It
+stays lenient on purpose. The mock-baseline gate in tests/test_bench_atoms.py
+pins mock's 100% so the permeability stays a known constant rather than
+becoming a surprise later.
 """
 
 from __future__ import annotations
